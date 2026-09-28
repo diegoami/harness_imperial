@@ -1,0 +1,23 @@
+{
+  "worktreeRoot": "../{repo}-work",
+  "models": {
+    "deepseek-flash": { "id": "opencode/deepseek-v4.1-flash", "variant": "max", "family": "deepseek" },
+    "mimo-flash-free": { "id": "opencode/mimo-v2.6-flash-free", "family": "mimo" },
+    "glm": { "id": "opencode/glm-5.3", "variant": "max", "family": "glm" },
+    "luna": { "id": "opencode/gpt-6-luna", "variant": "high", "family": "openai" }
+  },
+  "implementer": {
+    "agent": "implementer",
+    "chain": ["deepseek-flash"],
+    "startupTimeoutSec": 180,
+    "idleTimeoutSec": 900,
+    "totalTimeoutSec": 10800
+  },
+  "reviewer": {
+    "agent": "reviewer",
+    "chain": ["glm"],
+    "startupTimeoutSec": 180,
+    "idleTimeoutSec": 600,
+    "totalTimeoutSec": 3600
+  }
+}

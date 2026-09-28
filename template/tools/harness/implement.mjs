@@ -1,0 +1,146 @@
+#!/usr/bin/env node
+// Runs one task's (or one fix's) implementer on OpenCode, in a worktree this script creates.
+//
+//   node tools/harness/implement.mjs --task T07 --slug calendar --issue 12 --brief brief.md [--model NAME]
+//   node tools/harness/implement.mjs --fix 34 --slug save-path --brief brief.md
+//     [--copy local.ini]...  untracked files copied from the main checkout into the worktree
+//     [--env KEY=VALUE]...   environment for the run
+//
+// The main session fills the brief (the task file pasted in full, plus review URLs on a rework
+// round). This script creates or resumes the branch and worktree, runs OpenCode watched, and checks
+// the handover: a PR exists, the worktree is clean, pushed and detached.
+//
+// Models come from harness.json's implementer.chain; --model runs one alone. The next model runs
+// only on an infrastructure failure, and only when the failed run left nothing behind (no new
+// commit locally or on origin, no new PR), judged against the state before the first attempt, so a
+// resumed rework branch can still fall back. An implementer that stops and reports has NOT failed:
+// its run exits 0 and is never retried; this script then exits 1 at "no open PR".
+//
+// Exit 0: PR open. Exit 1: the main session decides (read the log). Exit 3: OpenCode unavailable;
+// fall back to a Claude implementer.
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
+import { runChain } from './lib/chain.mjs';
+import { sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs } from './lib/common.mjs';
+
+const say = (s) => console.log(s);
+const die = (code, s) => { console.error(s); process.exit(code); };
+
+const a = parseArgs(process.argv.slice(2), { repeatable: ['copy', 'env'] });
+if (!a.task === !a.fix) die(2, 'Give exactly one of --task T<nn> or --fix <issue>.');
+if (a.task && !/^T\d{2,3}$/.test(a.task)) die(2, `--task must look like T07; got ${a.task}`);
+if (!a.slug || !a.brief) die(2, '--slug and --brief are required.');
+if (!fs.existsSync(a.brief)) die(2, `Brief not found: ${a.brief}`);
+
+let opencode;
+try { opencode = resolveOpenCode(); } catch (e) {
+  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Fall back to a Claude implementer.`);
+  throw e;
+}
+requireTools('git', 'gh');
+
+const top0 = sh('git', ['rev-parse', '--show-toplevel']);
+const config = loadConfig(top0);
+const { top, commonDir, mainRoot, workRoot } = repoPaths(config);
+const impl = config.implementer;
+const chain = a.model ? [a.model] : impl.chain;
+for (const m of chain) if (!config.models[m]) die(2, `Unknown model ${m}; harness.json lists ${Object.keys(config.models).join(', ')}.`);
+
+const name = a.task ?? `fix-${a.fix}`;
+const branch = a.task ? `task/${a.task}-${a.slug}` : `fix/${a.fix}-${a.slug}`;
+const issue = a.issue ?? a.fix;
+const worktree = path.join(workRoot, name);
+const logFile = path.join(workRoot, `${name}.implementer.log`);
+fs.mkdirSync(workRoot, { recursive: true });
+
+// 1. The worktree and branch: resume a pushed branch, otherwise start from origin/main and push.
+sh('git', ['-C', top, 'fetch', '-q', 'origin']);
+const remoteHas = sh('git', ['-C', top, 'ls-remote', '--heads', 'origin', branch]);
+if (fs.existsSync(worktree)) {
+  if (sh('git', ['-C', worktree, 'rev-parse', '--abbrev-ref', 'HEAD']) !== branch) sh('git', ['-C', worktree, 'checkout', '-q', branch]);
+} else if (remoteHas) {
+  sh('git', ['-C', top, 'worktree', 'add', worktree, branch]);
+} else {
+  sh('git', ['-C', top, 'worktree', 'add', '-b', branch, worktree, 'origin/main']);
+  sh('git', ['-C', worktree, 'push', '-q', '-u', 'origin', branch]);
+}
+if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${branch}`]);
+for (const f of a.copy) fs.copyFileSync(path.join(mainRoot, f), path.join(worktree, f));
+ensureAgent({ top, commonDir, worktree, agent: impl.agent });
+say(`worktree: ${worktree} on ${branch}`);
+
+// 2. The run.
+const prompt = `${fs.readFileSync(a.brief, 'utf8')}
+
+---
+RUN RULES (from tools/harness/implement.mjs; they override the brief where they conflict):
+- Your worktree is ${worktree} on branch ${branch}, already created and pushed. Never run
+  git worktree. Pass git -C "${worktree}" explicitly.
+- Everything else in the brief is binding: Owns, Done when, the PR body, the detach, the report.
+- The PR body's "Closes #${issue}" is the only place a closing keyword may precede #<n>.
+`;
+const openPr = () => sh('gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number'], { cwd: top, allowFail: true });
+const originSha = () => sh('git', ['-C', top, 'rev-parse', `origin/${branch}`], { allowFail: true });
+const startSha = sh('git', ['-C', worktree, 'rev-parse', 'HEAD']);
+const startRemote = originSha();
+const startPr = openPr();
+fs.writeFileSync(logFile, '');
+
+const result = await runChain({
+  chain,
+  log: say,
+  attempt: async (m) => {
+    const model = config.models[m];
+    let reason = null;
+    let output;
+    try {
+      const run = await runOpenCodeWatched({
+        args: ocArgs(worktree, impl.agent, model), prompt, workDir: worktree, title: `${name}-${m}`,
+        startupTimeoutMs: impl.startupTimeoutSec * 1000, idleTimeoutMs: impl.idleTimeoutSec * 1000,
+        totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: envWith(a.env), log: say,
+      });
+      output = run.output;
+      if (run.exitCode !== 0) reason = `exit ${run.exitCode}`;
+      else if (run.agentFallback) reason = 'fell back to the default agent';
+    } catch (e) {
+      if (!(e instanceof OpenCodeInfraError)) throw e;
+      reason = e.reason;
+      output = e.message;
+    }
+    fs.appendFileSync(logFile, `=== ${m} (${model.id}): ${reason ? `failed: ${reason}` : 'ran'} ===\n${output}\n`);
+    return reason ? { ok: false, reason } : { ok: true, value: output };
+  },
+  leftWork: async () => {
+    sh('git', ['-C', top, 'fetch', '-q', 'origin']);
+    const pr = openPr();
+    return sh('git', ['-C', worktree, 'rev-parse', 'HEAD']) !== startSha
+      || originSha() !== startRemote || (pr && pr !== startPr);
+  },
+  reset: async () => {
+    sh('git', ['-C', worktree, 'reset', '-q', '--hard', startSha]);
+    sh('git', ['-C', worktree, 'clean', '-q', '-fd']);
+  },
+});
+
+say(`run log: ${logFile}`);
+const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
+if (!result.ok) {
+  if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.`);
+  die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. Fall back to a Claude implementer.`);
+}
+if (reasons) say(`fell back: ${reasons}`);
+// The reviewer must not be this model's family: pass it to review.mjs as --exclude.
+say(`implemented by: ${result.name} (${config.models[result.name].id})`);
+
+// 3. The handover: a PR, and a clean, pushed, detached worktree.
+sh('git', ['-C', top, 'fetch', '-q', 'origin']);
+const pr = sh('gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number,url', '--jq', '.[0].url'], { cwd: top, allowFail: true });
+if (sh('git', ['-C', worktree, 'status', '--porcelain'])) console.warn(`warning: uncommitted changes remain in ${worktree}`);
+if (sh('git', ['-C', worktree, 'rev-parse', 'HEAD']) !== originSha()) console.warn(`warning: ${worktree}'s HEAD is not pushed to origin/${branch}`);
+sh('git', ['-C', worktree, 'checkout', '-q', '--detach']);
+say('--- tail of the run ---');
+say(result.value.split(/\r?\n/).slice(-40).join('\n'));
+if (!pr) die(1, `No open PR for ${branch}. Read ${logFile}: an implementer that stopped and reported is not a failure.`);
+say(`PR: ${pr}`);

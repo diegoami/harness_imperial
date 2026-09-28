@@ -1,0 +1,11 @@
+{
+  "name": "harness_imperial",
+  "private": true,
+  "description": "Claude Code plans and reviews; OpenCode implements through one watched runner.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

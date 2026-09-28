@@ -1,0 +1,34 @@
+# Lessons
+
+Every rule in `CLAUDE.md` and `docs/process.md` is here with the failure that produced it. A rule
+without a lesson does not belong in either file (L14). Append this project's own lessons from L100;
+never renumber. The sources are
+[imperial_conquest_2](https://github.com/diegoami/imperial_conquest_2) (IC2: its wiki's *Process
+incidents*, its PRs, and the audit `docs/workflow-audit-2026-09.md`) and the field reports in
+[harness_template](https://github.com/diegoami/harness_template).
+
+| # | Rule | What happened |
+| --- | --- | --- |
+| L1 | A walking skeleton to a screen before the fan-out; until the first playable build, only bugs that break play are scheduled | IC2 merged 81 task PRs, 41 of them corrections, before its first real UI task, although a review ten days earlier had named the UI as the largest untested risk. The day the gate was adopted (#465), the UI tasks merged and v0.4.0 was tagged. |
+| L2 | Status lives in labels, never in a document | IC2 incident 10: prose status synced after every merge kept drifting ("Docs: status resync" five times in one day). |
+| L3 | The reviewer is another model family and re-runs every Done-when line | In IC2 a same-model reviewer twice repeated the implementer's misreading of the same claim. Reviewers filed 64 of 112 bugs; 82% of tasks went through at least one rework round. #482 enforces the family rule in the script. |
+| L4 | A bug that changes no outcome is a `fix`, with one review round | IC2 incident 12: about half its correction tasks fit in one or two files but carried the full task ceremony; a review had proposed the lighter lane ten days before it was adopted (#471). |
+| L5 | Owns names directories or files, not functions | IC2's line-level Owns lists produced 27 PRs that only widened an Owns list. |
+| L6 | The main session edits task files on `main`, with the reason in the commit | IC2 opened 127 plan PRs against 84 task PRs. Their median time to merge was 6 minutes: the cost was attention and tokens, not waiting. |
+| L7 | The implementer never weakens a Done-when; it stops and reports | IC2 incident 4: an implementer wrote outside its scope, wrote a reflection test that found nothing and could never fail, and documented a feature that does not exist. #482's trial implementer stopped correctly on a gap. |
+| L8 | Review with an explicit target, and prove the tree first | IC2 incident 5: a review skill invoked bare from an agent ran in the main checkout and reviewed the last merge: four wasted passes and nine confident findings about the wrong commit. |
+| L9 | A new test fails first; a "nothing failed" result is re-taken; mutations are tested after a clean rebuild; a tool that exits 0 on failure is judged by its log | IC2 incident 9: a stale binary gave phantom greens. boar_life's Godot exits 0 after a script error; IC2 #477 had the same false green. |
+| L10 | OpenCode runs with stdin closed, a startup timeout, an idle timeout and a total deadline | IC2 #490: two runs hung before creating a session because stdin was a pipe that never closed. #482 measured that a session's `updated` time moves only between steps, which sets the idle limits (900 s implementer, 600 s review). |
+| L11 | Whether OpenCode loaded the agent is read from its session record, never from the output | IC2 #480: a missing agent file makes OpenCode fall back silently to a full-permission agent. #482: a text check failed both of its own reviews, because the reviewers quoted the warning. |
+| L12 | The next model runs only on an infrastructure failure that left no work; the same failure twice stops the chain | IC2 #482: a failed run can leave commits or a PR, and retrying on top of them loses work; two identical failures mean OpenCode is the problem, not the model. |
+| L13 | Record tokens, models and rounds per task | IC2 never measured cost per task: #264's figures are file sizes. Baseline to beat: 82% of tasks reworked at least once, about 40% twice (Claude implementers). |
+| L14 | A rule enters only with a lesson | IC2's process grew layers that each patched a failure the layer below created; harness_template's review records reached twice the size of the harness. |
+| L15 | [rebuild] One fixtures corpus with provenance | IC2 incident 1: wrong constants merged quickly, and reviewers and research caught them, not implementers. |
+| L16 | [rebuild] Evidence in two stages, four routes; research never decides design | IC2's evidence pipeline: later evidence produced 20 tasks for rules the plan did not have. |
+| L17 | [rebuild] CI fetches the whole corpus from a private repository; tests find fixtures by name | IC2 #207: a named subset silently lost coverage for tests that read by directory. |
+| L18 | A brief carries the task file, not a pointer | IC2 incident 14: a pointer cost about 85,000 tokens per agent per round to reach about 1,450 of contract. |
+| L19 | Never `git stash` | IC2 #283: the stash is shared by every worktree of a repository. |
+| L20 | An edge comment arrives with its test | IC2 incident 8: five false comments shipped, three about edges no test visited. |
+| L21 | A question is not a request to edit files | pgn-postmortem's field report: the owner wanted a harness because the agent was "too eager to create stuff before we have fully planned it". |
+| L22 | [entity graphs] Every delete asks: what still references it, are its resources conserved, does a cap still hold? | IC2 incident 7: removed entities left dangling ids, so the game wrote saves it could not reload. |
+| L23 | Hunt the branch no input reaches | IC2 incident 6: a victory condition shipped that the game could never reach. |
