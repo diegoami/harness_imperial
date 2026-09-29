@@ -24,9 +24,10 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 | Implementer | OpenCode via `tools/harness/implement.mjs` (Claude when the task file says so, or on fallback) | One task, one branch, one PR, in its own worktree |
 | Reviewer | A Claude agent (default) or OpenCode via `tools/harness/review.mjs`, never the implementer's family | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
 | Decider | Jev via `tools/harness/jev.mjs` (the `/jev` skill) | Repeated yes/no decisions over many items, at the confident ends only (§12) |
+| Generator | Models on OpenRouter (images, other families) and ElevenLabs (speech, sound, music) | Assets, each committed with a sidecar naming provider, model, prompt, date and cost |
 
-The main session runs the implementer script itself, in the background: a Claude agent wrapped
-around it would spend Claude tokens to watch a process.
+`/delegate` picks the delegate; model ids come from `models.mjs` or `opencode models`, never memory
+(L25). The main session runs `implement.mjs` itself: a wrapper agent would spend tokens watching it.
 
 ## 2. Task files
 
@@ -144,7 +145,6 @@ added to `docs/lessons.md`. Plausible rules without an incident stay out. (L14)
 ## 12. Delegating decisions to Jev
 
 Jev takes a decision only when it recurs over many items, its answers are known up front, and a
-trial against labels has set its cutoffs (`jev.mjs trial`, recorded in `harness.json` with the
-numbers). It answers the confident ends; the main session answers the middle, and a person's
-decision always outranks Jev's. Without the key it is off, and nothing changes. `/jev` has the
-procedure. (L24)
+trial against labels has set its cutoffs, recorded in `harness.json` with the numbers. It answers
+the confident ends and the main session the middle; a person's decision outranks both. Without its
+key it is off. `/jev` has the procedure. (L24)

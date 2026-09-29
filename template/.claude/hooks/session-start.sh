@@ -34,7 +34,8 @@ on_off() { if [ -n "${!1:-}" ]; then echo "set"; else echo "MISSING"; fi; }
 echo "Harness environment:"
 echo "- node $(node --version 2>/dev/null || echo none), opencode $(opencode --version 2>/dev/null || echo none), gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}' || echo none)"
 echo "- OPENCODE_API_KEY: $(on_off OPENCODE_API_KEY) (OpenCode implementer and reviewer, opencode/* models)"
-echo "- OPENROUTER_API_KEY: $(on_off OPENROUTER_API_KEY) (Jev decisions; also OpenCode's openrouter/* models)"
+echo "- OPENROUTER_API_KEY: $(on_off OPENROUTER_API_KEY) (Jev decisions, image models, and OpenCode's openrouter/* models)"
+echo "- ELEVENLABS_API_KEY: $(on_off ELEVENLABS_API_KEY) (speech, sound effects, music; /delegate)"
 echo "- GH_TOKEN: $(on_off GH_TOKEN) (gh in tools/harness: PR lookup, comments, labels)"
 if [ -z "${OPENCODE_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
   echo "  OpenCode has no provider key: implement.mjs and review.mjs will exit 3, so use Claude agents."
@@ -43,5 +44,6 @@ if [ -z "${OPENROUTER_API_KEY:-}" ]; then
   echo "  Jev is off: jev.mjs exits 3, so decide every item yourself."
 fi
 for n in "${notes[@]}"; do echo "  Setup: $n"; done
+echo "Delegates and how to pick their models (live lists, never memory): the /delegate skill."
 echo "See docs/environment.md for what each key needs and which hosts the network policy must allow."
 exit 0

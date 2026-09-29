@@ -24,7 +24,9 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/.opencode/agents/` | The OpenCode agents, with the permission deny-lists. |
 | `template/tools/harness/jev.mjs`, `lib/jev.mjs` | Delegates repeated decisions to Jev: `trial` against labels, then `route` the confident ends. |
 | `template/.claude/skills/jev/SKILL.md` | `/jev`: when a decision fits Jev, and the define, label, trial, route procedure. |
-| `template/harness.json` | Models, chains, timeouts, and the Jev decisions with their cutoffs. |
+| `template/.claude/skills/delegate/SKILL.md` | `/delegate`: which delegate fits the work (Claude, OpenCode, Jev, OpenRouter, ElevenLabs), and picking its model from a live list. |
+| `template/tools/harness/models.mjs` | Lists the models OpenRouter or ElevenLabs offer now, filtered by input and output (text, image, audio). |
+| `template/harness.json` | Models, chains, timeouts, providers, and the Jev decisions with their cutoffs. |
 | `template/docs/tasks/`, `template/.github/pull_request_template.md` | The task-file and PR formats. |
 
 ## The runner
@@ -72,8 +74,9 @@ format is confirmed.
 ## Environment
 
 Each delegate needs a key. [`template/docs/environment.md`](template/docs/environment.md) has the
-details: `OPENCODE_API_KEY` for OpenCode, `OPENROUTER_API_KEY` for Jev, `GH_TOKEN` for `gh`, and the
-hosts a cloud environment's network policy must allow. A session-start hook installs OpenCode and
+details: `OPENCODE_API_KEY` for OpenCode, `OPENROUTER_API_KEY` for Jev and OpenRouter models
+(images too), `ELEVENLABS_API_KEY` for audio, `GH_TOKEN` for `gh`, and the hosts a cloud
+environment's network policy must allow. A session-start hook installs OpenCode and
 `gh` in cloud sessions and reports which keys are set. This repository uses the same hook
 (`.claude/settings.json`), so a cloud session here can run the tools for real.
 

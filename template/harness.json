@@ -51,5 +51,15 @@
         "instructionsFile": "docs/jev/breaks-play.md"
       }
     }
+  },
+  "providers": {
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    },
+    "elevenlabs": {
+      "baseUrl": "https://api.elevenlabs.io",
+      "apiKeyEnv": "ELEVENLABS_API_KEY"
+    }
   }
 }

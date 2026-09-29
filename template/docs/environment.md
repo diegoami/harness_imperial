@@ -14,6 +14,7 @@ Never paste a key into a chat, and never commit one.
 | --- | --- | --- |
 | `OPENCODE_API_KEY` | OpenCode's `opencode/*` models (OpenCode Zen and Go): the implementer and reviewer models in `harness.json` | `implement.mjs` and `review.mjs` fail over and exit 3; use Claude agents |
 | `OPENROUTER_API_KEY` | Jev, through OpenRouter (`jev.mjs`); also OpenCode's `openrouter/*` models, if `harness.json` names any | `jev.mjs` exits 3; the main session decides every item itself |
+| `ELEVENLABS_API_KEY` | ElevenLabs: speech, voices, sound effects, music (`/delegate`, `models.mjs elevenlabs`) | no generated audio; the main session says so |
 | `GH_TOKEN` | `gh`, inside the tools and inside OpenCode's runs: finding the PR, `gh pr create`, posting a review, labels | the scripts cannot find or post to PRs |
 
 For `GH_TOKEN`, use a fine-grained token limited to the project's repository, with read and write on
@@ -29,7 +30,8 @@ A cloud environment's network policy must allow:
 | Host | For |
 | --- | --- |
 | `opencode.ai` | OpenCode's own providers (Zen, Go) |
-| `openrouter.ai` | Jev, and OpenRouter models |
+| `openrouter.ai` | Jev, OpenRouter models, image generation |
+| `api.elevenlabs.io` | ElevenLabs |
 | `registry.npmjs.org` | installing OpenCode |
 | `api.github.com`, `github.com` | `gh` and git |
 | the Ubuntu package archive | installing `gh` with apt |
