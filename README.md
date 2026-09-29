@@ -69,12 +69,21 @@ cutoffs until someone runs its trial, so `/run-task` does not use it yet. `trial
 yes/no (`noul`) questions. `ask` passes Choice and Score through unparsed, until their response
 format is confirmed.
 
+## Environment
+
+Each delegate needs a key. [`template/docs/environment.md`](template/docs/environment.md) has the
+details: `OPENCODE_API_KEY` for OpenCode, `OPENROUTER_API_KEY` for Jev, `GH_TOKEN` for `gh`, and the
+hosts a cloud environment's network policy must allow. A session-start hook installs OpenCode and
+`gh` in cloud sessions and reports which keys are set. This repository uses the same hook
+(`.claude/settings.json`), so a cloud session here can run the tools for real.
+
 ## Adopt it
 
 In a project (Node 20 or later, `gh` logged in, OpenCode installed):
 
 ```sh
 cp -r /path/to/harness_imperial/template/. .
+# If the project already had .claude/settings.json, merge its SessionStart hook back in by hand.
 # Fill in CLAUDE.md's first lines, and delete the conditional rules that do not apply.
 # Check the model ids against `opencode models` and edit harness.json.
 for l in task bug fix triage:needed post-playable review-round:1 review-round:2 \
@@ -102,6 +111,11 @@ reproduce each failure above. The cases are:
 The stdin, process-tree, left-work and family guards were also checked by breaking each one and
 watching its test fail.
 
-**They have not been run against a real OpenCode.** The OpenCode behaviour is copied from IC2's
-PowerShell runner, which has run there. Watch the first real run: `session list`'s JSON, the
-`export` format and the exact flags are what that runner used on OpenCode 1.18.
+**Against a real OpenCode** (1.18.33, with no model key, so each run fails at the provider), the
+following were checked:
+- the `run` flags exist;
+- the runner finds the session in `session list --format json`;
+- `export`'s `info.agent` reads `reviewer` when the agent file is present, and `build` (the silent
+  fallback, which the runner flags) when it is missing.
+
+A run with a real model key has not happened yet: watch the first one.

@@ -18,4 +18,8 @@ jobs:
         with:
           node-version: 22
       - run: git config --global user.name ci && git config --global user.email ci@example.com
+      # The real-OpenCode tests run on the pinned line (see template/docs/environment.md); they
+      # need no model key.
+      - if: runner.os == 'Linux'
+        run: npm install -g opencode-ai@1.18
       - run: npm test

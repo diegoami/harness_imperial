@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/template/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

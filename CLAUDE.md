@@ -9,3 +9,5 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - Every behaviour of the runner has a test in `test/`, and each test was checked by breaking the
   behaviour and watching it fail. Do the same for any new one.
 - `npm test` before every push. Commits and PRs as usual; no status in any document.
+- A cloud session here runs `template/.claude/hooks/session-start.sh` (see `.claude/settings.json`):
+  it installs OpenCode and `gh` and reports which keys are set (`template/docs/environment.md`).
