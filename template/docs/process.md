@@ -23,6 +23,7 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 | Main session | Claude, the session the user talks to | Plans, writes task files, runs `/run-task`, triages, merges, reports |
 | Implementer | OpenCode via `tools/harness/implement.mjs` (Claude when the task file says so, or on fallback) | One task, one branch, one PR, in its own worktree |
 | Reviewer | A Claude agent (default) or OpenCode via `tools/harness/review.mjs`, never the implementer's family | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
+| Decider | Jev via `tools/harness/jev.mjs` (the `/jev` skill) | Repeated yes/no decisions over many items, at the confident ends only (§12) |
 
 The main session runs the implementer script itself, in the background: a Claude agent wrapped
 around it would spend Claude tokens to watch a process.
@@ -105,6 +106,9 @@ per merge. Triage decides one of:
 - **fold** into a task not yet ready.
 - **close**, with the reason.
 
+Once `breaks-play` is trialled (§12), Jev settles the confident ends of the playability gate
+first; the main session triages the middle.
+
 ## 7. Escalate to the user when
 
 A design question; a Done-when would have to weaken; a third rework round; anything destructive
@@ -136,3 +140,11 @@ added to `docs/lessons.md`. Plausible rules without an incident stay out. (L14)
   the user; research never decides design. (L16)
 - The original files never enter the repository. CI fetches them from a private fixtures
   repository holding the whole corpus; tests find fixtures by name; local tests skip without them. (L17)
+
+## 12. Delegating decisions to Jev
+
+Jev takes a decision only when it recurs over many items, its answers are known up front, and a
+trial against labels has set its cutoffs (`jev.mjs trial`, recorded in `harness.json` with the
+numbers). It answers the confident ends; the main session answers the middle, and a person's
+decision always outranks Jev's. Without the key it is off, and nothing changes. `/jev` has the
+procedure. (L24)

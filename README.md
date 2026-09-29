@@ -22,7 +22,9 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/tools/harness/review.mjs` | Runs a review on OpenCode, never on the implementer's model family, and posts it. |
 | `template/tools/harness/lib/opencode.mjs` | The watched runner that both use. |
 | `template/.opencode/agents/` | The OpenCode agents, with the permission deny-lists. |
-| `template/harness.json` | Models, chains and timeouts. |
+| `template/tools/harness/jev.mjs`, `lib/jev.mjs` | Delegates repeated decisions to Jev: `trial` against labels, then `route` the confident ends. |
+| `template/.claude/skills/jev/SKILL.md` | `/jev`: when a decision fits Jev, and the define, label, trial, route procedure. |
+| `template/harness.json` | Models, chains, timeouts, and the Jev decisions with their cutoffs. |
 | `template/docs/tasks/`, `template/.github/pull_request_template.md` | The task-file and PR formats. |
 
 ## The runner
@@ -46,6 +48,26 @@ And the review never runs on the implementer's model family.
 
 Exit codes, for both scripts: 0 done; 1 the main session decides; 3 OpenCode unavailable, so use
 Claude.
+
+## Jev: the third delegate
+
+The main session delegates code to OpenCode and reviews to another model family. It sends
+decisions to [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), TypeSafe AI's
+System One model, which returns a calibrated probability for a typed question instead of text.
+Only decisions that recur over many items, with answers known up front, go there: triage,
+routing, gating, labelling.
+
+The pattern is the one that works in
+[newscollection2027](https://github.com/diegoami/newscollection2027) (#85, #87):
+- **Trial first.** Cutoffs are picked on half the labels and reported on the other half.
+- **A three-way split.** Jev answers the confident ends, and Claude answers the middle.
+- **Off without a key**, so nothing changes until someone adds one.
+- **A pinned model**, with cached answers.
+
+`breaks-play`, the playability gate asked of a GitHub issue, is the example decision. It has no
+cutoffs until someone runs its trial, so `/run-task` does not use it yet. `trial` and `route` handle
+yes/no (`noul`) questions. `ask` passes Choice and Score through unparsed, until their response
+format is confirmed.
 
 ## Adopt it
 

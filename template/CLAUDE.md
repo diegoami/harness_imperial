@@ -4,8 +4,9 @@
 before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/README.md`.
 
 ## Rules
-1. The main session plans, runs tasks with `/run-task`, triages bugs, and talks to the user.
-   OpenCode implements through `tools/harness/implement.mjs`; a model of another family reviews.
+1. The main session plans, runs tasks with `/run-task`, triages bugs, and talks to the user. It
+   delegates code to OpenCode (`tools/harness/implement.mjs`), review to a model of another
+   family, and repeated decisions with known answers to Jev (`/jev`), after a trial.
 2. Nobody works in the main checkout but the main session: OpenCode runs in the worktree the script
    makes, Claude agents run with worktree isolation. Never `git stash`.
 3. Status lives in GitHub labels. No document carries a status snapshot.

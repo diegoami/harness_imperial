@@ -12,6 +12,8 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
 
 0. **Check.** The issue is `status:ready` and every Merge-after task is merged. Run
    `gh issue list --label triage:needed --state open`; triage anything that names this task first.
+   If `harness.json` has cutoffs for `breaks-play`, route those issues through Jev first (`/jev`
+   step 4). Act on its confident ends and triage the middle yourself; exit 3 means triage it all.
 
 1. **Brief.** Write it to a temp file: the task file **pasted in full**, then `docs/process.md` §4's
    block, then (on rework) the review comment's URL. Never a pointer to the task file.
