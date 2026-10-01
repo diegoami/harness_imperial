@@ -7,7 +7,9 @@
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
-//   ids harness.json names. Each session records the XDG_DATA_HOME it ran with.
+//   ids harness.json names. A provider with none fails like OpenCode 1.18.34 ("Provider not
+//   found"). FAKE_OC_MODELS_ERROR: stderr for a `models` that fails for another reason.
+//   Each session records the XDG_DATA_HOME it ran with.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -27,7 +29,10 @@ if (cmd === 'session') {
 if (cmd === 'models') {
   const ids = JSON.parse(process.env.FAKE_OC_MODELS
     || '["opencode-go/deepseek-v4.1-flash", "opencode-go/glm-5.3-flash", "opencode-go/gpt-6-luna"]');
-  process.stdout.write(ids.filter((id) => !rest[0] || id.startsWith(`${rest[0]}/`)).map((id) => `${id}\n`).join(''));
+  if (process.env.FAKE_OC_MODELS_ERROR) { process.stderr.write(`${process.env.FAKE_OC_MODELS_ERROR}\n`); process.exit(1); }
+  const mine = ids.filter((id) => !rest[0] || id.startsWith(`${rest[0]}/`));
+  if (!mine.length) { process.stderr.write(`Error: Provider not found: ${rest[0]}\n`); process.exit(1); }
+  process.stdout.write(mine.map((id) => `${id}\n`).join(''));
   process.exit(0);
 }
 if (cmd === 'export') {

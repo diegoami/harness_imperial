@@ -18,6 +18,12 @@ const samples = [
   ["the brief's header echoed before the review: the last header wins", `${H}\nReview PR #7.\n\n${NORMAL}`, 'ok', 'rework'],
   ['a review flattened onto one line', `${H} rework  R1: the loop in a.js skips the last item.  rework`, 'ok', 'rework'],
   ['a closing keyword', `${H}\napprove\n\nR1: this fixes #551.\n\napprove`, 'ok', 'approve'],
+  ['the header in the middle of a line', `Here is the ${H}:\nrework\nR1: x\nrework`, 'ok', 'rework'],
+  ['the header after a label', `Review: ${H}\nrework\nR1: x\nrework`, 'ok', 'rework'],
+  ['the verdict on the header line, findings on their own lines, a sign-off', `## ${H} — Rework\n\nR1: a.js:10\nR2: b.js:4\n\nrework\n\n— GLM`, 'ok', 'rework'],
+  ['other text on the header line', `${H} — final\nrework\nR1: x\nrework`, 'ok', 'rework'],
+  ['a finding that repeats the header', `${H}\nrework\n\nR1: bad.\n${H}\n\nrework`, 'ok', 'rework'],
+  ['an echoed brief, the review, and a finding that repeats the header', `${H}\nReview PR #7.\n\n${H}\nrework\n\nR1: bad.\n${H}\n\nrework`, 'ok', 'rework'],
   ['no closing verdict', `${H}\nrework\n\nR1: the loop in`, 'flagged', 'may be cut off'],
   ['a verdict that is not one of the four', `${H}\nlooks good to me\n\nR1: fine\n\napprove`, 'flagged', 'verdict unreadable'],
   ['two different verdicts', `${H}\napprove\n\nR1: fine\n\nrework`, 'flagged', 'verdict unreadable'],
@@ -49,6 +55,15 @@ for (const [name, out, kind, detail] of samples) {
 test('a readable review keeps its findings, paragraphs restored when flattened', () => {
   assert.match(readReview(`${H} rework  R1: a.  R2: b.  rework`, H).review, /R1: a\.\n\nR2: b\./);
   assert.match(readReview(NORMAL, H).review, /R1: the loop in a\.js skips the last item\./);
+});
+
+test('line breaks after a header line with text on it survive; findings that repeat the header are kept', () => {
+  assert.match(readReview(`## ${H} — Rework\n\nR1: a.js:10\nR2: b.js:4\n\nrework`, H).review, /R1: a\.js:10\nR2: b\.js:4/);
+  assert.match(readReview(`${H}\nrework\n\nR1: bad.\n${H}: the header above is wrong\n\nrework`, H).review,
+    /R1: bad\.\nT07 review \(glm-flash\): the header above is wrong/);
+  const f = readReview(`${H}\nlooks fine\nR1: bad.\n${H}\nmore`, H);
+  assert.equal(f.kind, 'flagged');
+  assert.match(f.review, /R1: bad\./);
 });
 
 test('closing keywords are rewritten, in every outcome, and listed', () => {

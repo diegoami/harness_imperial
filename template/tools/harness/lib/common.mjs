@@ -83,11 +83,11 @@ export function ensureAgent({ top, commonDir, worktree, agent }) {
 // that directory) is dropped, with the command that fixes it. Returns { env, usable, problems }.
 export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }) {
   const oc = openCodeHome(env, { log });
-  const listed = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
+  const { listed, errors } = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
   const problems = [];
   const usable = chain.filter((m) => {
     if (listed.has(models[m].id)) return true;
-    problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome)}`);
+    problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome, errors)}`);
     return false;
   });
   return { env: oc.env, usable, problems };

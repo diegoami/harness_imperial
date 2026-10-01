@@ -145,19 +145,30 @@ export function openCodeHome(env = process.env, { log = () => {} } = {}) {
 }
 
 // The model ids OpenCode lists for these providers in this environment (`opencode models <p>`), so
-// an unknown id or a provider that is not logged in stops a run before anything is billed.
+// an unknown id or a provider that is not logged in stops a run before anything is billed. A
+// provider with no login exits 1 with "Provider not found" (OpenCode 1.18.34); any other failure,
+// or a timeout, is OpenCode's own and lands in `errors`, so it is never reported as a login.
+// Returns { listed: Set, errors: Map provider -> message }.
 export async function listedModels(cmd, providers, { env, cwd, timeoutMs = 60_000 }) {
   const listed = new Set();
+  const errors = new Map();
   for (const p of new Set(providers)) {
     const r = await execBounded(cmd, ['models', p], { cwd, env, timeoutMs });
-    if (r && r.code === 0) for (const l of r.stdout.split(/\r?\n/)) if (l.trim()) listed.add(l.trim());
+    if (!r) { errors.set(p, `\`opencode models ${p}\` did not finish in ${Math.round(timeoutMs / 1000)} s`); continue; }
+    if (r.code === 0) {
+      for (const l of r.stdout.split(/\r?\n/)) if (l.trim()) listed.add(l.trim());
+    } else if (!/provider not found/i.test(r.stderr)) {
+      const last = r.stderr.replace(/\x1b\[[0-9;]*m/g, '').trim().split(/\r?\n/).at(-1) || '(no output)';
+      errors.set(p, `\`opencode models ${p}\` failed with exit ${r.code}: ${last}`);
+    }
   }
-  return listed;
+  return { listed, errors };
 }
 
 // Why a model is missing from the list, and the command that fixes it.
-export function loginHint(modelId, listed, dataHome) {
+export function loginHint(modelId, listed, dataHome, errors = new Map()) {
   const provider = modelId.split('/')[0];
+  if (errors.has(provider)) return `${errors.get(provider)}. That is OpenCode failing in ${dataHome}, not a missing login`;
   if ([...listed].some((id) => id.startsWith(`${provider}/`))) {
     return `${modelId} is not in \`opencode models ${provider}\`: check the id in harness.json`;
   }
@@ -184,8 +195,8 @@ function spawnDetached(cmd, args, options) {
 }
 
 // A short OpenCode command (`session list`, `export`), bounded and killed if it overruns. With
-// outFile, stdout goes to that file instead of a pipe. Resolves { code, stdout } or null on a
-// timeout or a spawn error.
+// outFile, stdout goes to that file instead of a pipe. Resolves { code, stdout, stderr } or null
+// on a timeout or a spawn error.
 function execBounded(cmd, args, { cwd, timeoutMs, env, outFile }) {
   if (timeoutMs <= 0) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -195,13 +206,17 @@ function execBounded(cmd, args, { cwd, timeoutMs, env, outFile }) {
       child = spawnDetached(cmd, args, { cwd, env, stdio: ['ignore', fd ?? 'pipe', 'pipe'] });
     } catch { resolve(null); return; } finally { if (fd !== null) fs.closeSync(fd); }
     const out = [];
+    const err = [];
     child.stdout?.on('data', (d) => out.push(d));
-    child.stderr.resume();
+    child.stderr.on('data', (d) => err.push(d));
     const timer = setTimeout(() => { killTree(child); resolve(null); }, timeoutMs);
     child.on('error', () => { clearTimeout(timer); resolve(null); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      resolve({ code, stdout: outFile ? fs.readFileSync(outFile, 'utf8') : Buffer.concat(out).toString('utf8') });
+      resolve({
+        code, stdout: outFile ? fs.readFileSync(outFile, 'utf8') : Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      });
     });
   });
 }
