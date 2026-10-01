@@ -3,23 +3,27 @@
 //
 //   node tools/harness/review.mjs --pr 42 --brief brief.md [--reviewer NAME] [--exclude NAME,...]
 //     [--issue 12 --apply-label] [--dry-run] [--env KEY=VALUE]...
+//   node tools/harness/review.mjs --self-test   (the reader's samples; no model is called)
 //
-// The brief's first line is the review header the model prints, e.g. "T07 review (GLM)"; with the
+// The brief's first line is the review header the model prints, e.g. "T07 review (Luna)"; with the
 // chain, the text in its final parentheses becomes each attempt's model. The model never writes to
 // GitHub (the agent file denies it); this script is the only writer.
 //
 // The model is harness.json's reviewer.chain (one model, by the user's decision of 2026-10-02:
-// GLM-5.3 Flash, then Claude Opus). It is never the implementer's model family: --exclude
+// GPT-6 Luna on the direct OpenAI route, openai/gpt-6-luna, then Claude Opus). It is never the implementer's model family: --exclude
 // (implement.mjs prints the name on its "implemented by:" line, or "claude"), else a model:<name>
 // label on the PR or --issue. Runs use the scripts' own OpenCode data directory.
 //
 // A review is never thrown away (lib/chain.mjs readReview). Only output with no review at all
-// falls back; a review whose verdict cannot be read, or that may be cut off, is posted under a
-// note, with no label. Closing keywords before #<n> are rewritten, and the rewrite is logged.
+// falls back. A readable review is posted normalised and acted on. One that may be cut off, has no
+// readable verdict, opens and closes with different verdicts, or has a finding after its closing
+// verdict is posted whole, exactly as it arrived, under a note, with no label. Closing keywords lose their '#', and the rewrite is logged.
 //
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
-// unavailable or no review, nothing posted; use a Claude reviewer (harness.json's claudeFallback).
-// Exit 4: posted under a note, no label; the main session reads it and decides. --dry-run prints
+// unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
+// claudeFallback), unless Claude implemented the PR: then no reviewer of another family is left,
+// and the caller escalates. Exit 4: posted under a note, no label; the caller reads it on the PR and decides,
+// and never pays for a second review because of it. --dry-run prints
 // what would be posted and the exit code it would use, and exits 0; it still runs, and bills, the
 // model.
 
@@ -29,6 +33,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
 import { runChain, excludeImplementers, readReview } from './lib/chain.mjs';
+import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
 } from './lib/common.mjs';
@@ -36,12 +41,18 @@ import {
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
 
-const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run'], repeatable: ['env'] });
+const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test'], repeatable: ['env'] });
+if (a['self-test']) {
+  const failures = selfTest();
+  for (const f of failures) console.error(`FAIL ${f}`);
+  say(`self-test: ${SAMPLES.length - failures.length} of ${SAMPLES.length} samples read as expected`);
+  process.exit(failures.length ? 1 : 0);
+}
 if (!a.pr || !a.brief) die(2, '--pr and --brief are required.');
 if (a['apply-label'] && !a.issue) die(2, '--apply-label needs --issue.');
 const brief = fs.readFileSync(a.brief, 'utf8').split(/\r?\n/);
 const briefHeader = brief[0].trim();
-if (!/review \(/.test(briefHeader)) die(2, `The brief's first line must be the review header, e.g. "T07 review (GLM)"; got: ${briefHeader}`);
+if (!/review \(/.test(briefHeader)) die(2, `The brief's first line must be the review header, e.g. "T07 review (Luna)"; got: ${briefHeader}`);
 
 let opencode;
 try { opencode = resolveOpenCode(); } catch (e) {
@@ -107,9 +118,11 @@ try {
 OUTPUT RULES (from tools/harness/review.mjs; they override anything above that conflicts):
 - Do not post to GitHub, edit, commit, push, label or merge anything. The script posts your review.
 - Your final message is the review and nothing else. Line 1 is exactly: ${header}
-  Line 2 is the verdict: approve, approve after named fixes, rework, or user decision.
-  Then the findings (R1, R2, ... with file and line, blocking or not), then the verdict again as
-  the very last line. A review that does not end with its verdict is posted as possibly cut off.
+  Line 2 is the verdict, alone on its line: approve, approve after named fixes, rework, or user
+  decision. Then any where-I-worked lines (worktree, HEAD, diff, the commands you ran), then the
+  findings (R1, R2, ... with file and line, blocking or not), then the verdict again as the very
+  last line. Nothing comes after it. A review that does not end with its verdict, or that has a
+  finding after it, is posted flagged and acted on by no one until the main session reads it.
 - Your worktree is ${worktree} at ${headSha}. Pass git -C "${worktree}" explicitly.
 `;
       newTree();
@@ -142,9 +155,10 @@ if (!result.ok) die(3, `OpenCode unavailable: ${result.sameCause ? `same failure
 const { kind, review, verdict, note, rewrites, header, model } = result.value;
 for (const r of rewrites) say(`rewrote a closing keyword: ${r}`);
 const lines = review.split('\n');
-if (reasons) lines[0] = header.replace(/\)\s*$/, `; ${reasons})`);
+if (reasons && kind === 'ok') lines[0] = header.replace(/\)\s*$/, `; ${reasons})`);
 const flagNote = kind === 'flagged'
-  ? `> Note from tools/harness/review.mjs: ${note}; no label applied. The main session reads this review and decides.\n\n` : '';
+  ? `> Note from tools/harness/review.mjs: ${note}; no label applied${reasons ? ` (${reasons})` : ''}. `
+    + 'The main session reads this review and decides.\n\n' : '';
 const body = `${flagNote}${lines.join('\n')}\n\n— ${result.name}, via tools/harness/review.mjs (${model.id})`;
 const label = kind === 'flagged' ? null
   : verdict === 'approve' ? 'status:approved' : verdict === 'user decision' ? null : 'status:rework';

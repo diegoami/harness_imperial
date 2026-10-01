@@ -42,6 +42,16 @@ The login is stored in the database of OpenCode's data directory, not in `auth.j
 directory, another machine, WSL beside Windows, or a new cloud session each needs its own
 `opencode console login`.
 
+## OpenAI, for the reviewer
+
+The reviewer is GPT-6 Luna on the direct OpenAI route (`openai/gpt-6-luna`), not Go's
+`opencode-go/gpt-6-luna`: a third-party proxy behind Go's returned `Bad Request` in long agent loops
+(L27). OpenAI is an ordinary OpenCode provider: log in once with `opencode auth login`, choose
+OpenAI (a ChatGPT login or an API key), and check with `opencode models openai`. The login is kept in
+`auth.json`, which the scripts copy into their own data directory (next section) whenever theirs is
+missing or older. If OpenAI later asks for a new login, log in again in your usual OpenCode; the
+next run copies it.
+
 ## The scripts' own data directory
 
 `implement.mjs` and `review.mjs` run OpenCode with a data directory of their own, so OpenCode's
@@ -65,8 +75,10 @@ $env:XDG_DATA_HOME = "$HOME\.local\share\harness-opencode\data"; opencode consol
 ```
 
 Check it with the same `XDG_DATA_HOME` and `opencode models opencode-go`. Before any run, each script
-checks that OpenCode lists its model there; if not, it exits 3 with this command, and nothing is
-billed.
+checks that OpenCode lists its model there; if not, it exits 3 with the command that fixes it (this
+one for Go, `opencode auth login` for OpenAI), and nothing is billed. The scripts never change their
+own process's environment, only that of the OpenCode processes they start, so nothing needs
+restoring afterwards.
 
 ## Keys
 

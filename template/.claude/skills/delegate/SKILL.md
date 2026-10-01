@@ -12,8 +12,8 @@ yourself, check whether a delegate below does it better or cheaper.
 
 | Work | Delegate | How | Key |
 | --- | --- | --- | --- |
-| Code: implement a task or a fix | OpenCode DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | OpenCode Go's login (`opencode console login`); `OPENROUTER_API_KEY` for `openrouter/*` models |
-| Review a PR | OpenCode GLM-5.3 Flash (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
+| Code: implement a task or a fix | OpenCode DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | OpenCode Go's login (`opencode console login`) to implement; OpenAI's (`opencode auth login`) to review |
+| Review a PR | GPT-6 Luna on OpenAI, through OpenCode (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
 | Repeated decisions with known answers (triage, routing, gating, labelling) | Jev | `/jev` → `tools/harness/jev.mjs` | `OPENROUTER_API_KEY` |
 | Images: sprites, icons, maps, mockups, illustrations | An image model on OpenRouter | pick one with `models.mjs openrouter --output image` | `OPENROUTER_API_KEY` |
 | A second opinion from another model family, or reading audio or images | A model on OpenRouter | `models.mjs openrouter --input image` (or `audio`) | `OPENROUTER_API_KEY` |
@@ -28,7 +28,8 @@ another way, or tell the user what is missing (`docs/environment.md`).
 1. **Never from memory.** Model ids and prices change faster than any document. List them live:
    - `node tools/harness/models.mjs openrouter --output image`;
    - `node tools/harness/models.mjs elevenlabs`;
-   - `opencode models opencode-go`, for implementers and reviewers (OpenCode Go, the subscription).
+   - `opencode models opencode-go` for implementers (OpenCode Go), `opencode models openai` for the
+     reviewer.
 
    Do the same when you are unsure a model still exists. (L25)
 2. **Choose on the evidence you have.** In order of preference:

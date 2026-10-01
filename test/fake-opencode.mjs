@@ -28,7 +28,7 @@ if (cmd === 'session') {
 }
 if (cmd === 'models') {
   const ids = JSON.parse(process.env.FAKE_OC_MODELS
-    || '["opencode-go/deepseek-v4.1-flash", "opencode-go/glm-5.3-flash", "opencode-go/gpt-6-luna"]');
+    || '["opencode-go/deepseek-v4.1-flash", "openai/gpt-6-luna", "opencode-go/spare-model"]');
   if (process.env.FAKE_OC_MODELS_ERROR) { process.stderr.write(`${process.env.FAKE_OC_MODELS_ERROR}\n`); process.exit(1); }
   const mine = ids.filter((id) => !rest[0] || id.startsWith(`${rest[0]}/`));
   if (!mine.length) { process.stderr.write(`Error: Provider not found: ${rest[0]}\n`); process.exit(1); }

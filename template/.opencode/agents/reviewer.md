@@ -37,6 +37,9 @@ how the run works.
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or
   label it unverified. A claim that nothing failed is re-taken before it is believed.
 - Your **final message is the review** and nothing else: line 1 is exactly the header the brief
-  gives, line 2 the verdict (`approve`, `approve after named fixes`, `rework`, `user decision`),
-  then the findings R1, R2, ... with file and line, blocking or not, then the verdict again as the
-  last line. Never put close/closes/fix/fixes/resolve/resolves directly before `#<n>`.
+  gives; line 2 the verdict alone (`approve`, `approve after named fixes`, `rework`,
+  `user decision`); then any where-I-worked lines (worktree, HEAD, diff, commands run); then the
+  findings R1, R2, ... with file and line, blocking or not; then the verdict again as the last line,
+  with nothing after it. The script reads exactly this shape. A review without its closing verdict,
+  or with a finding after it, is posted flagged and gets no label. Never put
+  close/closes/fix/fixes/resolve/resolves directly before `#<n>`.

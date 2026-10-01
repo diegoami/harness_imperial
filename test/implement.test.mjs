@@ -25,6 +25,7 @@ function project(harness = {}) {
   fs.mkdirSync(path.join(main, '.opencode', 'agents'), { recursive: true });
   fs.copyFileSync(path.join(root, '.opencode/agents/implementer.md'), path.join(main, '.opencode/agents/implementer.md'));
   const config = JSON.parse(fs.readFileSync(path.join(root, 'harness.json'), 'utf8'));
+  config.models.spare = { id: 'opencode-go/spare-model', variant: 'high', family: 'spare' };   // a third model, tests only
   config.implementer = { ...config.implementer, startupTimeoutSec: 2, idleTimeoutSec: 5, totalTimeoutSec: 20, ...harness };
   fs.writeFileSync(path.join(main, 'harness.json'), JSON.stringify(config));
   fs.writeFileSync(path.join(main, 'README.md'), 'project\n');
@@ -76,53 +77,63 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
 });
 
 test('an implementer that stops and reports is not retried, and exits 1', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'stop-report' });
   assert.equal(r.status, 1);
-  assert.doesNotMatch(r.stdout, /attempt: glm/);
+  assert.doesNotMatch(r.stdout, /attempt: luna/);
   assert.match(r.stdout, /Done-when 2 cannot be met/);
   assert.match(r.stderr, /No open PR/);
 });
 
 test('a failure that left a commit is not retried on the next model', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'commit-fail' });
   assert.equal(r.status, 1);
-  assert.doesNotMatch(r.stdout, /attempt: glm/);
+  assert.doesNotMatch(r.stdout, /attempt: luna/);
   assert.match(r.stderr, /not retrying/);
 });
 
 test('an infrastructure failure that left nothing falls back to the next model', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'opencode-go/glm-5.3-flash': 'implement' }) });
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'openai/gpt-6-luna': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: exited without a session/);
-  assert.match(r.stdout, /implemented by: glm/);
+  assert.match(r.stdout, /implemented by: luna/);
 });
 
 test('a rejected tool call is a failure, not a clean finish: the next model runs (IC2 #501)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'opencode-go/glm-5.3-flash': 'implement' }) });
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'openai/gpt-6-luna': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
-  assert.match(r.stdout, /implemented by: glm/);
+  assert.match(r.stdout, /implemented by: luna/);
 });
 
 test('the same failure twice stops the chain with exit 3', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna', 'glm-flash'] });
+  const p = project({ chain: ['deepseek-flash', 'spare', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'no-session' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /same failure twice: no-session/);
-  assert.doesNotMatch(r.stdout, /attempt: glm/);
+  assert.doesNotMatch(r.stdout, /attempt: luna/);
 });
 
 test('a model OpenCode does not list exits 3 with the fallback, before any worktree or run', posix, async () => {
   const p = project();
-  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["opencode-go/glm-5.3-flash"]' });
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["opencode-go/spare-model"]' });
   assert.equal(r.status, 3);
   assert.match(r.stdout + r.stderr, /deepseek-flash: opencode-go\/deepseek-v4.1-flash is not in `opencode models opencode-go`/);
   assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
   assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
+});
+
+test('OpenCode Go not logged in: exit 3 with the login command for the scripts\' data directory', posix, async () => {
+  const p = project();
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["openai/gpt-6-luna"]' });
+  assert.equal(r.status, 3);
+  const home = path.join(p.base, 'oc-home', 'data');
+  assert.ok((r.stdout + r.stderr).includes(`OpenCode Go is not logged in for ${home}. Run \`opencode console login\` with XDG_DATA_HOME=${home}`));
+  assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
+  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
 });
 
 test('OpenCode missing exits 3 before touching anything', posix, async () => {

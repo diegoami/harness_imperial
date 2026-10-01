@@ -6,13 +6,8 @@
       "variant": "high",
       "family": "deepseek"
     },
-    "glm-flash": {
-      "id": "opencode-go/glm-5.3-flash",
-      "variant": "high",
-      "family": "glm"
-    },
     "luna": {
-      "id": "opencode-go/gpt-6-luna",
+      "id": "openai/gpt-6-luna",
       "variant": "high",
       "family": "openai"
     }
@@ -30,7 +25,7 @@
   "reviewer": {
     "agent": "reviewer",
     "chain": [
-      "glm-flash"
+      "luna"
     ],
     "claudeFallback": "opus",
     "startupTimeoutSec": 180,
