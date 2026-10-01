@@ -64,8 +64,10 @@ added. Each behaviour exists because a run failed without it:
   - A readable review is posted normalised and acted on. It may come through Markdown decoration, a
     `Verdict:` prefix, punctuation, a where-I-worked block before the verdict, a sign-off after the
     closing verdict (kept), or a single line.
-  - A review that may be cut off, has no readable verdict, or has a finding after its closing
-    verdict is posted whole, exactly as it arrived, under a note, with no label.
+  - A review that may be cut off, has no readable verdict, opens and closes with different
+    verdicts, or has a finding after its closing verdict is posted whole, exactly as it arrived,
+    under a note, with no label. Only the last header in the output is read, so an earlier draft
+    can never approve a flagged review.
   - Closing keywords lose their `#` (`Fixes: #5` becomes `Fixes: 5`).
   - `review.mjs --self-test` runs the reader's samples with no model call.
 
@@ -146,7 +148,7 @@ reproduce each failure above. The cases are:
 - a failed run that left a commit, an implementer that stops and reports, and the same failure
   twice;
 - the review reader's self-test (`lib/review-selftest.mjs`, run by `review.mjs --self-test` and by
-  `test/review-reader.test.mjs`). Its 23 samples assert the outcome and the text kept: decorated,
+  `test/review-reader.test.mjs`). Its 33 samples assert the outcome and the text kept: decorated,
   prefixed, punctuated, where-I-worked, signed-off and one-line reviews; closing keywords; findings
   after the closing verdict; cut-off and unreadable reviews, also on one line; and tool chatter
   only;

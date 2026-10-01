@@ -72,13 +72,63 @@ export const SAMPLES = [
     kind: 'ok', review: `${H}\nrework\n\n${FINDINGS}\n\nrework`,
   },
   {
-    name: 'an echoed brief, then the review, with a finding that repeats the header',
-    out: `${H}\nReview PR #7.\n\n${H}\nrework\n\nR1: the line "${H}" is fine.\n\nrework`,
-    kind: 'ok', review: `${H}\nrework\n\nR1: the line "${H}" is fine.\n\nrework`,
+    name: 'an echoed brief, then the review',
+    out: `${H}\nReview PR #7.\n\n${H}\nrework\n\n${FINDINGS}\n\nrework`,
+    kind: 'ok', review: `${H}\nrework\n\n${FINDINGS}\n\nrework`,
+  },
+  {
+    name: 'the header on its own line, then the review flattened onto one line',
+    out: `${H}\nrework  R1: a.js:10 skips the last item.  rework`,
+    kind: 'ok', review: `${H}\nrework\n\nR1: a.js:10 skips the last item.\n\nrework`,
+  },
+  {
+    name: 'a flattened review with a sign-off',
+    out: `${H} rework  R1: a.js:10 skips the last item.  rework\n— GPT-6 Luna`,
+    kind: 'ok', review: `${H}\nrework\n\nR1: a.js:10 skips the last item.\n\n— GPT-6 Luna\n\nrework`,
+  },
+  {
+    name: 'the closing verdict repeated: one verdict is kept',
+    out: `${H}\nrework\n\n${FINDINGS}\n\nrework\n\nRework.`,
+    kind: 'ok', review: `${H}\nrework\n\n${FINDINGS}\n\nrework`,
   },
   {
     name: 'a finding after the closing verdict',
     out: `${H}\nrework\n\nR1: a.\n\nrework\n- **R2.** b.js:4 has no test.`,
+    kind: 'flagged', note: 'a finding after the closing verdict',
+  },
+  {
+    name: 'a heading finding after the closing verdict',
+    out: `${H}\napprove\n\nR1: fine.\n\napprove\n### R3 (blocking) c.js:1 crashes`,
+    kind: 'flagged', note: 'a finding after the closing verdict',
+  },
+  {
+    name: 'a "Finding R3" after the closing verdict',
+    out: `${H}\napprove\n\nR1: fine.\n\napprove\n**Finding R3**: c.js:1 crashes`,
+    kind: 'flagged', note: 'a finding after the closing verdict',
+  },
+  {
+    name: 'a "1)" finding after the closing verdict',
+    out: `${H}\napprove\n\nR1: fine.\n\napprove\n1) c.js:1 crashes`,
+    kind: 'flagged', note: 'a finding after the closing verdict',
+  },
+  {
+    name: 'a draft that approves, then the final review whose verdicts differ: never approved',
+    out: `${H}\napprove\nLooks fine.\n\nWait, checking the tests.\n${H}\nrework\nR1 (blocking): the tests fail\napprove`,
+    kind: 'flagged', note: 'verdicts differ: opens "rework", closes "approve"',
+  },
+  {
+    name: 'a finding that quotes the header: posted whole, never read past it',
+    out: `${H}\nrework\n\nR1: the line "${H}" is fine.\n\nrework`,
+    kind: 'flagged', note: 'verdict unreadable',
+  },
+  {
+    name: 'a sign-off with a date and a version is not a finding',
+    out: `${H}\napprove\n\nR1: fine.\n\napprove\n2026-10-02, 1.0 release`,
+    kind: 'ok', review: `${H}\napprove\n\nR1: fine.\n\n2026-10-02, 1.0 release\n\napprove`,
+  },
+  {
+    name: 'a flattened review followed by a finding',
+    out: `${H} approve  R1: fine.  approve\nR2: c.js:1 crashes`,
     kind: 'flagged', note: 'a finding after the closing verdict',
   },
   {

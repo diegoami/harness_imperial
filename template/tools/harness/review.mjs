@@ -16,12 +16,13 @@
 //
 // A review is never thrown away (lib/chain.mjs readReview). Only output with no review at all
 // falls back. A readable review is posted normalised and acted on. One that may be cut off, has no
-// readable verdict, or has a finding after its closing verdict is posted whole, exactly as it
-// arrived, under a note, with no label. Closing keywords lose their '#', and the rewrite is logged.
+// readable verdict, opens and closes with different verdicts, or has a finding after its closing
+// verdict is posted whole, exactly as it arrived, under a note, with no label. Closing keywords lose their '#', and the rewrite is logged.
 //
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
 // unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
-// claudeFallback). Exit 4: posted under a note, no label; the caller reads it on the PR and decides,
+// claudeFallback), unless Claude implemented the PR: then no reviewer of another family is left,
+// and the caller escalates. Exit 4: posted under a note, no label; the caller reads it on the PR and decides,
 // and never pays for a second review because of it. --dry-run prints
 // what would be posted and the exit code it would use, and exits 0; it still runs, and bills, the
 // model.
