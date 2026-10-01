@@ -69,7 +69,9 @@ test('a session that keeps making progress is not idle, but the total deadline s
 });
 
 test('steps that keep advancing updated survive an idle limit shorter than the whole run', async () => {
-  const r = await run('ok', { idleTimeoutMs: 500 }, { FAKE_OC_STEPS: '12', FAKE_OC_STEP_MS: '100' });
+  // The run (about 2 s) outlasts the idle limit (1.5 s), so a watch that never saw progress fails
+  // this. The margin leaves room for a slow session lookup on a loaded machine.
+  const r = await run('ok', { idleTimeoutMs: 1500, totalTimeoutMs: 10000 }, { FAKE_OC_STEPS: '20', FAKE_OC_STEP_MS: '100' });
   assert.equal(r.exitCode, 0);
 });
 

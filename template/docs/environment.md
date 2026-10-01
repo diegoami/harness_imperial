@@ -3,6 +3,21 @@
 What a session needs so the main session can delegate. Everything here is optional: each missing
 piece turns one delegate off, and the main session falls back to Claude (the scripts exit 3).
 
+## On your desktop
+
+Locally there is no network policy and no environment settings, and the session-start hook does
+nothing. You need:
+- Node 20 or later.
+- `gh`, logged in (`gh auth login`). It needs no `GH_TOKEN`.
+- OpenCode: `npm install -g opencode-ai@1.18`, or check `opencode --version`. Log in once with
+  `opencode auth login`, or set `OPENCODE_API_KEY`.
+- The keys below, as user environment variables. On Windows, in PowerShell:
+  `[Environment]::SetEnvironmentVariable("ELEVENLABS_API_KEY", "<key>", "User")`.
+  Then restart the terminal and Claude Code, so they see it.
+
+Then run `npm test` in the harness repository. The tests against the real OpenCode run wherever
+`opencode` is installed. Then do the first-session check at the end of this page.
+
 ## Keys
 
 In **Claude Code on the web**, set these in the environment's settings: the cloud environment menu
