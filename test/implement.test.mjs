@@ -72,7 +72,7 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
 });
 
 test('an implementer that stops and reports is not retried, and exits 1', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm'] });
+  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
   const r = implement(p, { FAKE_OC_MODE: 'stop-report' });
   assert.equal(r.status, 1);
   assert.doesNotMatch(r.stdout, /attempt: glm/);
@@ -81,7 +81,7 @@ test('an implementer that stops and reports is not retried, and exits 1', posix,
 });
 
 test('a failure that left a commit is not retried on the next model', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm'] });
+  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
   const r = implement(p, { FAKE_OC_MODE: 'commit-fail' });
   assert.equal(r.status, 1);
   assert.doesNotMatch(r.stdout, /attempt: glm/);
@@ -89,23 +89,23 @@ test('a failure that left a commit is not retried on the next model', posix, asy
 });
 
 test('an infrastructure failure that left nothing falls back to the next model', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'opencode-go/glm-5.3': 'implement' }) });
+  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'opencode-go/glm-5.3-flash': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: exited without a session/);
   assert.match(r.stdout, /implemented by: glm/);
 });
 
 test('a rejected tool call is a failure, not a clean finish: the next model runs (IC2 #501)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'glm'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'opencode-go/glm-5.3': 'implement' }) });
+  const p = project({ chain: ['deepseek-flash', 'glm-flash'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'opencode-go/glm-5.3-flash': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
   assert.match(r.stdout, /implemented by: glm/);
 });
 
 test('the same failure twice stops the chain with exit 3', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna', 'glm'] });
+  const p = project({ chain: ['deepseek-flash', 'luna', 'glm-flash'] });
   const r = implement(p, { FAKE_OC_MODE: 'no-session' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /same failure twice: no-session/);

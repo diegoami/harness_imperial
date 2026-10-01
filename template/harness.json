@@ -11,11 +11,6 @@
       "variant": "max",
       "family": "deepseek"
     },
-    "glm": {
-      "id": "opencode-go/glm-5.3",
-      "variant": "max",
-      "family": "glm"
-    },
     "luna": {
       "id": "opencode-go/gpt-6-luna",
       "variant": "high",
@@ -35,8 +30,8 @@
   "reviewer": {
     "agent": "reviewer",
     "chain": [
-      "glm",
-      "deepseek-flash"
+      "deepseek-flash",
+      "glm-flash"
     ],
     "startupTimeoutSec": 180,
     "idleTimeoutSec": 600,
