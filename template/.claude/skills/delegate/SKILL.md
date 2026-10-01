@@ -12,7 +12,7 @@ yourself, check whether a delegate below does it better or cheaper.
 
 | Work | Delegate | How | Key |
 | --- | --- | --- | --- |
-| Code: implement a task or a fix | OpenCode, a cheap coding model | `/run-task` → `tools/harness/implement.mjs` | `OPENCODE_API_KEY`, or `OPENROUTER_API_KEY` for `openrouter/*` models |
+| Code: implement a task or a fix | OpenCode, a cheap coding model | `/run-task` → `tools/harness/implement.mjs` | OpenCode Go's login (`opencode console login`); `OPENROUTER_API_KEY` for `openrouter/*` models |
 | Review a PR | A Claude agent (default), or OpenCode on another model family | `/run-task` → Agent, or `tools/harness/review.mjs` | as above |
 | Repeated decisions with known answers (triage, routing, gating, labelling) | Jev | `/jev` → `tools/harness/jev.mjs` | `OPENROUTER_API_KEY` |
 | Images: sprites, icons, maps, mockups, illustrations | An image model on OpenRouter | pick one with `models.mjs openrouter --output image` | `OPENROUTER_API_KEY` |
@@ -28,7 +28,7 @@ another way, or tell the user what is missing (`docs/environment.md`).
 1. **Never from memory.** Model ids and prices change faster than any document. List them live:
    - `node tools/harness/models.mjs openrouter --output image`;
    - `node tools/harness/models.mjs elevenlabs`;
-   - `opencode models`, for implementers and reviewers.
+   - `opencode models opencode-go`, for implementers and reviewers (OpenCode Go, the subscription).
 
    Do the same when you are unsure a model still exists. (L25)
 2. **Choose on the evidence you have.** In order of preference:

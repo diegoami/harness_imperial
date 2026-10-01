@@ -48,7 +48,7 @@ escalates. The implementer script resumes a pushed branch; it never starts over.
 What the implementer script guarantees, and why:
 - OpenCode starts with stdin closed; without it a run hangs before it starts. (L10)
 - No session in 180 s, no progress in 900 s, or no exit in 3 h kills the run's process tree. (L10)
-- The model runs the agent it was given, checked against OpenCode's session record. (L11)
+- The agent is checked on OpenCode's session record (L11); a rejected tool call fails the run. (L26)
 - The next model runs only on an infrastructure failure that left no commit, push or PR; the
   same failure twice stops the chain. An implementer that stops and reports is not a failure. (L12)
 - Exit 0 means a PR is open; 1 means the main session reads the log; 3 means OpenCode is

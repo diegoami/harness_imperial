@@ -2,7 +2,8 @@
 // A stand-in for `opencode` that reproduces the failures the runner guards against.
 // FAKE_OC_STATE: the JSON file that plays OpenCode's session store.
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
-//   fallback | quote | slow | utf8 | implement | commit-fail | stop-report
+//   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission |
+//   permission-review | review-ok | review-cut
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
 import fs from 'node:fs';
@@ -24,7 +25,10 @@ if (cmd === 'session') {
 if (cmd === 'export') {
   const s = load().find((x) => x.id === rest[0]);
   if (!s) process.exit(1);
-  process.stdout.write(JSON.stringify({ info: { agent: s.agent } }));
+  // A long session's export is large; the real OpenCode exits before a pipe has taken all of it.
+  // So does Node: process.exit() drops what a pipe has not yet taken, but a file is written at once.
+  const messages = process.env.FAKE_OC_BIG_EXPORT ? [{ text: 'x'.repeat(4 << 20) }] : [];
+  process.stdout.write(JSON.stringify({ messages, info: { agent: s.agent } }));
   process.exit(0);
 }
 if (cmd !== 'run') process.exit(64);
@@ -108,6 +112,16 @@ switch (mode) {
     process.stdout.write(mode === 'review-ok'
       ? `reading the diff\n${header}\napprove\n\nR1: fine (not blocking)\n\napprove\n`
       : `${header}\nrework\n\nR1: the loop in`);
+    process.exit(0);
+    break;
+  }
+  case 'permission':
+  case 'permission-review': {
+    // OpenCode 1.18 auto-rejects a path outside --dir in a non-interactive run, and exits 0.
+    createSession();
+    process.stderr.write('\x1b[93m\x1b[1m! \x1b[0mpermission requested: external_directory (/tmp/*); auto-rejecting\n');
+    const header = rest.at(-1).split('\n')[0];
+    process.stdout.write(mode === 'permission' ? 'report: built nothing\n' : `${header}\napprove\n\nR1: fine\n\napprove\n`);
     process.exit(0);
     break;
   }

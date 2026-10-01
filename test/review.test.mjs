@@ -76,11 +76,19 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
 
 test('a cut-off review is never posted; the next model reviews and the header says why', posix, () => {
   const p = project({ chain: ['glm', 'luna'] });
-  const r = review(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode/glm-5.3': 'review-cut', 'opencode/gpt-6-luna': 'review-ok' }) });
+  const r = review(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/glm-5.3': 'review-cut', 'opencode-go/gpt-6-luna': 'review-ok' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const s = gh(p);
   assert.equal(s.comments.length, 1);
   assert.match(s.comments[0].body, /^T07 review \(luna; glm failed: review cut off\)\napprove/);
+});
+
+test('a review whose tool call was rejected is never posted, even when it looks complete', posix, () => {
+  const p = project({ chain: ['glm'] });
+  const r = review(p, { FAKE_OC_MODE: 'permission-review' });
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /permission rejected: external_directory/);
+  assert.equal(gh(p).comments.length, 0);
 });
 
 test('every model cut off: nothing posted, exit 3', posix, () => {

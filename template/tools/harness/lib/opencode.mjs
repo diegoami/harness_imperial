@@ -13,7 +13,13 @@
 //   5. Whether OpenCode loaded the requested --agent is decided on OpenCode's own evidence: the
 //      session record (`opencode export`), else its exact warning line on stderr. Never the
 //      model's words: a reviewer reading these scripts quotes the warning (IC2 #482's own reviews).
+//      The export is written to a file: through a pipe, a large export arrives truncated
+//      (ic2-conquest's WSL reviewer).
 //   6. Output is read back as UTF-8.
+//   7. A tool call OpenCode auto-rejected (a path outside --dir, in a non-interactive run) ends the
+//      run with exit 0, so it looks like a clean finish. It is read from OpenCode's own warning
+//      line and reported as `permissionRejected` (IC2 #501: three runs in one day, on TEMP and on
+//      tools' install directories).
 //
 // Every failure of OpenCode itself throws an OpenCodeInfraError with a short `reason`; a fallback
 // chain may move past it. Anything else thrown is a defect of the caller.
@@ -43,6 +49,7 @@ export function failureClass(reason) {
   if (/^exited without a session/.test(r)) return 'exited-without-session';
   if (/fell back to the default agent/.test(r)) return 'fallback-agent';
   if (/^exit -?\d+/.test(r)) return 'non-zero-exit';
+  if (/^permission rejected/.test(r)) return 'permission-rejected';
   if (/cut off|no header line|no verdict/.test(r)) return 'cut-off';
   return r;
 }
@@ -57,9 +64,31 @@ export function agentWarning(stderr, agent) {
   return re.test(stderr);
 }
 
+// OpenCode's own line when a non-interactive run rejects a tool call (OpenCode 1.18):
+//   ESC[93mESC[1m! ESC[0mpermission requested: external_directory (/tmp/*); auto-rejecting
+// Anchored like agentWarning. Returns what was rejected (the last one), or null.
+export function permissionRejection(text) {
+  const ansi = '(?:\\x1b\\[[0-9;]*m|[ \\t])*';
+  const re = new RegExp(`^${ansi}!${ansi}permission requested: ([^\\r\\n]*?); auto-rejecting`, 'gm');
+  let what = null;
+  for (const m of String(text).matchAll(re)) what = m[1];
+  return what;
+}
+
+// The Windows npm shim as WSL sees it: a shell script that execs opencode.exe. Under WSL it runs
+// the Windows OpenCode, which cannot read the run's Linux paths and survives the kill of its
+// process group: both real-OpenCode tests failed through it on 2026-10-01.
+function isWindowsShim(file) {
+  try {
+    const head = fs.readFileSync(file, { encoding: 'latin1' }).slice(0, 2048);
+    return head.startsWith('#!') && /opencode\.exe/.test(head);
+  } catch { return false; }
+}
+
 // The command that runs OpenCode: { exe, prefix } (prefix = arguments before OpenCode's own).
 // Never the npm shim on Windows: opencode.cmd cannot carry a multi-line prompt through cmd.exe,
-// and killing the shim leaves opencode.exe running.
+// and killing the shim leaves opencode.exe running. Elsewhere, never the Windows shim either; then
+// OpenCode's own installer location (~/.opencode/bin), which is not always on PATH.
 export function resolveOpenCode(env = process.env) {
   if (env.HARNESS_OPENCODE_EXE) {
     if (fs.existsSync(env.HARNESS_OPENCODE_EXE)) return { exe: env.HARNESS_OPENCODE_EXE, prefix: [] };
@@ -76,9 +105,11 @@ export function resolveOpenCode(env = process.env) {
       }
     } else {
       const exe = path.join(dir, 'opencode');
-      if (fs.existsSync(exe)) return { exe, prefix: [] };
+      if (fs.existsSync(exe) && !isWindowsShim(exe)) return { exe, prefix: [] };
     }
   }
+  const installed = env.HOME && path.join(env.HOME, '.opencode', 'bin', 'opencode');
+  if (!win && installed && fs.existsSync(installed)) return { exe: installed, prefix: [] };
   throw new OpenCodeInfraError('opencode not found', 'opencode is not on PATH (set HARNESS_OPENCODE_EXE to the real executable).');
 }
 
@@ -97,21 +128,26 @@ function spawnDetached(cmd, args, options) {
   return spawn(cmd.exe, [...cmd.prefix, ...args], { ...options, detached: process.platform !== 'win32', windowsHide: true });
 }
 
-// A short OpenCode command (`session list`, `export`), bounded and killed if it overruns.
-// Resolves { code, stdout } or null on a timeout or a spawn error.
-function execBounded(cmd, args, { cwd, timeoutMs, env }) {
+// A short OpenCode command (`session list`, `export`), bounded and killed if it overruns. With
+// outFile, stdout goes to that file instead of a pipe. Resolves { code, stdout } or null on a
+// timeout or a spawn error.
+function execBounded(cmd, args, { cwd, timeoutMs, env, outFile }) {
   if (timeoutMs <= 0) return Promise.resolve(null);
   return new Promise((resolve) => {
     let child;
+    const fd = outFile ? fs.openSync(outFile, 'w') : null;
     try {
-      child = spawnDetached(cmd, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch { resolve(null); return; }
+      child = spawnDetached(cmd, args, { cwd, env, stdio: ['ignore', fd ?? 'pipe', 'pipe'] });
+    } catch { resolve(null); return; } finally { if (fd !== null) fs.closeSync(fd); }
     const out = [];
-    child.stdout.on('data', (d) => out.push(d));
+    child.stdout?.on('data', (d) => out.push(d));
     child.stderr.resume();
     const timer = setTimeout(() => { killTree(child); resolve(null); }, timeoutMs);
     child.on('error', () => { clearTimeout(timer); resolve(null); });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout: Buffer.concat(out).toString('utf8') }); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, stdout: outFile ? fs.readFileSync(outFile, 'utf8') : Buffer.concat(out).toString('utf8') });
+    });
   });
 }
 
@@ -137,10 +173,10 @@ export async function findSession(cmd, { workDir, title, startedMs, timeoutMs, e
 }
 
 // The agent OpenCode recorded for the session (`opencode export <id>`: .info.agent), or null.
-export async function sessionAgent(cmd, { workDir, sessionId, timeoutMs = 30000, env }) {
-  const res = await execBounded(cmd, ['export', sessionId], { cwd: workDir, timeoutMs, env });
+export async function sessionAgent(cmd, { workDir, sessionId, outFile, timeoutMs = 30000, env }) {
+  const res = await execBounded(cmd, ['export', sessionId], { cwd: workDir, timeoutMs, env, outFile });
   if (!res || res.code !== 0) return null;
-  try { return JSON.parse(res.stdout)?.info?.agent ?? null; } catch { return null; }
+  try { return JSON.parse(res.stdout.slice(res.stdout.indexOf('{')))?.info?.agent ?? null; } catch { return null; }
 }
 
 function tail(file, lines = 30) {
@@ -152,7 +188,8 @@ function tail(file, lines = 30) {
 
 /**
  * Runs `opencode <args...> --title <title-token> <prompt>` in workDir, watched.
- * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent, files, seconds }.
+ * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent,
+ *   permissionRejected, files, seconds }.
  * A non-zero exit is returned, not thrown: the caller decides.
  */
 export async function runOpenCodeWatched({
@@ -255,17 +292,20 @@ export async function runOpenCodeWatched({
   const stderr = fs.readFileSync(errFile, 'utf8');
   const agentIdx = args.indexOf('--agent');
   const requestedAgent = agentIdx >= 0 ? args[agentIdx + 1] : null;
-  const recordedAgent = requestedAgent ? await sessionAgent(cmd, { workDir, sessionId: session.id, env }) : null;
+  const exportFile = path.join(logDir, `${title}.export.json`);
+  const recordedAgent = requestedAgent ? await sessionAgent(cmd, { workDir, sessionId: session.id, outFile: exportFile, env }) : null;
+  fs.rmSync(exportFile, { force: true });
   const agentFallback = !requestedAgent ? false
     : recordedAgent ? recordedAgent !== requestedAgent
     : agentWarning(stderr, requestedAgent);
-  if (exitCode === 0) for (const f of files) fs.rmSync(f, { force: true });
-  else log(`opencode: exit ${exitCode}; files kept: ${files.join(', ')}`);
+  const permissionRejected = permissionRejection(`${stdout}\n${stderr}`);
+  if (exitCode === 0 && !permissionRejected) for (const f of files) fs.rmSync(f, { force: true });
+  else log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
   return {
     output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
     stdout, stderr, exitCode, sessionId: session.id, title,
-    agentFallback, sessionAgent: recordedAgent,
-    files: exitCode === 0 ? [] : files,
+    agentFallback, sessionAgent: recordedAgent, permissionRejected,
+    files: exitCode === 0 && !permissionRejected ? [] : files,
     seconds: Math.round(elapsed() / 1000),
   };
 }

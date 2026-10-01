@@ -29,6 +29,9 @@ the run works.
   `git diff --name-only origin/main...HEAD`; your final report repeats them.
 - Commit and push to your branch after every meaningful step. Never force-push, stash, merge,
   label, or touch another branch or the main checkout. (`git stash` is shared by every worktree.)
+- Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
+  OpenCode rejects a path outside it, and the script then counts the run as failed. Scratch files
+  live in the worktree and are deleted before you commit. Call tools by name from PATH.
 - The Done-when lines are binding as written. One you cannot satisfy means you **stop and report
   why**: never weaken an assertion, skip a test, or edit the task file. A defect in code outside
   your task is reported, never patched.

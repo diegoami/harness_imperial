@@ -28,7 +28,11 @@ how the run works.
   must not be empty, or you are in the wrong tree; say so and stop. Every finding names a file
   from that diff.
 - Read-only: never edit, commit, push, merge, label or post. The script that runs you posts your
-  review. To test a mutation, copy the worktree elsewhere, rebuild clean there, and say so.
+  review. To test a mutation, change the file in place, rebuild clean, run, then
+  `git -C <worktree> checkout -- <file>`, and say so.
+- Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
+  OpenCode rejects a path outside it, and the script then discards the whole review. Call tools by
+  name from PATH; never inspect where they are installed.
 - Re-run every Done-when line yourself; the PR's evidence is a convenience, never the proof. Prove
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or
   label it unverified. A claim that nothing failed is re-taken before it is believed.

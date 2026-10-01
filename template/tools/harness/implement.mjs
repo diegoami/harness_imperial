@@ -104,6 +104,7 @@ const result = await runChain({
       output = run.output;
       if (run.exitCode !== 0) reason = `exit ${run.exitCode}`;
       else if (run.agentFallback) reason = 'fell back to the default agent';
+      else if (run.permissionRejected) reason = `permission rejected: ${run.permissionRejected}`;
     } catch (e) {
       if (!(e instanceof OpenCodeInfraError)) throw e;
       reason = e.reason;

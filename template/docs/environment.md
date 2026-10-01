@@ -9,14 +9,38 @@ Locally there is no network policy and no environment settings, and the session-
 nothing. You need:
 - Node 20 or later.
 - `gh`, logged in (`gh auth login`). It needs no `GH_TOKEN`.
-- OpenCode: `npm install -g opencode-ai@1.18`, or check `opencode --version`. Log in once with
-  `opencode auth login`, or set `OPENCODE_API_KEY`.
-- The keys below, as user environment variables. On Windows, in PowerShell:
+- OpenCode 1.18 (`opencode --version`), logged in to OpenCode Go (next section).
+- The other keys below, as user environment variables. On Windows, in PowerShell:
   `[Environment]::SetEnvironmentVariable("ELEVENLABS_API_KEY", "<key>", "User")`.
   Then restart the terminal and Claude Code, so they see it.
 
+**In WSL** (Claude Code, or the desktop app, working in a WSL folder), use OpenCode's Linux binary.
+OpenCode's own installer puts it in `~/.opencode/bin`; the release tarball `opencode-linux-x64.tar.gz`
+works too. Avoid `opencode upgrade`, which may reach for the Windows npm. The `opencode` that WSL
+finds on PATH is often the Windows npm shim under `/mnt/c`. That shim runs the Windows OpenCode,
+which cannot use the run's Linux paths and survives the kill of a timed-out run: both real-OpenCode
+tests failed through it. The runner skips the shim and falls back to `~/.opencode/bin/opencode`;
+`HARNESS_OPENCODE_EXE` overrides both. WSL and Windows keep separate logins: log in from WSL.
+
+**On Windows**, `npm install -g opencode-ai@1.18`.
+
 Then run `npm test` in the harness repository. The tests against the real OpenCode run wherever
 `opencode` is installed. Then do the first-session check at the end of this page.
+
+## OpenCode Go
+
+The implementer and reviewer models in `harness.json` are OpenCode Go's (`opencode-go/…`), a
+subscription. They are not OpenCode Zen's pay-per-token `opencode/…` models. Go comes from a console
+(organisation) login, not from a key; `opencode auth login` and `OPENCODE_API_KEY` reach only Zen
+(IC2 #551):
+1. `opencode console login`, then approve the URL and code it prints in the browser;
+2. `opencode models opencode-go` lists the models; without the login it lists none, although
+   `opencode console orgs` still exits 0 ("No accounts found"). If a login lists none, run
+   `opencode models --refresh`.
+
+The login is stored in the database of OpenCode's data directory (`~/.local/share/opencode`, or
+`$XDG_DATA_HOME/opencode`), not in `auth.json`. Another data directory, another machine, WSL beside
+Windows, or a new cloud session each needs its own `opencode console login`.
 
 ## Keys
 
@@ -27,7 +51,7 @@ Never paste a key into a chat, and never commit one.
 
 | Variable | Used by | Without it |
 | --- | --- | --- |
-| `OPENCODE_API_KEY` | OpenCode's `opencode/*` models (OpenCode Zen and Go): the implementer and reviewer models in `harness.json` | `implement.mjs` and `review.mjs` fail over and exit 3; use Claude agents |
+| `OPENCODE_API_KEY` | OpenCode Zen's `opencode/*` models, if `harness.json` names any. The default models are Go's, which need `opencode console login` instead (above) | nothing, while `harness.json` names only Go models |
 | `OPENROUTER_API_KEY` | Jev, through OpenRouter (`jev.mjs`); also OpenCode's `openrouter/*` models, if `harness.json` names any | `jev.mjs` exits 3; the main session decides every item itself |
 | `ELEVENLABS_API_KEY` | ElevenLabs: speech, voices, sound effects, music (`/delegate`, `models.mjs elevenlabs`) | no generated audio; the main session says so |
 | `GH_TOKEN` | `gh`, inside the tools and inside OpenCode's runs: finding the PR, `gh pr create`, posting a review, labels | the scripts cannot find or post to PRs |
@@ -36,7 +60,8 @@ For `GH_TOKEN`, use a fine-grained token limited to the project's repository, wi
 Contents, Pull requests and Issues.
 
 OpenCode reads both `OPENCODE_API_KEY` and `OPENROUTER_API_KEY` from the environment (checked with
-`opencode auth list` on 1.18.33), so it needs no `opencode auth login`.
+`opencode auth list` on 1.18.33), so those need no `opencode auth login`. Go is the exception: without
+its console login, `implement.mjs` and `review.mjs` fail over and exit 3, and Claude agents take the work.
 
 ## Network
 
@@ -73,8 +98,8 @@ Node 20 or later.
 ## First session: check it works
 
 1. The hook's report shows every key `set`, and no setup notes.
-2. `opencode models opencode | head` lists the ids in `harness.json`. If an id differs, edit
-   `harness.json`.
+2. The hook's report says OpenCode Go is logged in, and `opencode models opencode-go` lists the
+   ids in `harness.json`. If an id differs, edit `harness.json`.
 3. Jev: put two lines such as `{"id": 1, "state": {"title": "Game crashes on load"}}` in
    `items.jsonl`, then run `node tools/harness/jev.mjs ask --decision breaks-play --in items.jsonl`.
    It should print `asked 2 of 2`.

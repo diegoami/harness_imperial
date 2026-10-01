@@ -112,6 +112,7 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
       }
       if (run.exitCode !== 0) return { ok: false, reason: `exit ${run.exitCode}`, detail: run.output };
       if (run.agentFallback) return { ok: false, reason: 'fell back to the default agent', detail: run.output };
+      if (run.permissionRejected) return { ok: false, reason: `permission rejected: ${run.permissionRejected}`, detail: run.output };
       const checked = checkReview(run.stdout, header);
       if (!checked.ok) return { ok: false, reason: checked.reason, detail: run.output };
       return { ok: true, value: { ...checked, header, model } };
