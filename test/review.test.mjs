@@ -67,7 +67,7 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const s = gh(p);
   assert.equal(s.comments.length, 1);
-  assert.match(s.comments[0].body, /^T07 review \(glm\)\napprove\n[\s\S]*approve\n\n— glm, via/);
+  assert.match(s.comments[0].body, /^T07 review \(deepseek-flash\)\napprove\n[\s\S]*approve\n\n— deepseek-flash, via/);
   assert.doesNotMatch(s.comments[0].body, /reading the diff/);
   assert.deepEqual(s.issueLabels['12'], ['status:approved']);
   assert.deepEqual(fs.readdirSync(path.join(p.base, 'proj-work')), []);
@@ -75,16 +75,16 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
 });
 
 test('a cut-off review is never posted; the next model reviews and the header says why', posix, () => {
-  const p = project({ chain: ['glm', 'luna'] });
-  const r = review(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/glm-5.3': 'review-cut', 'opencode-go/gpt-6-luna': 'review-ok' }) });
+  const p = project({ chain: ['glm-flash', 'luna'] });
+  const r = review(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/glm-5.3-flash': 'review-cut', 'opencode-go/gpt-6-luna': 'review-ok' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const s = gh(p);
   assert.equal(s.comments.length, 1);
-  assert.match(s.comments[0].body, /^T07 review \(luna; glm failed: review cut off\)\napprove/);
+  assert.match(s.comments[0].body, /^T07 review \(luna; glm-flash failed: review cut off\)\napprove/);
 });
 
 test('a review whose tool call was rejected is never posted, even when it looks complete', posix, () => {
-  const p = project({ chain: ['glm'] });
+  const p = project({ chain: ['glm-flash'] });
   const r = review(p, { FAKE_OC_MODE: 'permission-review' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /permission rejected: external_directory/);
@@ -92,7 +92,7 @@ test('a review whose tool call was rejected is never posted, even when it looks 
 });
 
 test('every model cut off: nothing posted, exit 3', posix, () => {
-  const p = project({ chain: ['glm', 'luna'] });
+  const p = project({ chain: ['glm-flash', 'luna'] });
   const r = review(p, { FAKE_OC_MODE: 'review-cut' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /same failure twice: cut-off/);
@@ -100,19 +100,19 @@ test('every model cut off: nothing posted, exit 3', posix, () => {
 });
 
 test('the implementer\'s family never reviews: dropped from the chain, or refused when named', posix, () => {
-  const p = project({ chain: ['glm'] });
-  const dropped = review(p, { FAKE_OC_MODE: 'review-ok' }, '--exclude', 'glm');
+  const p = project({ chain: ['glm-flash'] });
+  const dropped = review(p, { FAKE_OC_MODE: 'review-ok' }, '--exclude', 'glm-flash');
   assert.equal(dropped.status, 3);
-  const refused = review(p, { FAKE_OC_MODE: 'review-ok' }, '--reviewer', 'glm', '--exclude', 'glm');
+  const refused = review(p, { FAKE_OC_MODE: 'review-ok' }, '--reviewer', 'glm-flash', '--exclude', 'glm-flash');
   assert.equal(refused.status, 1);
   assert.match(refused.stderr, /Refused/);
   assert.equal(gh(p).comments.length, 0);
 });
 
 test('a model:<name> label on the PR excludes that family without --exclude', posix, () => {
-  const p = project({ chain: ['deepseek-flash', 'glm'] }, ['model:deepseek-flash']);
+  const p = project({ chain: ['deepseek-flash', 'glm-flash'] }, ['model:deepseek-flash']);
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(gh(p).comments[0].body, /^T07 review \(glm\)/);
+  assert.match(gh(p).comments[0].body, /^T07 review \(glm-flash\)/);
   assert.doesNotMatch(r.stdout, /attempt: deepseek-flash/);
 });

@@ -104,8 +104,8 @@ for l in task bug fix triage:needed post-playable review-round:1 review-round:2 
 The models are OpenCode Go's (`opencode-go/…`), which needs `opencode console login`, not a key.
 `harness.json` follows IC2's experience (#551, #554). The implementers are GLM-5.3 Flash, then
 DeepSeek V4.1 Flash. GPT-6 Luna is left out of the chains: on Go she returned `Bad Request` once a
-run's context grew. The reviewers are GLM-5.3, then DeepSeek, because a GLM implementer excludes
-GLM from its review. Add models to a `chain` when a real failure shows you need them, not before
+run's context grew. The reviewers are DeepSeek, then GLM-5.3 Flash, because an implementer's
+family never reviews its work. Add models to a `chain` when a real failure shows you need them, not before
 (L14).
 
 ## Tests
