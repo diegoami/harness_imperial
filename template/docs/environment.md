@@ -38,9 +38,35 @@ subscription. They are not OpenCode Zen's pay-per-token `opencode/…` models. G
    `opencode console orgs` still exits 0 ("No accounts found"). If a login lists none, run
    `opencode models --refresh`.
 
-The login is stored in the database of OpenCode's data directory (`~/.local/share/opencode`, or
-`$XDG_DATA_HOME/opencode`), not in `auth.json`. Another data directory, another machine, WSL beside
-Windows, or a new cloud session each needs its own `opencode console login`.
+The login is stored in the database of OpenCode's data directory, not in `auth.json`. Another data
+directory, another machine, WSL beside Windows, or a new cloud session each needs its own
+`opencode console login`.
+
+## The scripts' own data directory
+
+`implement.mjs` and `review.mjs` run OpenCode with a data directory of their own, so OpenCode's
+desktop app (2.x) can never migrate their database to a schema the 1.x CLI cannot read (IC2 #540,
+"no such column: project_id"). It is `~/.local/share/harness-opencode`, with `data/`, `cache/` and
+`state/` set as `XDG_DATA_HOME`, `XDG_CACHE_HOME` and `XDG_STATE_HOME` for OpenCode's processes only.
+`HARNESS_OPENCODE_HOME` moves it (a relative path is made absolute). `auth.json`, the API-key
+providers, is copied in from `~/.local/share/opencode` (or `HARNESS_OPENCODE_AUTH_SOURCE`) when the
+copy is missing or older; it is never read or printed.
+
+Go's login does not travel with `auth.json`, so log in once for this directory. In bash (WSL, Linux):
+
+```bash
+XDG_DATA_HOME="$HOME/.local/share/harness-opencode/data" opencode console login
+```
+
+In PowerShell (Windows), in a new window afterwards:
+
+```powershell
+$env:XDG_DATA_HOME = "$HOME\.local\share\harness-opencode\data"; opencode console login
+```
+
+Check it with the same `XDG_DATA_HOME` and `opencode models opencode-go`. Before any run, each script
+checks that OpenCode lists its model there; if not, it exits 3 with this command, and nothing is
+billed.
 
 ## Keys
 
@@ -98,8 +124,9 @@ Node 20 or later.
 ## First session: check it works
 
 1. The hook's report shows every key `set`, and no setup notes.
-2. The hook's report says OpenCode Go is logged in, and `opencode models opencode-go` lists the
-   ids in `harness.json`. If an id differs, edit `harness.json`.
+2. The hook's report says OpenCode Go is logged in for the scripts' data directory (above), and
+   `opencode models opencode-go` there lists the ids in `harness.json`. If an id differs, edit
+   `harness.json`.
 3. Jev: put two lines such as `{"id": 1, "state": {"title": "Game crashes on load"}}` in
    `items.jsonl`, then run `node tools/harness/jev.mjs ask --decision breaks-play --in items.jsonl`.
    It should print `asked 2 of 2`.

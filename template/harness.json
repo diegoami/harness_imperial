@@ -1,15 +1,15 @@
 {
   "worktreeRoot": "../{repo}-work",
   "models": {
-    "glm-flash": {
-      "id": "opencode-go/glm-5.3-flash",
-      "variant": "max",
-      "family": "glm"
-    },
     "deepseek-flash": {
       "id": "opencode-go/deepseek-v4.1-flash",
-      "variant": "max",
+      "variant": "high",
       "family": "deepseek"
+    },
+    "glm-flash": {
+      "id": "opencode-go/glm-5.3-flash",
+      "variant": "high",
+      "family": "glm"
     },
     "luna": {
       "id": "opencode-go/gpt-6-luna",
@@ -20,9 +20,9 @@
   "implementer": {
     "agent": "implementer",
     "chain": [
-      "glm-flash",
       "deepseek-flash"
     ],
+    "claudeFallback": "sonnet",
     "startupTimeoutSec": 180,
     "idleTimeoutSec": 900,
     "totalTimeoutSec": 10800
@@ -30,9 +30,9 @@
   "reviewer": {
     "agent": "reviewer",
     "chain": [
-      "deepseek-flash",
       "glm-flash"
     ],
+    "claudeFallback": "opus",
     "startupTimeoutSec": 180,
     "idleTimeoutSec": 600,
     "totalTimeoutSec": 3600

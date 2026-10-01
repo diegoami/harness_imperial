@@ -50,7 +50,9 @@ function implement(p, env, ...args) {
     env: {
       ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`,
       HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'),
-      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState, ...env,
+      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
+      HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
+      ...env,
     },
   });
 }
@@ -61,7 +63,9 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /implemented by: glm-flash \(opencode-go\/glm-5.3-flash\)/);
+  assert.match(r.stdout, /implemented by: deepseek-flash \(opencode-go\/deepseek-v4.1-flash\)/);
+  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  assert.equal(session.dataHome, path.join(p.base, 'oc-home', 'data'));                // its own data directory
   assert.match(r.stdout, /PR: https:\/\/example.com\/pr\/100/);
   const wt = path.join(p.base, 'proj-work', 'T07');
   assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'HEAD');           // detached for the reviewer
@@ -110,6 +114,15 @@ test('the same failure twice stops the chain with exit 3', posix, async () => {
   assert.equal(r.status, 3);
   assert.match(r.stderr, /same failure twice: no-session/);
   assert.doesNotMatch(r.stdout, /attempt: glm/);
+});
+
+test('a model OpenCode does not list exits 3 with the fallback, before any worktree or run', posix, async () => {
+  const p = project();
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["opencode-go/glm-5.3-flash"]' });
+  assert.equal(r.status, 3);
+  assert.match(r.stdout + r.stderr, /deepseek-flash: opencode-go\/deepseek-v4.1-flash is not in `opencode models opencode-go`/);
+  assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
+  assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
 });
 
 test('OpenCode missing exits 3 before touching anything', posix, async () => {

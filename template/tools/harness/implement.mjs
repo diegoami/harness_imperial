@@ -10,7 +10,10 @@
 // round). This script creates or resumes the branch and worktree, runs OpenCode watched, and checks
 // the handover: a PR exists, the worktree is clean, pushed and detached.
 //
-// Models come from harness.json's implementer.chain; --model runs one alone. The next model runs
+// The model is harness.json's implementer.chain (one model, by the user's decision of 2026-10-02:
+// DeepSeek V4.1 Flash, then Claude Sonnet); --model runs another alone. Runs use the scripts' own
+// OpenCode data directory, and a model OpenCode does not list there exits 3 before anything is
+// billed. With a longer chain, the next model runs
 // only on an infrastructure failure, and only when the failed run left nothing behind (no new
 // commit locally or on origin, no new PR), judged against the state before the first attempt, so a
 // resumed rework branch can still fall back. An implementer that stops and reports has NOT failed:
@@ -23,7 +26,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
 import { runChain } from './lib/chain.mjs';
-import { sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs } from './lib/common.mjs';
+import {
+  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
+} from './lib/common.mjs';
 
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
@@ -36,7 +41,7 @@ if (!fs.existsSync(a.brief)) die(2, `Brief not found: ${a.brief}`);
 
 let opencode;
 try { opencode = resolveOpenCode(); } catch (e) {
-  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Fall back to a Claude implementer.`);
+  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Fall back to a Claude implementer (see harness.json).`);
   throw e;
 }
 requireTools('git', 'gh');
@@ -47,6 +52,10 @@ const { top, commonDir, mainRoot, workRoot } = repoPaths(config);
 const impl = config.implementer;
 const chain = a.model ? [a.model] : impl.chain;
 for (const m of chain) if (!config.models[m]) die(2, `Unknown model ${m}; harness.json lists ${Object.keys(config.models).join(', ')}.`);
+const fallback = `Fall back to a Claude implementer (${impl.claudeFallback ?? 'sonnet'}).`;
+const pre = await prepareOpenCode({ opencode, chain, models: config.models, env: envWith(a.env), cwd: top, log: say });
+for (const p of pre.problems) say(p);
+if (!pre.usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
 
 const name = a.task ?? `fix-${a.fix}`;
 const branch = a.task ? `task/${a.task}-${a.slug}` : `fix/${a.fix}-${a.slug}`;
@@ -89,7 +98,7 @@ const startPr = openPr();
 fs.writeFileSync(logFile, '');
 
 const result = await runChain({
-  chain,
+  chain: pre.usable,
   log: say,
   attempt: async (m) => {
     const model = config.models[m];
@@ -99,7 +108,7 @@ const result = await runChain({
       const run = await runOpenCodeWatched({
         args: ocArgs(worktree, impl.agent, model), prompt, workDir: worktree, title: `${name}-${m}`,
         startupTimeoutMs: impl.startupTimeoutSec * 1000, idleTimeoutMs: impl.idleTimeoutSec * 1000,
-        totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: envWith(a.env), log: say,
+        totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: pre.env, log: say,
       });
       output = run.output;
       if (run.exitCode !== 0) reason = `exit ${run.exitCode}`;
@@ -129,7 +138,7 @@ say(`run log: ${logFile}`);
 const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
 if (!result.ok) {
   if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.`);
-  die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. Fall back to a Claude implementer.`);
+  die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}`);
 }
 if (reasons) say(`fell back: ${reasons}`);
 // The reviewer must not be this model's family: pass it to review.mjs as --exclude.

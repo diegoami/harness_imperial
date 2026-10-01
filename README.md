@@ -47,16 +47,30 @@ added. Each behaviour exists because a run failed without it:
   0, so the run looks clean (IC2 #501). The runner reads OpenCode's own rejection line.
 - **The export is read from a file.** Through a pipe, a large export arrives truncated, and the agent
   check loses its evidence (ic2-conquest's WSL reviewer).
+- **Its own data directory.** OpenCode's desktop app (2.x) can migrate the default database to a
+  schema the 1.x CLI cannot read (IC2 #540). The scripts' runs use `~/.local/share/harness-opencode`,
+  with `auth.json` copied in, and Go's console login made there once.
 - **The real binary.** Under WSL, the `opencode` on PATH is often the Windows npm shim under
   `/mnt/c`. It cannot use Linux paths and survives a kill, so the runner skips it for
   `~/.opencode/bin/opencode`.
 
-`implement.mjs` and `review.mjs` add three more guards. They fall back to the next model only on an
-infrastructure failure that left no commit, push or PR. They stop after the same failure twice.
-And the review never runs on the implementer's model family.
+`implement.mjs` and `review.mjs` add more guards:
+- Before anything is billed, they check that OpenCode lists their model in that data directory.
+  An unknown id or a missing Go login exits 3, with the command that fixes it.
+- With a longer chain, they move on only after an infrastructure failure that left no commit, push
+  or PR, and stop after the same failure twice.
+- The review never runs on the implementer's model family.
+- A review is never thrown away (L28). Only output with no review at all falls back. A readable
+  review is read through Markdown decoration, a `Verdict:` prefix, punctuation, a sign-off or a
+  single line, and posted normalised. One whose verdict cannot be read, or that may be cut off, is
+  posted under a note with no label. Closing keywords are rewritten (`fixes #5` becomes
+  `fixes 5`).
 
-Exit codes, for both scripts: 0 done; 1 the main session decides; 3 OpenCode unavailable, so use
-Claude.
+Exit codes, for both scripts:
+- 0: done;
+- 1: the main session decides;
+- 3: OpenCode unavailable, so use Claude (Sonnet implements, Opus reviews);
+- 4 (`review.mjs` only): a review was posted under a note; read it and decide.
 
 ## Jev: the third delegate
 
@@ -102,11 +116,14 @@ for l in task bug fix triage:needed post-playable review-round:1 review-round:2 
 ```
 
 The models are OpenCode Go's (`opencode-go/…`), which needs `opencode console login`, not a key.
-`harness.json` follows IC2's experience (#551, #554). The implementers are GLM-5.3 Flash, then
-DeepSeek V4.1 Flash. GPT-6 Luna is left out of the chains: on Go she returned `Bad Request` once a
-run's context grew. The reviewers are DeepSeek, then GLM-5.3 Flash, because an implementer's
-family never reviews its work. Add models to a `chain` when a real failure shows you need them, not before
-(L14).
+There is one OpenCode model per role, then Claude, by the owner's decision of 2026-10-02 (L27):
+- DeepSeek V4.1 Flash implements, then Claude Sonnet;
+- GLM-5.3 Flash reviews, then Claude Opus.
+
+Each runs at effort `high`. GLM-5.3 Flash sometimes ends long implementer runs early, but reviews
+well. GPT-6 Luna stays available for an explicit `--model`, but no default uses her: on Go she
+returned `Bad Request` in long agent loops. Add models to a `chain` when a real failure shows you need
+them, not before (L14).
 
 ## Tests
 
@@ -120,12 +137,17 @@ reproduce each failure above. The cases are:
   the warning;
 - a failed run that left a commit, an implementer that stops and reports, and the same failure
   twice;
-- a cut-off review, and a review requested from the implementer's family;
+- the review reader's self-test (`test/review-reader.test.mjs`): decorated, prefixed, punctuated,
+  signed-off and one-line reviews; a closing keyword; a missing closing verdict; an unreadable
+  verdict; and tool chatter only;
+- a flagged review posted with no label and exit 4, a dry run, and a review requested from the
+  implementer's family;
+- the scripts' own data directory, the copied `auth.json`, and a model OpenCode does not list;
 - a tool call OpenCode rejected (in the runner, the implementer and the review), a large export, and
   the Windows shim under WSL.
 
-The stdin, process-tree, left-work, family, rejection, export and shim guards were also checked by breaking each one and
-watching its test fail.
+Every guard was also checked by breaking it and watching its test fail: stdin, the process tree,
+left work, family, rejection, export, the shim, the reader, the data directory and the model check.
 
 **Against a real OpenCode** (1.18.33, and 1.18.34 under WSL, with no model key, so each run fails
 at the provider), the following were checked:
@@ -134,6 +156,6 @@ at the provider), the following were checked:
 - `export`'s `info.agent` reads `reviewer` when the agent file is present, and `build` (the silent
   fallback, which the runner flags) when it is missing.
 
-Under WSL with the Go login, `glm-5.3-flash`, `deepseek-v4.1-flash` and `glm-5.3`, each with
-`--variant max`, answered a one-word prompt. A full run through `implement.mjs` has not happened yet:
-watch the first one.
+Under WSL, Go's models answered a one-word prompt. The first real run through `implement.mjs`
+(harness_imperial#1) failed over correctly, with nothing left behind. GLM-5.3 Flash went 900 s
+without a step, and DeepSeek created no session while WSL was short of memory.
