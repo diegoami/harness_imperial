@@ -210,20 +210,20 @@ test('openCodeHome copies auth.json when the copy is missing or older, never ove
 });
 
 test('listedModels and loginHint: Go not logged in, or an unknown id', async () => {
-  const { env } = setup('ok', { FAKE_OC_MODELS: '["opencode-go/glm-5.3-flash", "openrouter/x"]' });
+  const { env } = setup('ok', { FAKE_OC_MODELS: '["opencode-go/deepseek-v4.1-flash", "openrouter/x"]' });
   const { listed, errors } = await listedModels(opencode, ['opencode-go', 'opencode-go', 'anthropic'], { env, cwd: os.tmpdir() });
-  assert.deepEqual([...listed], ['opencode-go/glm-5.3-flash']);
+  assert.deepEqual([...listed], ['opencode-go/deepseek-v4.1-flash']);
   assert.equal(errors.size, 0);                              // "Provider not found" is a missing login
   assert.match(loginHint('opencode-go/nope', listed, '/d'), /is not in `opencode models opencode-go`: check the id/);
-  assert.match(loginHint('opencode-go/glm-5.3-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
-  assert.match(loginHint('openrouter/x', new Set(), '/d'), /openrouter lists no models for \/d: log in/);
+  assert.match(loginHint('opencode-go/deepseek-v4.1-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
+  assert.match(loginHint('openai/gpt-6-luna', new Set(), '/d'), /openai lists no models for \/d: it is not logged in there\. Log in once with `opencode auth login`.*copies auth\.json into \/d/);
 });
 
 test('an `opencode models` that fails for another reason is an OpenCode failure, never a missing login', async () => {
   const { env } = setup('ok', { FAKE_OC_MODELS_ERROR: 'Error: Unexpected error: no such column: project_id' });
   const { listed, errors } = await listedModels(opencode, ['opencode-go'], { env, cwd: os.tmpdir() });
   assert.equal(listed.size, 0);
-  const hint = loginHint('opencode-go/glm-5.3-flash', listed, '/d', errors);
+  const hint = loginHint('opencode-go/deepseek-v4.1-flash', listed, '/d', errors);
   assert.match(hint, /`opencode models opencode-go` failed with exit 1: Error: Unexpected error: no such column: project_id/);
   assert.match(hint, /not a missing login/);
   assert.doesNotMatch(hint, /console login/);

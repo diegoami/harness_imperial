@@ -60,16 +60,20 @@ added. Each behaviour exists because a run failed without it:
 - With a longer chain, they move on only after an infrastructure failure that left no commit, push
   or PR, and stop after the same failure twice.
 - The review never runs on the implementer's model family.
-- A review is never thrown away (L28). Only output with no review at all falls back. A readable
-  review is read through Markdown decoration, a `Verdict:` prefix, punctuation, a sign-off or a
-  single line, and posted normalised. One whose verdict cannot be read, or that may be cut off, is
-  posted under a note with no label. Closing keywords are rewritten (`fixes #5` becomes
-  `fixes 5`).
+- A review is never thrown away (L28). Only output with no review at all falls back.
+  - A readable review is posted normalised and acted on. It may come through Markdown decoration, a
+    `Verdict:` prefix, punctuation, a where-I-worked block before the verdict, a sign-off after the
+    closing verdict (kept), or a single line.
+  - A review that may be cut off, has no readable verdict, or has a finding after its closing
+    verdict is posted whole, exactly as it arrived, under a note, with no label.
+  - Closing keywords lose their `#` (`Fixes: #5` becomes `Fixes: 5`).
+  - `review.mjs --self-test` runs the reader's samples with no model call.
 
 Exit codes, for both scripts:
 - 0: done;
 - 1: the main session decides;
-- 3: OpenCode unavailable, so use Claude (Sonnet implements, Opus reviews);
+- 3: OpenCode unavailable, a login missing, or no review, so the caller runs Claude (Sonnet
+  implements, Opus reviews);
 - 4 (`review.mjs` only): a review was posted under a note; read it and decide.
 
 ## Jev: the third delegate
@@ -115,15 +119,19 @@ for l in task bug fix triage:needed post-playable review-round:1 review-round:2 
   status:blocked status:escalated status:merged; do gh label create "$l" --force; done
 ```
 
-The models are OpenCode Go's (`opencode-go/…`), which needs `opencode console login`, not a key.
 There is one OpenCode model per role, then Claude, by the owner's decision of 2026-10-02 (L27):
-- DeepSeek V4.1 Flash implements, then Claude Sonnet;
-- GLM-5.3 Flash reviews, then Claude Opus.
+- DeepSeek V4.1 Flash on OpenCode Go (`opencode-go/deepseek-v4.1-flash`) implements, then Claude
+  Sonnet. Go needs `opencode console login`.
+- GPT-6 Luna on the direct OpenAI route (`openai/gpt-6-luna`) reviews, then Claude Opus. OpenAI
+  needs `opencode auth login`.
 
-Each runs at effort `high`. GLM-5.3 Flash sometimes ends long implementer runs early, but reviews
-well. GPT-6 Luna stays available for an explicit `--model`, but no default uses her: on Go she
-returned `Bad Request` in long agent loops. Add models to a `chain` when a real failure shows you need
-them, not before (L14).
+Each runs at effort `high`, never `max`.
+- GLM-5.3 and GLM-5.3 Flash are out. They ended long implementer runs early, and GLM-5.3 Flash was
+  the weakest reviewer elsewhere.
+- Go's own GPT-6 Luna is out too. A third-party proxy behind it returned `Bad Request` in long agent
+  loops, which the direct route did not.
+
+Add models to a `chain` when a real failure shows you need them, not before (L14).
 
 ## Tests
 
@@ -137,9 +145,11 @@ reproduce each failure above. The cases are:
   the warning;
 - a failed run that left a commit, an implementer that stops and reports, and the same failure
   twice;
-- the review reader's self-test (`test/review-reader.test.mjs`): decorated, prefixed, punctuated,
-  signed-off and one-line reviews; a closing keyword; a missing closing verdict; an unreadable
-  verdict; and tool chatter only;
+- the review reader's self-test (`lib/review-selftest.mjs`, run by `review.mjs --self-test` and by
+  `test/review-reader.test.mjs`). Its 23 samples assert the outcome and the text kept: decorated,
+  prefixed, punctuated, where-I-worked, signed-off and one-line reviews; closing keywords; findings
+  after the closing verdict; cut-off and unreadable reviews, also on one line; and tool chatter
+  only;
 - a flagged review posted with no label and exit 4, a dry run, and a review requested from the
   implementer's family;
 - the scripts' own data directory, the copied `auth.json`, and a model OpenCode does not list;

@@ -33,14 +33,16 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
 
 3. **Review.** Label `status:in-review`. Use the task file's Reviewer, never the implementer's
    family:
-   - `opencode` (the default, GLM-5.3 Flash): `node tools/harness/review.mjs --pr <pr> --brief <file>
-     --exclude <implemented by> --issue <n> --apply-label`, in the background.
+   - `opencode` (the default, GPT-6 Luna on the direct OpenAI route): `node tools/harness/review.mjs
+     --pr <pr> --brief <file> --exclude <implemented by> --issue <n> --apply-label`, in the
+     background.
      - Exit 0: posted and labelled.
-     - Exit 3: no review came back, or OpenCode is unavailable. Nothing was posted: use the Claude
-       reviewer (Opus).
-     - Exit 4: a review was posted under a note (verdict unreadable, or may be cut off), with no
-       label. Read it on the PR and decide: apply the label it supports, or re-review. Never pay
-       for a second review just because the first one was flagged.
+     - Exit 3: no review came back, or OpenCode or its login is unavailable. Nothing was posted:
+       run the Claude reviewer (Opus).
+     - Exit 4: a review was posted whole under a note (it may be cut off, its verdict is
+       unreadable, or a finding follows its closing verdict), with no label. Read it on the PR
+       and decide: apply the label it supports, or escalate. Never pay for a second review just
+       because the first was flagged.
    - `claude` (the fallback): `Agent(model = opus; isolation: "worktree")`, with §5's brief filled
      in. It checks out the PR head with `git fetch origin pull/<pr>/head && git checkout --detach
      FETCH_HEAD`, posts one PR comment and applies the label.

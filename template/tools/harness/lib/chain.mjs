@@ -53,90 +53,99 @@ function verdictOf(line) {
 }
 const VERDICT_RE = VERDICTS.map(esc).join('|');
 
-// "fixes #551" becomes "fixes 551". GitHub closes issues only from PR bodies and commits, but a
-// review is quoted into both. Returns { text, rewrites }.
+// Closing keywords lose their '#': "fixes #551", "Fixes: #12", "fixes#12", "closes owner/repo#3",
+// in any case. GitHub closes issues only from PR bodies and commits, but a review is quoted into
+// both. Returns { text, rewrites }.
 export function rewriteClosingKeywords(text) {
   const rewrites = [];
-  const out = text.replace(/\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)(:?\s+)#(\d+)/gi, (m, kw, sp, n) => {
-    rewrites.push(`${m} -> ${kw}${sp}${n}`);
-    return `${kw}${sp}${n}`;
+  const re = /\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)(\s*:?\s*)([\w.-]+\/[\w.-]+)?#(\d+)/gi;
+  const out = text.replace(re, (m, kw, sp, repo, n) => {
+    const to = `${kw}${sp || ' '}${repo ? `${repo} ` : ''}${n}`;
+    rewrites.push(`${m} -> ${to}`);
+    return to;
   });
   return { text: out, rewrites };
 }
 
+// A line that looks like a finding: "R2: …", "- **R2.** …", "3. …".
+const FINDING = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?R\d+\b|^\s*\d+\.\s/;
+
 /**
- * Reads a review out of a model's output. A review is never thrown away: only one with no header
- * at all (tool chatter, or nothing: a model that ended its turn early) is a failure.
- * - The header is found case-insensitively, through Markdown decoration, anywhere on its line
- *   ("Here is the T07 review (x):"). Every line carrying it is a candidate, from the last to the
- *   first; the first that reads cleanly wins, else the earliest is posted flagged, so findings
- *   that repeat the header are never cut from the post.
- * - After the header: text on its line is the verdict when it is one ("T07 review (x) — Rework"),
- *   else ignored; blank lines may precede the verdict, which may be decorated, prefixed with
- *   "Verdict:" or punctuated. The closing verdict is looked for among the last three non-empty
- *   lines, so a sign-off may follow it.
- * - A review flattened onto one line (seen from one model) is read when nothing but blank lines
- *   follows its header line; its paragraphs are restored from runs of spaces.
- * - A readable review comes back normalised: header, verdict, findings, verdict.
- * - A review whose verdict cannot be read, or that may be cut off (IC2 #370: cut off at about 400
- *   characters), comes back as it was, with a note; the caller posts it and applies no label.
- * Closing keywords before #<n> are rewritten in every case.
+ * Reads a review out of a model's output. A review is never thrown away; only output with no
+ * header at all (tool chatter, or nothing: a model that ended its turn early) is a failure.
+ * The owner's rules of 2026-10-02 (L28):
+ * - The header is found case-insensitively, through Markdown decoration (**…**, a leading #,
+ *   backticks), with a trailing ':' or '.', anywhere on its line, after any preamble. Every line
+ *   carrying it is a candidate, from the last to the first; the first that reads cleanly wins.
+ * - The verdict is the first verdict-shaped line among the first five non-empty lines after the
+ *   header (decoration, a "Verdict:" prefix and trailing punctuation allowed). Lines before it, a
+ *   short where-I-worked block, are kept.
+ * - The closing verdict is found among the last three non-empty lines. Only that line is removed;
+ *   every line after it (a sign-off) is kept, and one canonical closing verdict is appended.
+ * - A review flattened onto one line is read when it starts and ends with the same verdict; its
+ *   paragraphs are restored from runs of spaces.
+ * - Otherwise the review is flagged, and posted whole, exactly as it arrived: no closing verdict
+ *   ("may be cut off", IC2 #370), no readable verdict, opening and closing verdicts that differ, or
+ *   a finding-like line after the closing verdict. The caller applies no label.
+ * Closing keywords lose their '#' in every case.
  * Returns { kind: 'ok', review, verdict, rewrites } | { kind: 'flagged', review, note, rewrites }
  *   | { kind: 'none', reason }.
  */
 export function readReview(stdout, header) {
+  const whole = String(stdout).trim();
   const lines = String(stdout).split(/\r?\n/);
   const headerRe = new RegExp(esc(header.trim()).replace(/\s+/g, '\\s+'), 'i');
   const done = (r) => {
     const { text, rewrites } = rewriteClosingKeywords(r.review);
     return { ...r, review: text, rewrites };
   };
-  const flagged = (note, body) => done({ kind: 'flagged', note, review: [header, '', body.trim()].join('\n').trimEnd() });
-  const normal = (verdict, body) => done({
-    kind: 'ok', verdict,
-    review: [header, verdict, ...(body.trim() ? ['', body.trim()] : []), '', verdict].join('\n'),
-  });
+  const flagged = (note) => ({ kind: 'flagged', note });
+  const normal = (verdict, content) => {
+    const c = content.join('\n').replace(/\n[ \t]*(?:\n[ \t]*)+\n/g, '\n\n').trim();
+    return { kind: 'ok', verdict, review: [header, verdict, ...(c ? ['', c] : []), '', verdict].join('\n') };
+  };
 
   // One line, after the header.
   const readFlat = (flat) => {
     const start = flat.match(new RegExp(`^(?:verdict\\s*[:\\-–—]\\s*)?(${VERDICT_RE})[.!:]*(?:\\s|$)`, 'i'));
-    if (!start) return flagged('verdict unreadable', flat);
+    if (!start) return flagged('verdict unreadable');
     const verdict = start[1].toLowerCase();
     const middle = flat.slice(start[0].length).trim();
     const end = middle.match(new RegExp(`(?:^|\\s)(${VERDICT_RE})[.!]*\\s*$`, 'i'));
-    if (!end) return flagged('may be cut off', flat);
-    if (end[1].toLowerCase() !== verdict) return flagged('verdict unreadable', flat);
-    return normal(verdict, middle.slice(0, end.index).trim().split(/ {2,}/).join('\n\n'));
+    if (!end) return flagged('may be cut off');
+    if (end[1].toLowerCase() !== verdict) return flagged(`verdicts differ: opens "${verdict}", closes "${end[1].toLowerCase()}"`);
+    return normal(verdict, [middle.slice(0, end.index).trim().split(/ {2,}/).join('\n\n')]);
   };
-  // Lines, the first non-blank one being the verdict.
+  // Lines: an optional where-I-worked block, the verdict, findings, the closing verdict, a sign-off.
   const readLines = (rest) => {
-    const v = rest.findIndex((l) => l.trim());
-    if (v < 0) return flagged('may be cut off', '');
+    const filled = rest.map((l, i) => i).filter((i) => rest[i].trim());
+    const v = filled.slice(0, 5).find((i) => verdictOf(rest[i]));
+    if (v === undefined) return flagged('verdict unreadable');
     const verdict = verdictOf(rest[v]);
-    if (!verdict) return flagged('verdict unreadable', rest.slice(v).join('\n'));
-    const tail = rest.map((l, i) => i).filter((i) => i > v && rest[i].trim()).slice(-3);
-    const close = tail.filter((i) => verdictOf(rest[i])).at(-1);
-    if (close === undefined) return flagged('may be cut off', rest.slice(v).join('\n'));
-    if (verdictOf(rest[close]) !== verdict) return flagged('verdict unreadable', rest.slice(v).join('\n'));
-    return normal(verdict, rest.slice(v + 1, close).join('\n'));
+    const close = filled.filter((i) => i > v).slice(-3).filter((i) => verdictOf(rest[i])).at(-1);
+    // The only verdict found is the review's last line, after other text: its opening is missing.
+    if (close === undefined) return flagged(v === filled.at(-1) && v > filled[0] ? 'verdict unreadable' : 'may be cut off');
+    if (verdictOf(rest[close]) !== verdict) return flagged(`verdicts differ: opens "${verdict}", closes "${verdictOf(rest[close])}"`);
+    const after = rest.slice(close + 1);
+    if (after.some((l) => FINDING.test(l))) return flagged('a finding after the closing verdict');
+    return normal(verdict, [...rest.slice(0, v), '', ...rest.slice(v + 1, close), ...after]);
   };
   const readAt = (i) => {
     const plain = undecorate(lines[i]);
     const m = plain.match(headerRe);
-    const after = plain.slice(m.index + m[0].length).replace(/^[\s:.)\-–—]+/, '').trim();
+    const onLine = plain.slice(m.index + m[0].length).replace(/^[\s:.)\-–—]+/, '').trim();
     const following = lines.slice(i + 1);
-    if (!after) return readLines(following);
-    if (!following.some((l) => l.trim())) return readFlat(after);
-    if (verdictOf(after)) return readLines([after, ...following]);
-    const r = readLines(following);
-    return r.kind === 'ok' ? r : flagged(r.note, [after, ...following].join('\n'));
+    if (onLine && !following.some((l) => l.trim())) return readFlat(onLine);
+    return readLines(onLine ? [onLine, ...following] : following);
   };
 
   const at = lines.map((l, i) => i).filter((i) => headerRe.test(undecorate(lines[i])));
   if (!at.length) return { kind: 'none', reason: 'no review in its output' };
+  let first = null;
   for (const i of [...at].reverse()) {
     const r = readAt(i);
-    if (r.kind === 'ok') return r;
+    if (r.kind === 'ok') return done(r);
+    first ??= r;
   }
-  return readAt(at[0]);
+  return done({ ...first, review: whole });
 }

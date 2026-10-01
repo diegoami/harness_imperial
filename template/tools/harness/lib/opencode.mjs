@@ -176,7 +176,8 @@ export function loginHint(modelId, listed, dataHome, errors = new Map()) {
     return `OpenCode Go is not logged in for ${dataHome}. Run \`opencode console login\` with XDG_DATA_HOME=${dataHome} `
       + `(bash: XDG_DATA_HOME="${dataHome}" opencode console login; PowerShell: $env:XDG_DATA_HOME="${dataHome}"; opencode console login)`;
   }
-  return `${provider} lists no models for ${dataHome}: log in (\`opencode auth login\`) or set its API key`;
+  return `${provider} lists no models for ${dataHome}: it is not logged in there. Log in once with `
+    + `\`opencode auth login\` (or set its API key) in your usual OpenCode; the next run copies auth.json into ${dataHome}`;
 }
 
 function killTree(child) {
