@@ -33,13 +33,11 @@ on_off() { if [ -n "${!1:-}" ]; then echo "set"; else echo "MISSING"; fi; }
 # What the session reads at start (stdout of a SessionStart hook goes into its context).
 echo "Harness environment:"
 echo "- node $(node --version 2>/dev/null || echo none), opencode $(opencode --version 2>/dev/null || echo none), gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}' || echo none)"
-echo "- OPENCODE_API_KEY: $(on_off OPENCODE_API_KEY) (OpenCode implementer and reviewer, opencode/* models)"
+echo "- OpenCode Go (implementer and reviewer, opencode-go/* models): $(opencode models opencode-go 2>/dev/null | grep -q . && echo "logged in" || echo "NOT logged in: run opencode console login")"
+echo "- OPENCODE_API_KEY: $(on_off OPENCODE_API_KEY) (OpenCode Zen's opencode/* models, only if harness.json names any)"
 echo "- OPENROUTER_API_KEY: $(on_off OPENROUTER_API_KEY) (Jev decisions, image models, and OpenCode's openrouter/* models)"
 echo "- ELEVENLABS_API_KEY: $(on_off ELEVENLABS_API_KEY) (speech, sound effects, music; /delegate)"
 echo "- GH_TOKEN: $(on_off GH_TOKEN) (gh in tools/harness: PR lookup, comments, labels)"
-if [ -z "${OPENCODE_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
-  echo "  OpenCode has no provider key: implement.mjs and review.mjs will exit 3, so use Claude agents."
-fi
 if [ -z "${OPENROUTER_API_KEY:-}" ]; then
   echo "  Jev is off: jev.mjs exits 3, so decide every item yourself."
 fi

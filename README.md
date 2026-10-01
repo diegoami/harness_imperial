@@ -43,6 +43,13 @@ added. Each behaviour exists because a run failed without it:
 - **The agent check.** Whether OpenCode loaded the requested agent is read from the session record,
   not from the output.
 - **UTF-8 output.**
+- **A rejected tool call is a failure.** OpenCode auto-rejects a path outside the worktree and exits
+  0, so the run looks clean (IC2 #501). The runner reads OpenCode's own rejection line.
+- **The export is read from a file.** Through a pipe, a large export arrives truncated, and the agent
+  check loses its evidence (ic2-conquest's WSL reviewer).
+- **The real binary.** Under WSL, the `opencode` on PATH is often the Windows npm shim under
+  `/mnt/c`. It cannot use Linux paths and survives a kill, so the runner skips it for
+  `~/.opencode/bin/opencode`.
 
 `implement.mjs` and `review.mjs` add three more guards. They fall back to the next model only on an
 infrastructure failure that left no commit, push or PR. They stop after the same failure twice.
@@ -73,8 +80,8 @@ format is confirmed.
 
 ## Environment
 
-Each delegate needs a key. [`template/docs/environment.md`](template/docs/environment.md) has the
-details: `OPENCODE_API_KEY` for OpenCode, `OPENROUTER_API_KEY` for Jev and OpenRouter models
+Each delegate needs a key or a login. [`template/docs/environment.md`](template/docs/environment.md)
+has the details: an OpenCode Go console login for OpenCode, `OPENROUTER_API_KEY` for Jev and OpenRouter models
 (images too), `ELEVENLABS_API_KEY` for audio, `GH_TOKEN` for `gh`, and the hosts a cloud
 environment's network policy must allow. A session-start hook installs OpenCode and
 `gh` in cloud sessions and reports which keys are set. This repository uses the same hook
@@ -94,8 +101,12 @@ for l in task bug fix triage:needed post-playable review-round:1 review-round:2 
   status:blocked status:escalated status:merged; do gh label create "$l" --force; done
 ```
 
-`harness.json` starts with one implementer model and one reviewer model. Add models to a `chain`
-when a real failure shows you need them, not before (L14).
+The models are OpenCode Go's (`opencode-go/…`), which needs `opencode console login`, not a key.
+`harness.json` follows IC2's experience (#551, #554). The implementers are GLM-5.3 Flash, then
+DeepSeek V4.1 Flash. GPT-6 Luna is left out of the chains: on Go she returned `Bad Request` once a
+run's context grew. The reviewers are GLM-5.3, then DeepSeek, because a GLM implementer excludes
+GLM from its review. Add models to a `chain` when a real failure shows you need them, not before
+(L14).
 
 ## Tests
 
@@ -109,16 +120,20 @@ reproduce each failure above. The cases are:
   the warning;
 - a failed run that left a commit, an implementer that stops and reports, and the same failure
   twice;
-- a cut-off review, and a review requested from the implementer's family.
+- a cut-off review, and a review requested from the implementer's family;
+- a tool call OpenCode rejected (in the runner, the implementer and the review), a large export, and
+  the Windows shim under WSL.
 
-The stdin, process-tree, left-work and family guards were also checked by breaking each one and
+The stdin, process-tree, left-work, family, rejection, export and shim guards were also checked by breaking each one and
 watching its test fail.
 
-**Against a real OpenCode** (1.18.33, with no model key, so each run fails at the provider), the
-following were checked:
+**Against a real OpenCode** (1.18.33, and 1.18.34 under WSL, with no model key, so each run fails
+at the provider), the following were checked:
 - the `run` flags exist;
 - the runner finds the session in `session list --format json`;
 - `export`'s `info.agent` reads `reviewer` when the agent file is present, and `build` (the silent
   fallback, which the runner flags) when it is missing.
 
-A run with a real model key has not happened yet: watch the first one.
+Under WSL with the Go login, `glm-5.3-flash`, `deepseek-v4.1-flash` and `glm-5.3`, each with
+`--variant max`, answered a one-word prompt. A full run through `implement.mjs` has not happened yet:
+watch the first one.

@@ -61,7 +61,7 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /implemented by: deepseek-flash/);
+  assert.match(r.stdout, /implemented by: glm-flash \(opencode-go\/glm-5.3-flash\)/);
   assert.match(r.stdout, /PR: https:\/\/example.com\/pr\/100/);
   const wt = path.join(p.base, 'proj-work', 'T07');
   assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'HEAD');           // detached for the reviewer
@@ -90,14 +90,22 @@ test('a failure that left a commit is not retried on the next model', posix, asy
 
 test('an infrastructure failure that left nothing falls back to the next model', posix, async () => {
   const p = project({ chain: ['deepseek-flash', 'glm'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode/deepseek-v4.1-flash': 'exit-no-session', 'opencode/glm-5.3': 'implement' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'opencode-go/glm-5.3': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: exited without a session/);
   assert.match(r.stdout, /implemented by: glm/);
 });
 
+test('a rejected tool call is a failure, not a clean finish: the next model runs (IC2 #501)', posix, async () => {
+  const p = project({ chain: ['deepseek-flash', 'glm'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'opencode-go/glm-5.3': 'implement' }) });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /fell back: deepseek-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
+  assert.match(r.stdout, /implemented by: glm/);
+});
+
 test('the same failure twice stops the chain with exit 3', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'mimo-flash-free', 'glm'] });
+  const p = project({ chain: ['deepseek-flash', 'luna', 'glm'] });
   const r = implement(p, { FAKE_OC_MODE: 'no-session' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /same failure twice: no-session/);

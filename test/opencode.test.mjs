@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, resolveOpenCode,
+  runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, resolveOpenCode,
 } from '../template/tools/harness/lib/opencode.mjs';
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-opencode.mjs');
@@ -20,7 +20,7 @@ function setup(mode, extra = {}) {
 const run = (mode, opts = {}, extra = {}) => {
   const { dir, env } = setup(mode, extra);
   return runOpenCodeWatched({
-    args: ['run', '--agent', 'reviewer', '--model', 'opencode/x'], prompt: 'line one\nline two',
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
     workDir: dir, title: 'test', opencode, env, logDir: path.join(dir, 'logs'),
     pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000, ...opts,
   });
@@ -92,10 +92,28 @@ test('the fallback to the default agent is read from the session record', async 
   assert.equal(r.sessionAgent, 'build');
 });
 
+test('a large export is read whole: the agent check does not depend on a pipe', async () => {
+  const r = await run('ok', {}, { FAKE_OC_BIG_EXPORT: '1' });
+  assert.equal(r.sessionAgent, 'reviewer');
+  assert.equal(r.agentFallback, false);
+});
+
 test('a model quoting the fallback warning is not a fallback (IC2 #482)', async () => {
   const r = await run('quote');
   assert.equal(r.agentFallback, false);
   assert.equal(r.sessionAgent, 'reviewer');
+});
+
+test('a run that exits 0 after OpenCode rejected a tool call reports it, and keeps its files (IC2 #501)', async () => {
+  const r = await run('permission');
+  assert.equal(r.exitCode, 0);
+  assert.equal(r.permissionRejected, 'external_directory (/tmp/*)');
+  assert.equal(r.files.length, 2);
+});
+
+test('a model quoting the rejection line is not a rejection', async () => {
+  const r = await run('ok', {}, { FAKE_OC_OUTPUT: 'R1: the guard matches "! permission requested: external_directory (/tmp/*); auto-rejecting"\n' });
+  assert.equal(r.permissionRejected, null);
 });
 
 test('output is read back as UTF-8', async () => {
@@ -116,9 +134,30 @@ test('failureClass strips the numbers from a reason', () => {
   assert.equal(failureClass('exit 2'), 'non-zero-exit');
   assert.equal(failureClass('review cut off'), 'cut-off');
   assert.equal(failureClass('fell back to the default agent'), 'fallback-agent');
+  assert.equal(failureClass('permission rejected: external_directory (/tmp/*)'), 'permission-rejected');
+});
+
+test('permissionRejection matches only OpenCode\'s own line, and returns the last one', () => {
+  const line = (what) => `\x1b[93m\x1b[1m! \x1b[0mpermission requested: ${what}; auto-rejecting`;
+  assert.equal(permissionRejection(`${line('external_directory (/a/*)')}\nok\n${line('external_directory (/b/*)')}`), 'external_directory (/b/*)');
+  assert.equal(permissionRejection(`R1: ${line('external_directory (/a/*)')}`), null);
+  assert.equal(permissionRejection('done\n'), null);
 });
 
 test('resolveOpenCode fails as an infrastructure failure when opencode is missing', () => {
   assert.throws(() => resolveOpenCode({ PATH: '' }), infra(/^opencode not found/));
   assert.throws(() => resolveOpenCode({ HARNESS_OPENCODE_EXE: '/no/such/opencode' }), infra(/^opencode not found/));
+});
+
+test('under WSL the Windows npm shim is skipped for OpenCode\'s own install in ~/.opencode/bin', { skip: process.platform === 'win32' }, () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-home-')));
+  const shimDir = path.join(home, 'npm');
+  fs.mkdirSync(shimDir);
+  // What WSL sees of the Windows npm shim, on PATH under /mnt/c.
+  fs.writeFileSync(path.join(shimDir, 'opencode'), '#!/bin/sh\nexec "$basedir/node_modules/opencode-ai/bin/opencode.exe"   "$@"\n', { mode: 0o755 });
+  assert.throws(() => resolveOpenCode({ PATH: shimDir }), infra(/^opencode not found/));
+  const installed = path.join(home, '.opencode', 'bin', 'opencode');
+  fs.mkdirSync(path.dirname(installed), { recursive: true });
+  fs.writeFileSync(installed, '#!/bin/sh\n', { mode: 0o755 });
+  assert.equal(resolveOpenCode({ PATH: shimDir, HOME: home }).exe, installed);
 });

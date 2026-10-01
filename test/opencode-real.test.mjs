@@ -23,7 +23,7 @@ async function probe(withAgent) {
     fs.copyFileSync(path.join(here, '../template/.opencode/agents/reviewer.md'), path.join(dir, '.opencode/agents/reviewer.md'));
   }
   return runOpenCodeWatched({
-    args: ['run', '--dir', dir, '--agent', 'reviewer', '--model', 'opencode/no-such-model-for-tests'],
+    args: ['run', '--dir', dir, '--agent', 'reviewer', '--model', 'opencode-go/no-such-model-for-tests'],
     prompt: 'line one\nline two', workDir: dir, title: 'harness-real', opencode,
     pollMs: 1000, startupTimeoutMs: 90_000, idleTimeoutMs: 90_000, totalTimeoutMs: 150_000,
     env: { ...process.env, OPENCODE_API_KEY: '', OPENROUTER_API_KEY: '' },
