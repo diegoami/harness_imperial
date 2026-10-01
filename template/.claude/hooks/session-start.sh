@@ -33,7 +33,8 @@ on_off() { if [ -n "${!1:-}" ]; then echo "set"; else echo "MISSING"; fi; }
 # What the session reads at start (stdout of a SessionStart hook goes into its context).
 echo "Harness environment:"
 echo "- node $(node --version 2>/dev/null || echo none), opencode $(opencode --version 2>/dev/null || echo none), gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}' || echo none)"
-echo "- OpenCode Go (implementer and reviewer, opencode-go/* models): $(opencode models opencode-go 2>/dev/null | grep -q . && echo "logged in" || echo "NOT logged in: run opencode console login")"
+oc_data="${HARNESS_OPENCODE_HOME:-$HOME/.local/share/harness-opencode}/data"
+echo "- OpenCode Go (implementer and reviewer, opencode-go/* models): $(XDG_DATA_HOME="$oc_data" opencode models opencode-go 2>/dev/null | grep -q . && echo "logged in" || echo "NOT logged in for the scripts' data directory: XDG_DATA_HOME=$oc_data opencode console login")"
 echo "- OPENCODE_API_KEY: $(on_off OPENCODE_API_KEY) (OpenCode Zen's opencode/* models, only if harness.json names any)"
 echo "- OPENROUTER_API_KEY: $(on_off OPENROUTER_API_KEY) (Jev decisions, image models, and OpenCode's openrouter/* models)"
 echo "- ELEVENLABS_API_KEY: $(on_off ELEVENLABS_API_KEY) (speech, sound effects, music; /delegate)"

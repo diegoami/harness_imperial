@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, resolveOpenCode,
+  openCodeHome, listedModels, loginHint,
 } from '../template/tools/harness/lib/opencode.mjs';
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-opencode.mjs');
@@ -132,7 +133,7 @@ test('failureClass strips the numbers from a reason', () => {
   assert.equal(failureClass('no session in 180 s'), failureClass('no session in 30 s'));
   assert.equal(failureClass('session idle for 600 s'), 'idle');
   assert.equal(failureClass('exit 2'), 'non-zero-exit');
-  assert.equal(failureClass('review cut off'), 'cut-off');
+  assert.equal(failureClass('no review in its output'), 'no-review');
   assert.equal(failureClass('fell back to the default agent'), 'fallback-agent');
   assert.equal(failureClass('permission rejected: external_directory (/tmp/*)'), 'permission-rejected');
 });
@@ -160,4 +161,70 @@ test('under WSL the Windows npm shim is skipped for OpenCode\'s own install in ~
   fs.mkdirSync(path.dirname(installed), { recursive: true });
   fs.writeFileSync(installed, '#!/bin/sh\n', { mode: 0o755 });
   assert.equal(resolveOpenCode({ PATH: shimDir, HOME: home }).exe, installed);
+});
+
+test('openCodeHome: data, cache and state of one root, a relative override made absolute', () => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-och-')));
+  const lines = [];
+  const prev = process.cwd();
+  process.chdir(base);
+  try {
+    const { env, root, dataHome } = openCodeHome({ HOME: base, HARNESS_OPENCODE_HOME: 'oc', PATH: '/bin' }, { log: (l) => lines.push(l) });
+    assert.equal(root, path.join(base, 'oc'));
+    assert.equal(env.XDG_DATA_HOME, path.join(base, 'oc', 'data'));
+    assert.equal(env.XDG_CACHE_HOME, path.join(base, 'oc', 'cache'));
+    assert.equal(env.XDG_STATE_HOME, path.join(base, 'oc', 'state'));
+    assert.equal(dataHome, env.XDG_DATA_HOME);
+    assert.equal(env.PATH, '/bin');
+    assert.ok(fs.existsSync(path.join(dataHome, 'opencode')));
+    assert.match(lines[0], /no auth\.json/);
+  } finally { process.chdir(prev); }
+  assert.equal(process.env.XDG_DATA_HOME === path.join(base, 'oc', 'data'), false);   // process.env untouched
+});
+
+test('openCodeHome copies auth.json when the copy is missing or older, never over a newer one', () => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-och-')));
+  const src = path.join(base, '.local', 'share', 'opencode', 'auth.json');
+  fs.mkdirSync(path.dirname(src), { recursive: true });
+  const env = { HOME: base, HARNESS_OPENCODE_HOME: path.join(base, 'oc') };
+  const dst = path.join(base, 'oc', 'data', 'opencode', 'auth.json');
+  const logged = [];
+  const log = (l) => logged.push(l);
+  fs.writeFileSync(src, 'one');
+  openCodeHome(env, { log });
+  assert.equal(fs.readFileSync(dst, 'utf8'), 'one');
+  fs.writeFileSync(src, 'two');
+  fs.utimesSync(src, new Date(), new Date(Date.now() + 5000));
+  openCodeHome(env, { log });
+  assert.equal(fs.readFileSync(dst, 'utf8'), 'two');
+  fs.utimesSync(src, new Date(), new Date(Date.now() - 60_000));
+  fs.writeFileSync(src, 'old');
+  fs.utimesSync(src, new Date(), new Date(Date.now() - 60_000));
+  openCodeHome(env, { log });
+  assert.equal(fs.readFileSync(dst, 'utf8'), 'two');
+  assert.deepEqual(logged.map((l) => l.replace(/.*\((.*)\)$/, '$1')), ['auth.json copied', 'auth.json copied', 'auth.json already current']);
+  assert.doesNotMatch(logged.join('\n'), /one|two|old/);
+  fs.rmSync(src);
+  openCodeHome(env, { log });
+  assert.match(logged.at(-1), /source missing; using the copy/);
+});
+
+test('listedModels and loginHint: Go not logged in, or an unknown id', async () => {
+  const { env } = setup('ok', { FAKE_OC_MODELS: '["opencode-go/glm-5.3-flash", "openrouter/x"]' });
+  const { listed, errors } = await listedModels(opencode, ['opencode-go', 'opencode-go', 'anthropic'], { env, cwd: os.tmpdir() });
+  assert.deepEqual([...listed], ['opencode-go/glm-5.3-flash']);
+  assert.equal(errors.size, 0);                              // "Provider not found" is a missing login
+  assert.match(loginHint('opencode-go/nope', listed, '/d'), /is not in `opencode models opencode-go`: check the id/);
+  assert.match(loginHint('opencode-go/glm-5.3-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
+  assert.match(loginHint('openrouter/x', new Set(), '/d'), /openrouter lists no models for \/d: log in/);
+});
+
+test('an `opencode models` that fails for another reason is an OpenCode failure, never a missing login', async () => {
+  const { env } = setup('ok', { FAKE_OC_MODELS_ERROR: 'Error: Unexpected error: no such column: project_id' });
+  const { listed, errors } = await listedModels(opencode, ['opencode-go'], { env, cwd: os.tmpdir() });
+  assert.equal(listed.size, 0);
+  const hint = loginHint('opencode-go/glm-5.3-flash', listed, '/d', errors);
+  assert.match(hint, /`opencode models opencode-go` failed with exit 1: Error: Unexpected error: no such column: project_id/);
+  assert.match(hint, /not a missing login/);
+  assert.doesNotMatch(hint, /console login/);
 });

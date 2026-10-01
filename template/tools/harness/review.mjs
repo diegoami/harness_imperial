@@ -6,22 +6,32 @@
 //
 // The brief's first line is the review header the model prints, e.g. "T07 review (GLM)"; with the
 // chain, the text in its final parentheses becomes each attempt's model. The model never writes to
-// GitHub (the agent file denies it); this script is the only writer, so a cut-off review never
-// reaches the PR.
+// GitHub (the agent file denies it); this script is the only writer.
 //
-// The reviewer is never the implementer's model family: --exclude (implement.mjs prints the name on
-// its "implemented by:" line, or "claude"), else a model:<name> label on the PR or --issue.
+// The model is harness.json's reviewer.chain (one model, by the user's decision of 2026-10-02:
+// GLM-5.3 Flash, then Claude Opus). It is never the implementer's model family: --exclude
+// (implement.mjs prints the name on its "implemented by:" line, or "claude"), else a model:<name>
+// label on the PR or --issue. Runs use the scripts' own OpenCode data directory.
 //
-// Exit 0: posted (or printed with --dry-run). Exit 1: refused or a defect. Exit 3: OpenCode
-// unavailable, nothing posted; use a Claude reviewer.
+// A review is never thrown away (lib/chain.mjs readReview). Only output with no review at all
+// falls back; a review whose verdict cannot be read, or that may be cut off, is posted under a
+// note, with no label. Closing keywords before #<n> are rewritten, and the rewrite is logged.
+//
+// Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
+// unavailable or no review, nothing posted; use a Claude reviewer (harness.json's claudeFallback).
+// Exit 4: posted under a note, no label; the main session reads it and decides. --dry-run prints
+// what would be posted and the exit code it would use, and exits 0; it still runs, and bills, the
+// model.
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
-import { runChain, excludeImplementers, checkReview } from './lib/chain.mjs';
-import { sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs } from './lib/common.mjs';
+import { runChain, excludeImplementers, readReview } from './lib/chain.mjs';
+import {
+  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
+} from './lib/common.mjs';
 
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
@@ -35,7 +45,7 @@ if (!/review \(/.test(briefHeader)) die(2, `The brief's first line must be the r
 
 let opencode;
 try { opencode = resolveOpenCode(); } catch (e) {
-  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Nothing posted.`);
+  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Nothing posted; use a Claude reviewer (see harness.json).`);
   throw e;
 }
 requireTools('git', 'gh');
@@ -55,7 +65,11 @@ const wanted = a.reviewer ? [a.reviewer] : rev.chain;
 const chain = excludeImplementers(wanted, config.models, implementedBy);
 if (implementedBy.length) say(`implemented by: ${implementedBy.join(', ')}`);
 if (a.reviewer && !chain.length) die(1, `Refused: ${a.reviewer} is the implementer's model family. Nothing posted.`);
-if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. Nothing posted; use a Claude reviewer.`);
+const fallback = `Nothing posted; use a Claude reviewer (${rev.claudeFallback ?? 'opus'}).`;
+if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);
+const pre = await prepareOpenCode({ opencode, chain, models: config.models, env: envWith(a.env), cwd: top, log: say });
+for (const p of pre.problems) say(p);
+if (!pre.usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
 
 const headSha = sh('gh', ['pr', 'view', String(a.pr), '--json', 'headRefOid', '--jq', '.headRefOid'], { cwd: top });
 sh('git', ['-C', top, 'fetch', '-q', 'origin', `pull/${a.pr}/head`]);
@@ -81,7 +95,7 @@ const newTree = () => {
 let result;
 try {
   result = await runChain({
-    chain,
+    chain: pre.usable,
     log: say,
     reset: async () => {},
     attempt: async (m) => {
@@ -95,7 +109,7 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
 - Your final message is the review and nothing else. Line 1 is exactly: ${header}
   Line 2 is the verdict: approve, approve after named fixes, rework, or user decision.
   Then the findings (R1, R2, ... with file and line, blocking or not), then the verdict again as
-  the very last line. A review that does not end with its verdict is treated as cut off.
+  the very last line. A review that does not end with its verdict is posted as possibly cut off.
 - Your worktree is ${worktree} at ${headSha}. Pass git -C "${worktree}" explicitly.
 `;
       newTree();
@@ -104,7 +118,7 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
         run = await runOpenCodeWatched({
           args: ocArgs(worktree, rev.agent, model), prompt, workDir: worktree, title: `pr${a.pr}-${m}`,
           startupTimeoutMs: rev.startupTimeoutSec * 1000, idleTimeoutMs: rev.idleTimeoutSec * 1000,
-          totalTimeoutMs: rev.totalTimeoutSec * 1000, opencode, env: envWith(a.env), log: say,
+          totalTimeoutMs: rev.totalTimeoutSec * 1000, opencode, env: pre.env, log: say,
         });
       } catch (e) {
         if (!(e instanceof OpenCodeInfraError)) throw e;
@@ -113,9 +127,9 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
       if (run.exitCode !== 0) return { ok: false, reason: `exit ${run.exitCode}`, detail: run.output };
       if (run.agentFallback) return { ok: false, reason: 'fell back to the default agent', detail: run.output };
       if (run.permissionRejected) return { ok: false, reason: `permission rejected: ${run.permissionRejected}`, detail: run.output };
-      const checked = checkReview(run.stdout, header);
-      if (!checked.ok) return { ok: false, reason: checked.reason, detail: run.output };
-      return { ok: true, value: { ...checked, header, model } };
+      const read = readReview(run.stdout, header);
+      if (read.kind === 'none') return { ok: false, reason: read.reason, detail: run.output };
+      return { ok: true, value: { ...read, header, model } };
     },
   });
 } finally {
@@ -123,21 +137,31 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
 }
 
 const reasons = result.failures.map((f) => `${f.name} failed: ${f.reason}`).join('; ');
-if (!result.ok) die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. Nothing posted; use a Claude reviewer.`);
+if (!result.ok) die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}`);
 
-const { review, verdict, header, model } = result.value;
+const { kind, review, verdict, note, rewrites, header, model } = result.value;
+for (const r of rewrites) say(`rewrote a closing keyword: ${r}`);
 const lines = review.split('\n');
 if (reasons) lines[0] = header.replace(/\)\s*$/, `; ${reasons})`);
-const body = `${lines.join('\n')}\n\n— ${result.name}, via tools/harness/review.mjs (${model.id})`;
-if (a['dry-run']) { say(body); process.exit(0); }
+const flagNote = kind === 'flagged'
+  ? `> Note from tools/harness/review.mjs: ${note}; no label applied. The main session reads this review and decides.\n\n` : '';
+const body = `${flagNote}${lines.join('\n')}\n\n— ${result.name}, via tools/harness/review.mjs (${model.id})`;
+const label = kind === 'flagged' ? null
+  : verdict === 'approve' ? 'status:approved' : verdict === 'user decision' ? null : 'status:rework';
+const code = kind === 'flagged' ? 4 : 0;
+if (a['dry-run']) {
+  say(body);
+  say(`dry run: would post the above${a['apply-label'] && label ? `, label ${label}` : ', no label'}, and exit ${code}.`);
+  process.exit(0);
+}
 
 const bodyFile = path.join(os.tmpdir(), `harness-review-${a.pr}-${randomBytes(3).toString('hex')}.md`);
 fs.writeFileSync(bodyFile, body);
 sh('gh', ['pr', 'comment', String(a.pr), '--body-file', bodyFile], { cwd: top });
 fs.rmSync(bodyFile, { force: true });
+if (kind === 'flagged') die(4, `posted: ${lines[0]}, flagged (${note}); no label. Read the review on PR ${a.pr} and decide.`);
 say(`posted: ${lines[0]} / ${verdict}`);
 if (a['apply-label']) {
-  const label = verdict === 'approve' ? 'status:approved' : verdict === 'user decision' ? null : 'status:rework';
   if (label) sh('gh', ['issue', 'edit', String(a.issue), '--add-label', label, '--remove-label', 'status:in-review'], { cwd: top });
   else say('verdict "user decision" applies no label; the main session decides.');
 }

@@ -54,7 +54,9 @@ function review(p, env, ...args) {
     env: {
       ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`,
       HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'),
-      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState, ...env,
+      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
+      HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
+      ...env,
     },
   });
 }
@@ -67,20 +69,73 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const s = gh(p);
   assert.equal(s.comments.length, 1);
-  assert.match(s.comments[0].body, /^T07 review \(deepseek-flash\)\napprove\n[\s\S]*approve\n\n— deepseek-flash, via/);
+  assert.match(s.comments[0].body, /^T07 review \(glm-flash\)\napprove\n[\s\S]*approve\n\n— glm-flash, via/);
   assert.doesNotMatch(s.comments[0].body, /reading the diff/);
   assert.deepEqual(s.issueLabels['12'], ['status:approved']);
   assert.deepEqual(fs.readdirSync(path.join(p.base, 'proj-work')), []);
   assert.doesNotMatch(git(p.main, 'worktree', 'list'), /review/);
 });
 
-test('a cut-off review is never posted; the next model reviews and the header says why', posix, () => {
+test('a review that may be cut off is posted under a note, unlabelled, exit 4, and no other model runs', posix, () => {
   const p = project({ chain: ['glm-flash', 'luna'] });
-  const r = review(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/glm-5.3-flash': 'review-cut', 'opencode-go/gpt-6-luna': 'review-ok' }) });
-  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--issue', '12', '--apply-label');
+  assert.equal(r.status, 4, r.stderr + r.stdout);
+  assert.doesNotMatch(r.stdout, /attempt: luna/);
+  assert.match(r.stderr, /flagged \(may be cut off\); no label/);
   const s = gh(p);
   assert.equal(s.comments.length, 1);
-  assert.match(s.comments[0].body, /^T07 review \(luna; glm-flash failed: review cut off\)\napprove/);
+  assert.match(s.comments[0].body, /^> Note from tools\/harness\/review\.mjs: may be cut off; no label applied\.[^\n]*\n\nT07 review \(glm-flash\)\n[\s\S]*R1: the loop in/);
+  assert.equal(s.issueLabels['12'], undefined);
+});
+
+test('a decorated review after a preamble is read, posted normalised, and labelled', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-decorated' }, '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const s = gh(p);
+  assert.match(s.comments[0].body, /^T07 review \(glm-flash\)\nrework\n\nR1: x\.\n\nrework\n\n— glm-flash, via/);
+  assert.deepEqual(s.issueLabels['12'], ['status:rework']);
+});
+
+test('a closing keyword is rewritten, logged, and the review still posted', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-fixes' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /rewrote a closing keyword: fixes #12 -> fixes 12/);
+  assert.match(gh(p).comments[0].body, /this fixes 12 only in part/);
+});
+
+test('a dry run prints the note and the exit code it would use, and posts nothing', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--dry-run', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /> Note from tools\/harness\/review\.mjs: may be cut off/);
+  assert.match(r.stdout, /dry run: would post the above, no label, and exit 4\./);
+  assert.equal(gh(p).comments.length, 0);
+});
+
+test('OpenCode Go not logged in: exit 3 with the login command, before any worktree or run', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_MODELS: '[]' });
+  assert.equal(r.status, 3);
+  const home = path.join(p.base, 'oc-home', 'data');
+  assert.match(r.stdout + r.stderr, new RegExp(`OpenCode Go is not logged in for ${home.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}[\\s\\S]*opencode console login`));
+  assert.match(r.stderr, /use a Claude reviewer \(opus\)/);
+  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(gh(p).comments.length, 0);
+});
+
+test('the run uses the scripts\' own data directory, with auth.json copied in', posix, () => {
+  const p = project();
+  fs.writeFileSync(path.join(p.base, 'auth.json'), '{"secret":"never printed"}');
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const data = path.join(p.base, 'oc-home', 'data');
+  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  assert.equal(session.dataHome, data);
+  assert.equal(fs.readFileSync(path.join(data, 'opencode', 'auth.json'), 'utf8'), '{"secret":"never printed"}');
+  assert.match(r.stdout, /data directory .* \(auth\.json copied\)/);
+  assert.doesNotMatch(r.stdout + r.stderr, /never printed/);
 });
 
 test('a review whose tool call was rejected is never posted, even when it looks complete', posix, () => {
@@ -91,11 +146,12 @@ test('a review whose tool call was rejected is never posted, even when it looks 
   assert.equal(gh(p).comments.length, 0);
 });
 
-test('every model cut off: nothing posted, exit 3', posix, () => {
+test('no review at all (tool chatter only, an early stop) is the one failure: nothing posted, exit 3', posix, () => {
   const p = project({ chain: ['glm-flash', 'luna'] });
-  const r = review(p, { FAKE_OC_MODE: 'review-cut' });
+  const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: 'reading src/a.js\nrunning the tests\n' });
   assert.equal(r.status, 3);
-  assert.match(r.stderr, /same failure twice: cut-off/);
+  assert.match(r.stderr, /same failure twice: no-review/);
+  assert.match(r.stderr, /use a Claude reviewer \(opus\)/);
   assert.equal(gh(p).comments.length, 0);
 });
 

@@ -25,19 +25,25 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      - Exit 0: a PR is open. Note the `implemented by:` line.
      - Exit 1: read the log it names. An implementer that stopped and reported goes to step 5,
        or to a task-file amendment on `main` and a re-run.
-     - Exit 3: OpenCode unavailable. Use the task file's Claude fallback, and say so in a comment
-       on the issue.
+     - Exit 3: OpenCode unavailable, its model not listed, or Go not logged in (the message gives
+       the login command). Use the task file's Claude fallback (Sonnet by default), and say so in
+       a comment on the issue.
    - `claude`: `Agent(model = the task file's, isolation: "worktree")`, with the brief plus:
      create `task/T<nn>-<slug>` from `origin/main`, push it, open the PR with `Closes #<n>`.
 
 3. **Review.** Label `status:in-review`. Use the task file's Reviewer, never the implementer's
    family:
-   - `claude` (the default): `Agent(model = opus for shared-model or fidelity-critical work, else
-     sonnet; isolation: "worktree")`, with §5's brief filled in. It checks out the PR head with
-     `git fetch origin pull/<pr>/head && git checkout --detach FETCH_HEAD`, posts one PR comment
-     and applies the label.
-   - `opencode`: `node tools/harness/review.mjs --pr <pr> --brief <file> --exclude <implemented by>
-     --issue <n> --apply-label`, in the background. Exit 3: use the Claude reviewer.
+   - `opencode` (the default, GLM-5.3 Flash): `node tools/harness/review.mjs --pr <pr> --brief <file>
+     --exclude <implemented by> --issue <n> --apply-label`, in the background.
+     - Exit 0: posted and labelled.
+     - Exit 3: no review came back, or OpenCode is unavailable. Nothing was posted: use the Claude
+       reviewer (Opus).
+     - Exit 4: a review was posted under a note (verdict unreadable, or may be cut off), with no
+       label. Read it on the PR and decide: apply the label it supports, or re-review. Never pay
+       for a second review just because the first one was flagged.
+   - `claude` (the fallback): `Agent(model = opus; isolation: "worktree")`, with §5's brief filled
+     in. It checks out the PR head with `git fetch origin pull/<pr>/head && git checkout --detach
+     FETCH_HEAD`, posts one PR comment and applies the label.
    - Architecture task: also `/code-review <pr>`, always with the number.
 
 4. **Decide** on the label the reviewer applied.

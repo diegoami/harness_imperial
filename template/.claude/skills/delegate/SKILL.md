@@ -12,8 +12,8 @@ yourself, check whether a delegate below does it better or cheaper.
 
 | Work | Delegate | How | Key |
 | --- | --- | --- | --- |
-| Code: implement a task or a fix | OpenCode, a cheap coding model | `/run-task` → `tools/harness/implement.mjs` | OpenCode Go's login (`opencode console login`); `OPENROUTER_API_KEY` for `openrouter/*` models |
-| Review a PR | A Claude agent (default), or OpenCode on another model family | `/run-task` → Agent, or `tools/harness/review.mjs` | as above |
+| Code: implement a task or a fix | OpenCode DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | OpenCode Go's login (`opencode console login`); `OPENROUTER_API_KEY` for `openrouter/*` models |
+| Review a PR | OpenCode GLM-5.3 Flash (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
 | Repeated decisions with known answers (triage, routing, gating, labelling) | Jev | `/jev` → `tools/harness/jev.mjs` | `OPENROUTER_API_KEY` |
 | Images: sprites, icons, maps, mockups, illustrations | An image model on OpenRouter | pick one with `models.mjs openrouter --output image` | `OPENROUTER_API_KEY` |
 | A second opinion from another model family, or reading audio or images | A model on OpenRouter | `models.mjs openrouter --input image` (or `audio`) | `OPENROUTER_API_KEY` |

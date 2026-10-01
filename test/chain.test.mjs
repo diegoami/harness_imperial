@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runChain, excludeImplementers, checkReview } from '../template/tools/harness/lib/chain.mjs';
+import { runChain, excludeImplementers } from '../template/tools/harness/lib/chain.mjs';
 
 const script = (outcomes) => {
   const tried = [];
@@ -47,37 +47,4 @@ test('the reviewer is never the implementer\'s family', () => {
   assert.deepEqual(excludeImplementers(['glm', 'luna', 'deepseek'], models, ['deepseek-flash']), ['glm', 'luna']);
   assert.deepEqual(excludeImplementers(['glm', 'luna'], models, ['claude']), ['glm', 'luna']);
   assert.deepEqual(excludeImplementers(['glm'], models, ['glm']), []);
-});
-
-const H = 'T07 review (glm)';
-
-test('a complete review passes, from after any tool chatter', () => {
-  const r = checkReview(`tool chatter\n${H}\napprove\n\nR1: fine\n\napprove\n`, H);
-  assert.equal(r.ok, true);
-  assert.equal(r.verdict, 'approve');
-  assert.ok(r.review.startsWith(H));
-});
-
-test('a review that does not end with its verdict is cut off (IC2 #370)', () => {
-  assert.equal(checkReview(`${H}\nrework\n\nR1: the loop in`, H).reason, 'review cut off');
-});
-
-test('no header, or no verdict on line 2, is not a review', () => {
-  assert.equal(checkReview('approve', H).reason, 'no header line in its output');
-  assert.equal(checkReview(`${H}\nlooks good\napprove`, H).reason, 'no verdict on line 2');
-});
-
-test('a flattened review is accepted and its paragraphs restored', () => {
-  const r = checkReview(`${H} approve after named fixes  R1: rename x.  R2: add a test.  approve after named fixes`, H);
-  assert.equal(r.ok, true);
-  assert.equal(r.verdict, 'approve after named fixes');
-  assert.match(r.review, /R1: rename x\.\n\nR2: add a test\./);
-});
-
-test('a flattened review with one verdict only is cut off', () => {
-  assert.equal(checkReview(`${H} approve R1: fine`, H).reason, 'review cut off');
-});
-
-test('a closing keyword before #<n> is refused', () => {
-  assert.throws(() => checkReview(`${H}\napprove\nthis fixes #12\napprove`, H), /closing keyword/);
 });

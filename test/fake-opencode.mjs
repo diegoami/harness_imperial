@@ -6,6 +6,10 @@
 //   permission-review | review-ok | review-cut
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
+// FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
+//   ids harness.json names. A provider with none fails like OpenCode 1.18.34 ("Provider not
+//   found"). FAKE_OC_MODELS_ERROR: stderr for a `models` that fails for another reason.
+//   Each session records the XDG_DATA_HOME it ran with.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -20,6 +24,15 @@ const forever = () => setInterval(() => {}, 1 << 30);
 
 if (cmd === 'session') {
   process.stdout.write(JSON.stringify(load()));
+  process.exit(0);
+}
+if (cmd === 'models') {
+  const ids = JSON.parse(process.env.FAKE_OC_MODELS
+    || '["opencode-go/deepseek-v4.1-flash", "opencode-go/glm-5.3-flash", "opencode-go/gpt-6-luna"]');
+  if (process.env.FAKE_OC_MODELS_ERROR) { process.stderr.write(`${process.env.FAKE_OC_MODELS_ERROR}\n`); process.exit(1); }
+  const mine = ids.filter((id) => !rest[0] || id.startsWith(`${rest[0]}/`));
+  if (!mine.length) { process.stderr.write(`Error: Provider not found: ${rest[0]}\n`); process.exit(1); }
+  process.stdout.write(mine.map((id) => `${id}\n`).join(''));
   process.exit(0);
 }
 if (cmd === 'export') {
@@ -47,7 +60,8 @@ const agent = arg('--agent');
 const id = `ses_${Math.random().toString(36).slice(2, 10)}`;
 const createSession = (recordedAgent = agent) => {
   const s = load();
-  s.push({ id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent });
+  s.push({ id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
+    dataHome: process.env.XDG_DATA_HOME ?? null });
   save(s);
 };
 const touch = () => { const s = load(); const x = s.find((y) => y.id === id); if (x) { x.updated = Date.now(); save(s); } };
@@ -106,12 +120,17 @@ switch (mode) {
     process.exit(0);
     break;
   case 'review-ok':
-  case 'review-cut': {
+  case 'review-cut':
+  case 'review-fixes':
+  case 'review-decorated': {
     createSession();
     const header = rest.at(-1).split('\n')[0];
-    process.stdout.write(mode === 'review-ok'
-      ? `reading the diff\n${header}\napprove\n\nR1: fine (not blocking)\n\napprove\n`
-      : `${header}\nrework\n\nR1: the loop in`);
+    process.stdout.write({
+      'review-ok': `reading the diff\n${header}\napprove\n\nR1: fine (not blocking)\n\napprove\n`,
+      'review-cut': `${header}\nrework\n\nR1: the loop in`,
+      'review-fixes': `${header}\nrework\n\nR1: this fixes #12 only in part.\n\nrework\n`,
+      'review-decorated': `Here is my review.\n\n**${header.toUpperCase()}**\n\n**Verdict:** Rework.\n\nR1: x.\n\n**rework**\n\n— signed, the reviewer\n`,
+    }[mode]);
     process.exit(0);
     break;
   }

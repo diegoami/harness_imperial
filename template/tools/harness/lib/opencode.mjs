@@ -50,7 +50,7 @@ export function failureClass(reason) {
   if (/fell back to the default agent/.test(r)) return 'fallback-agent';
   if (/^exit -?\d+/.test(r)) return 'non-zero-exit';
   if (/^permission rejected/.test(r)) return 'permission-rejected';
-  if (/cut off|no header line|no verdict/.test(r)) return 'cut-off';
+  if (/^no review/.test(r)) return 'no-review';
   return r;
 }
 
@@ -113,6 +113,72 @@ export function resolveOpenCode(env = process.env) {
   throw new OpenCodeInfraError('opencode not found', 'opencode is not on PATH (set HARNESS_OPENCODE_EXE to the real executable).');
 }
 
+// The scripts' own OpenCode data directory: XDG_DATA_HOME, XDG_CACHE_HOME and XDG_STATE_HOME, each
+// a folder of one root (HARNESS_OPENCODE_HOME, else ~/.local/share/harness-opencode). OpenCode's
+// desktop app (2.x) shares the default ~/.local/share/opencode and migrated its opencode.db to a
+// schema the 1.x CLI cannot read ("no such column: project_id", IC2 #540). Only the children's
+// environment changes; process.env is never touched, so there is nothing to restore.
+// auth.json (the API-key providers) is copied from the default directory, or from
+// HARNESS_OPENCODE_AUTH_SOURCE, when the copy is missing or older: copied, never read or logged.
+// OpenCode Go is not in auth.json: its `opencode console login` lives in the data directory's
+// database, so this directory needs its own login (loginHint says how).
+// Returns { env, root, dataHome }.
+export function openCodeHome(env = process.env, { log = () => {} } = {}) {
+  const home = env.HOME || env.USERPROFILE || os.homedir();
+  const root = path.resolve(env.HARNESS_OPENCODE_HOME || path.join(home, '.local', 'share', 'harness-opencode'));
+  const dirs = {
+    XDG_DATA_HOME: path.join(root, 'data'), XDG_CACHE_HOME: path.join(root, 'cache'), XDG_STATE_HOME: path.join(root, 'state'),
+  };
+  for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
+  fs.mkdirSync(path.join(dirs.XDG_DATA_HOME, 'opencode'), { recursive: true });
+  const src = path.resolve(env.HARNESS_OPENCODE_AUTH_SOURCE
+    || path.join(env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'opencode', 'auth.json'));
+  const dst = path.join(dirs.XDG_DATA_HOME, 'opencode', 'auth.json');
+  let auth;
+  if (src !== dst && fs.existsSync(src) && (!fs.existsSync(dst) || fs.statSync(src).mtimeMs > fs.statSync(dst).mtimeMs)) {
+    fs.copyFileSync(src, dst);
+    auth = 'auth.json copied';
+  } else if (fs.existsSync(dst)) auth = fs.existsSync(src) ? 'auth.json already current' : 'auth.json source missing; using the copy';
+  else auth = 'no auth.json: API-key providers are not logged in';
+  log(`opencode: data directory ${dirs.XDG_DATA_HOME} (${auth})`);
+  return { env: { ...env, ...dirs }, root, dataHome: dirs.XDG_DATA_HOME };
+}
+
+// The model ids OpenCode lists for these providers in this environment (`opencode models <p>`), so
+// an unknown id or a provider that is not logged in stops a run before anything is billed. A
+// provider with no login exits 1 with "Provider not found" (OpenCode 1.18.34); any other failure,
+// or a timeout, is OpenCode's own and lands in `errors`, so it is never reported as a login.
+// Returns { listed: Set, errors: Map provider -> message }.
+export async function listedModels(cmd, providers, { env, cwd, timeoutMs = 60_000 }) {
+  const listed = new Set();
+  const errors = new Map();
+  for (const p of new Set(providers)) {
+    const r = await execBounded(cmd, ['models', p], { cwd, env, timeoutMs });
+    if (!r) { errors.set(p, `\`opencode models ${p}\` did not finish in ${Math.round(timeoutMs / 1000)} s`); continue; }
+    if (r.code === 0) {
+      for (const l of r.stdout.split(/\r?\n/)) if (l.trim()) listed.add(l.trim());
+    } else if (!/provider not found/i.test(r.stderr)) {
+      const last = r.stderr.replace(/\x1b\[[0-9;]*m/g, '').trim().split(/\r?\n/).at(-1) || '(no output)';
+      errors.set(p, `\`opencode models ${p}\` failed with exit ${r.code}: ${last}`);
+    }
+  }
+  return { listed, errors };
+}
+
+// Why a model is missing from the list, and the command that fixes it.
+export function loginHint(modelId, listed, dataHome, errors = new Map()) {
+  const provider = modelId.split('/')[0];
+  if (errors.has(provider)) return `${errors.get(provider)}. That is OpenCode failing in ${dataHome}, not a missing login`;
+  if ([...listed].some((id) => id.startsWith(`${provider}/`))) {
+    return `${modelId} is not in \`opencode models ${provider}\`: check the id in harness.json`;
+  }
+  if (provider === 'opencode-go') {
+    return `OpenCode Go is not logged in for ${dataHome}. Run \`opencode console login\` with XDG_DATA_HOME=${dataHome} `
+      + `(bash: XDG_DATA_HOME="${dataHome}" opencode console login; PowerShell: $env:XDG_DATA_HOME="${dataHome}"; opencode console login)`;
+  }
+  return `${provider} lists no models for ${dataHome}: log in (\`opencode auth login\`) or set its API key`;
+}
+
 function killTree(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   try {
@@ -129,8 +195,8 @@ function spawnDetached(cmd, args, options) {
 }
 
 // A short OpenCode command (`session list`, `export`), bounded and killed if it overruns. With
-// outFile, stdout goes to that file instead of a pipe. Resolves { code, stdout } or null on a
-// timeout or a spawn error.
+// outFile, stdout goes to that file instead of a pipe. Resolves { code, stdout, stderr } or null
+// on a timeout or a spawn error.
 function execBounded(cmd, args, { cwd, timeoutMs, env, outFile }) {
   if (timeoutMs <= 0) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -140,13 +206,17 @@ function execBounded(cmd, args, { cwd, timeoutMs, env, outFile }) {
       child = spawnDetached(cmd, args, { cwd, env, stdio: ['ignore', fd ?? 'pipe', 'pipe'] });
     } catch { resolve(null); return; } finally { if (fd !== null) fs.closeSync(fd); }
     const out = [];
+    const err = [];
     child.stdout?.on('data', (d) => out.push(d));
-    child.stderr.resume();
+    child.stderr.on('data', (d) => err.push(d));
     const timer = setTimeout(() => { killTree(child); resolve(null); }, timeoutMs);
     child.on('error', () => { clearTimeout(timer); resolve(null); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      resolve({ code, stdout: outFile ? fs.readFileSync(outFile, 'utf8') : Buffer.concat(out).toString('utf8') });
+      resolve({
+        code, stdout: outFile ? fs.readFileSync(outFile, 'utf8') : Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      });
     });
   });
 }

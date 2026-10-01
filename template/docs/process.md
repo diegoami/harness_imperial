@@ -21,8 +21,8 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 | Role | Who | Does |
 | --- | --- | --- |
 | Main session | Claude, the session the user talks to | Plans, writes task files, runs `/run-task`, triages, merges, reports |
-| Implementer | OpenCode via `tools/harness/implement.mjs` (Claude when the task file says so, or on fallback) | One task, one branch, one PR, in its own worktree |
-| Reviewer | A Claude agent (default) or OpenCode via `tools/harness/review.mjs`, never the implementer's family | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
+| Implementer | OpenCode DeepSeek V4.1 Flash via `tools/harness/implement.mjs`, then a Claude Sonnet agent (L27) | One task, one branch, one PR, in its own worktree |
+| Reviewer | OpenCode GLM-5.3 Flash via `tools/harness/review.mjs`, then a Claude Opus agent; never the implementer's family (L27) | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
 | Decider | Jev via `tools/harness/jev.mjs` (the `/jev` skill) | Repeated yes/no decisions over many items, at the confident ends only (§12) |
 | Generator | Models on OpenRouter (images, other families) and ElevenLabs (speech, sound, music) | Assets, each committed with a sidecar naming provider, model, prompt, date and cost |
 
@@ -49,10 +49,10 @@ What the implementer script guarantees, and why:
 - OpenCode starts with stdin closed; without it a run hangs before it starts. (L10)
 - No session in 180 s, no progress in 900 s, or no exit in 3 h kills the run's process tree. (L10)
 - The agent is checked on OpenCode's session record (L11); a rejected tool call fails the run. (L26)
-- The next model runs only on an infrastructure failure that left no commit, push or PR; the
-  same failure twice stops the chain. An implementer that stops and reports is not a failure. (L12)
-- Exit 0 means a PR is open; 1 means the main session reads the log; 3 means OpenCode is
-  unavailable, so a Claude implementer takes the task.
+- One OpenCode model, effort high, in the scripts' own data directory (L27, L29). A longer chain
+  moves on only after an infrastructure failure that left no work. (L12)
+- Exit 0: a PR is open. 1: the main session reads the log (a stop and report, or an early end).
+  3: OpenCode unavailable, its model not listed, or not logged in; Claude Sonnet takes the task.
 
 ## 4. The implementer brief
 

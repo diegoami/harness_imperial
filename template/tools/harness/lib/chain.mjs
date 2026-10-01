@@ -42,37 +42,101 @@ export function excludeImplementers(chain, models, implementedBy) {
 export const VERDICTS = ['approve after named fixes', 'approve', 'rework', 'user decision'];
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// A line without its Markdown decoration (a quote mark, heading marks, emphasis, backticks).
+const undecorate = (line) => line.replace(/[*`]/g, '').replace(/^\s*(?:>\s*)*#*\s*/, '').trim();
+const key = (line) => undecorate(line).replace(/[.:!]+$/, '').replace(/\s+/g, ' ').toLowerCase();
+// The verdict a line states, or null: decoration, a "Verdict:" prefix and trailing punctuation
+// are allowed, and nothing else.
+function verdictOf(line) {
+  const s = key(line.replace(/_/g, '')).replace(/^verdict\s*[:\-–—]\s*/, '');
+  return VERDICTS.includes(s) ? s : null;
+}
+const VERDICT_RE = VERDICTS.map(esc).join('|');
+
+// "fixes #551" becomes "fixes 551". GitHub closes issues only from PR bodies and commits, but a
+// review is quoted into both. Returns { text, rewrites }.
+export function rewriteClosingKeywords(text) {
+  const rewrites = [];
+  const out = text.replace(/\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)(:?\s+)#(\d+)/gi, (m, kw, sp, n) => {
+    rewrites.push(`${m} -> ${kw}${sp}${n}`);
+    return `${kw}${sp}${n}`;
+  });
+  return { text: out, rewrites };
+}
+
 /**
- * A review is complete when it starts with the header line, has a verdict on line 2, and repeats
- * that verdict as its last line; anything else is cut off and never posted (IC2's first external
- * review, #370, was cut off at about 400 characters). A review flattened onto one line (seen from
- * one model) is accepted when it starts and ends with the same verdict; its paragraph breaks are
- * restored from runs of spaces. A closing keyword before #<n> throws: nothing is posted.
- * Returns { ok: true, review, verdict } or { ok: false, reason }.
+ * Reads a review out of a model's output. A review is never thrown away: only one with no header
+ * at all (tool chatter, or nothing: a model that ended its turn early) is a failure.
+ * - The header is found case-insensitively, through Markdown decoration, anywhere on its line
+ *   ("Here is the T07 review (x):"). Every line carrying it is a candidate, from the last to the
+ *   first; the first that reads cleanly wins, else the earliest is posted flagged, so findings
+ *   that repeat the header are never cut from the post.
+ * - After the header: text on its line is the verdict when it is one ("T07 review (x) — Rework"),
+ *   else ignored; blank lines may precede the verdict, which may be decorated, prefixed with
+ *   "Verdict:" or punctuated. The closing verdict is looked for among the last three non-empty
+ *   lines, so a sign-off may follow it.
+ * - A review flattened onto one line (seen from one model) is read when nothing but blank lines
+ *   follows its header line; its paragraphs are restored from runs of spaces.
+ * - A readable review comes back normalised: header, verdict, findings, verdict.
+ * - A review whose verdict cannot be read, or that may be cut off (IC2 #370: cut off at about 400
+ *   characters), comes back as it was, with a note; the caller posts it and applies no label.
+ * Closing keywords before #<n> are rewritten in every case.
+ * Returns { kind: 'ok', review, verdict, rewrites } | { kind: 'flagged', review, note, rewrites }
+ *   | { kind: 'none', reason }.
  */
-export function checkReview(stdout, header) {
-  const idx = stdout.indexOf(header);
-  if (idx < 0) return { ok: false, reason: 'no header line in its output' };
-  let review = stdout.slice(idx).trimEnd();
-  let lines = review.split(/\r?\n/);
-  if (lines[0].trim() !== header) {
-    const flat = review.slice(header.length).trim();
-    const verdict = VERDICTS.find((v) => new RegExp(`^${esc(v)}(\\s|$)`, 'i').test(flat));
-    if (!verdict) return { ok: false, reason: 'no verdict after the header' };
-    let middle = flat.slice(verdict.length).trim();
-    if (middle.length < verdict.length || !new RegExp(`(^|\\s)${esc(verdict)}\\s*$`, 'i').test(middle)) {
-      return { ok: false, reason: 'review cut off' };
-    }
-    middle = middle.slice(0, middle.length - verdict.length).trim();
-    review = [header, verdict, '', middle.split(/ {2,}/).join('\n\n'), '', verdict].join('\n');
-    lines = review.split('\n');
+export function readReview(stdout, header) {
+  const lines = String(stdout).split(/\r?\n/);
+  const headerRe = new RegExp(esc(header.trim()).replace(/\s+/g, '\\s+'), 'i');
+  const done = (r) => {
+    const { text, rewrites } = rewriteClosingKeywords(r.review);
+    return { ...r, review: text, rewrites };
+  };
+  const flagged = (note, body) => done({ kind: 'flagged', note, review: [header, '', body.trim()].join('\n').trimEnd() });
+  const normal = (verdict, body) => done({
+    kind: 'ok', verdict,
+    review: [header, verdict, ...(body.trim() ? ['', body.trim()] : []), '', verdict].join('\n'),
+  });
+
+  // One line, after the header.
+  const readFlat = (flat) => {
+    const start = flat.match(new RegExp(`^(?:verdict\\s*[:\\-–—]\\s*)?(${VERDICT_RE})[.!:]*(?:\\s|$)`, 'i'));
+    if (!start) return flagged('verdict unreadable', flat);
+    const verdict = start[1].toLowerCase();
+    const middle = flat.slice(start[0].length).trim();
+    const end = middle.match(new RegExp(`(?:^|\\s)(${VERDICT_RE})[.!]*\\s*$`, 'i'));
+    if (!end) return flagged('may be cut off', flat);
+    if (end[1].toLowerCase() !== verdict) return flagged('verdict unreadable', flat);
+    return normal(verdict, middle.slice(0, end.index).trim().split(/ {2,}/).join('\n\n'));
+  };
+  // Lines, the first non-blank one being the verdict.
+  const readLines = (rest) => {
+    const v = rest.findIndex((l) => l.trim());
+    if (v < 0) return flagged('may be cut off', '');
+    const verdict = verdictOf(rest[v]);
+    if (!verdict) return flagged('verdict unreadable', rest.slice(v).join('\n'));
+    const tail = rest.map((l, i) => i).filter((i) => i > v && rest[i].trim()).slice(-3);
+    const close = tail.filter((i) => verdictOf(rest[i])).at(-1);
+    if (close === undefined) return flagged('may be cut off', rest.slice(v).join('\n'));
+    if (verdictOf(rest[close]) !== verdict) return flagged('verdict unreadable', rest.slice(v).join('\n'));
+    return normal(verdict, rest.slice(v + 1, close).join('\n'));
+  };
+  const readAt = (i) => {
+    const plain = undecorate(lines[i]);
+    const m = plain.match(headerRe);
+    const after = plain.slice(m.index + m[0].length).replace(/^[\s:.)\-–—]+/, '').trim();
+    const following = lines.slice(i + 1);
+    if (!after) return readLines(following);
+    if (!following.some((l) => l.trim())) return readFlat(after);
+    if (verdictOf(after)) return readLines([after, ...following]);
+    const r = readLines(following);
+    return r.kind === 'ok' ? r : flagged(r.note, [after, ...following].join('\n'));
+  };
+
+  const at = lines.map((l, i) => i).filter((i) => headerRe.test(undecorate(lines[i])));
+  if (!at.length) return { kind: 'none', reason: 'no review in its output' };
+  for (const i of [...at].reverse()) {
+    const r = readAt(i);
+    if (r.kind === 'ok') return r;
   }
-  const verdict = (lines[1] ?? '').trim().toLowerCase();
-  if (!VERDICTS.includes(verdict)) return { ok: false, reason: 'no verdict on line 2' };
-  const last = lines.filter((l) => l.trim()).at(-1).trim().toLowerCase();
-  if (last !== verdict) return { ok: false, reason: 'review cut off' };
-  if (/\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+#\d+/i.test(review)) {
-    throw new Error('The review contains a closing keyword before #<n>. Nothing posted.');
-  }
-  return { ok: true, review, verdict };
+  return readAt(at[0]);
 }
