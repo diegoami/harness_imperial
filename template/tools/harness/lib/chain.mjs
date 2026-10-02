@@ -159,3 +159,34 @@ export function readReview(stdout, header) {
   const r = readAt(last);
   return done(r.kind === 'ok' ? r : { ...r, review: whole });
 }
+
+// How many Done-when lines the task file in a brief has: the numbered lines under its
+// "**Done when**" field (the task template) or a "Done when" heading (an issue body). 0 when there
+// is none, and then nothing is counted (L32).
+export function doneWhenCount(brief) {
+  const lines = String(brief).split(/\r?\n/);
+  const start = lines.findIndex((l) => /\*\*Done when\*\*|^#{1,6}\s*Done when\b/i.test(l));
+  if (start < 0) return 0;
+  let n = 0;
+  for (const l of lines.slice(start + 1)) {
+    if (/^\s*-\s+\*\*|^#{1,6}\s|^-{3,}\s*$/.test(l)) break;     // the next field, heading or rule
+    if (/^\s*\d+\.\s/.test(l)) n++;
+  }
+  return n;
+}
+
+// Whether a review accounts for each of `count` Done-when lines: one "DW<k>: ran … → …" or
+// "DW<k>: not run — …" line each (L32). An approval with one missing, or one not run, is not an
+// approval. Returns { missing: [k], notRun: [k] }.
+export function accountDoneWhen(review, count) {
+  const seen = new Map();
+  for (const l of String(review).split(/\r?\n/)) {
+    const m = l.replace(/[*`_]/g, '').match(/^\s*(?:[-*+]\s+)?DW\s*(\d+)\s*[:.)\-–—]\s*(.*)$/i);
+    if (m) seen.set(Number(m[1]), m[2]);
+  }
+  const all = Array.from({ length: count }, (_, i) => i + 1);
+  return {
+    missing: all.filter((k) => !seen.has(k)),
+    notRun: all.filter((k) => seen.has(k) && /^not\s+run\b/i.test(seen.get(k).trim())),
+  };
+}

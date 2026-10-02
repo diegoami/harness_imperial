@@ -78,9 +78,8 @@ You implement <T<nn>>. The task file above is the contract.
 ```text
 <T<nn>> review (<model>)
 You review PR #<n> at <sha>. You did not write it. The task file follows.
-0. Prove the tree: HEAD is <sha>, and your diff against origin/main is the PR's file list. Every
-   finding names a file from that diff.
-1. Re-run every Done-when line yourself. The PR's evidence is not the proof.
+0. Prove the tree: HEAD is <sha> and the diff against origin/main is the PR's; findings name its files.
+1. Re-run every Done-when line yourself, and account for each (L32). The PR's evidence is no proof.
 2. [evidence-driven] Every constant traces to a fixture, report or investigation; a [designed]
    value says what was searched.
 3. [seeded] No wall clock, unseeded random or order-dependent iteration in rule code.
@@ -88,9 +87,10 @@ You review PR #<n> at <sha>. You did not write it. The task file follows.
 5. Sweep the diff: tests that pass with the behaviour deleted (mutate, rebuild clean, re-take any
    negative result), branches no input reaches, edge comments without a test, <project classes>.
 Prove each finding (run it, or delete the behaviour and name the test that fails) or label it
-unverified. Post one PR comment: line 1 the header, line 2 the verdict (approve | approve after
-named fixes | rework | user decision), the findings R1..Rn (file:line, blocking or not), the
-verdict again last. Apply status:approved or status:rework to issue #<issue>.
+unverified. Post one PR comment: the header; the verdict (approve | approve after named fixes |
+rework | user decision); per Done-when line `DW<k>: ran <command> → <result>` or `DW<k>: not run
+— <reason>`; the findings R1..Rn (file:line, blocking or not); the verdict again last. Apply
+status:approved or status:rework to issue #<issue>.
 ```
 
 For a Claude reviewer, the main session also runs `/code-review <pr>` on architecture tasks,

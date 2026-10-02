@@ -74,6 +74,8 @@ added. Each behaviour exists because a run failed without it:
     under a note, with no label. Only the last header in the output is read, so an earlier draft
     can never approve a flagged review.
   - Closing keywords lose their `#` (`Fixes: #5` becomes `Fixes: 5`).
+  - A review accounts for each Done-when line of the task in its brief, one `DW<k>` line each
+    (L32). An approve with a line missing or not run is posted under a note, unlabelled: exit 4.
   - `review.mjs --self-test` runs the reader's samples with no model call.
 
 Exit codes, for both scripts:

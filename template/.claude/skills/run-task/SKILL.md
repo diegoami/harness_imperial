@@ -41,7 +41,9 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
        run the Claude reviewer (Opus). If a Claude agent implemented the PR, Claude may not
        review it either (the family rule): escalate (step 5).
      - Exit 4: a review was posted whole under a note (it may be cut off, its verdict is
-       unreadable, its verdicts differ, or a finding follows its closing verdict), with no label. Read it on the PR
+       unreadable, its verdicts differ, or a finding follows its closing verdict), or an approve
+       left a Done-when line unaccounted for or not run (L32). No label was applied. For a
+       missing `DW` line, run a supplementary review of those lines alone, or send it to rework. Read it on the PR
        and decide: apply the label it supports, or escalate. Never pay for a second review just
        because the first was flagged.
    - `claude` (the fallback): `Agent(model = opus; isolation: "worktree")`, with §5's brief filled

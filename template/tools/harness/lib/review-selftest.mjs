@@ -52,6 +52,11 @@ export const SAMPLES = [
     review: `${H}\nrework\n\nWorktree: /w/T07\nHEAD: abc1234\nDiff: a.js, b.js\nTests: npm test, 12 pass\n\n${FINDINGS}\n\nrework`,
   },
   {
+    name: 'Done-when lines (DW1, DW2) after the verdict, kept',
+    out: `${H}\napprove\n\nDW1: ran npm test → 12 pass\nDW2: ran grep -n x a.js → 1 match\n\nR1: fine.\n\napprove`,
+    kind: 'ok', review: `${H}\napprove\n\nDW1: ran npm test → 12 pass\nDW2: ran grep -n x a.js → 1 match\n\nR1: fine.\n\napprove`,
+  },
+  {
     name: 'a sign-off after the closing verdict: kept, the verdict not duplicated',
     out: `${H}\nrework\n\n${FINDINGS}\n\nrework\n\n— GPT-6 Luna, reviewing for T07`,
     kind: 'ok', review: `${H}\nrework\n\n${FINDINGS}\n\n— GPT-6 Luna, reviewing for T07\n\nrework`,
