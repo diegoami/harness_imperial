@@ -161,11 +161,12 @@ export function readReview(stdout, header) {
 }
 
 // How many Done-when lines the task file in a brief has: the numbered lines under its
-// "**Done when**" field (the task template) or a "Done when" heading (an issue body). 0 when there
-// is none, and then nothing is counted (L32).
+// "**Done when**" field (the task template) or a "Done when" heading (an issue body), each at the
+// start of its line, so a mention of the field in prose is not taken for it. 0 when there is none,
+// and then nothing is counted (L32).
 export function doneWhenCount(brief) {
   const lines = String(brief).split(/\r?\n/);
-  const start = lines.findIndex((l) => /\*\*Done when\*\*|^#{1,6}\s*Done when\b/i.test(l));
+  const start = lines.findIndex((l) => /^\s*(?:[-*+]\s+)?\*\*Done when\b[^*]*\*\*|^#{1,6}\s*Done when\b/i.test(l));
   if (start < 0) return 0;
   let n = 0;
   for (const l of lines.slice(start + 1)) {

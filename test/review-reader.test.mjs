@@ -42,6 +42,9 @@ test('the Done-when lines are counted from the task file in the brief, or a head
   assert.equal(doneWhenCount(`T07 review (luna)\nReview PR #7.\n\n${task}`), 3);
   assert.equal(doneWhenCount('## Done when\n\n1. a\n2. b\n\n## Also affected\n1. c'), 2);
   assert.equal(doneWhenCount('Review PR #7.'), 0);
+  // A mention of the field in prose is not the field (found reviewing PR 22's own body).
+  assert.equal(doneWhenCount('- **Counts** from a `**Done when**` field.\n- **Other**: x\n\n**Done when**\n1. a\n2. b\n3. c\n\n**Overlap**'), 3);
+  assert.equal(doneWhenCount('**Done when:** the table is posted.'), 0);
 });
 
 test('a review accounts for each Done-when line, or says which it did not (L32)', () => {
