@@ -44,7 +44,9 @@ how the run works.
   label it unverified. A claim that nothing failed is re-taken before it is believed.
 - Your **final message is the review** and nothing else: line 1 is exactly the header the brief
   gives; line 2 the verdict alone (`approve`, `approve after named fixes`, `rework`,
-  `user decision`); then any where-I-worked lines (worktree, HEAD, diff, commands run); then the
+  `user decision`); then any where-I-worked lines (worktree, HEAD, diff, commands run); then one
+  line per Done-when line of the task, `DW<k>: ran <command> → <result>` or
+  `DW<k>: not run — <reason>` (an approve that leaves one out is not applied, L32); then the
   findings R1, R2, ... with file and line, blocking or not; then the verdict again as the last line,
   with nothing after it. The script reads exactly this shape. A review without its closing verdict,
   or with a finding after it, is posted flagged and gets no label. Never put

@@ -2,7 +2,7 @@
 // Hands one pull request to OpenCode for a review, and posts the result as one PR comment.
 //
 //   node tools/harness/review.mjs --pr 42 --brief brief.md [--reviewer NAME] [--exclude NAME,...]
-//     [--issue 12 --apply-label] [--dry-run] [--env KEY=VALUE]...
+//     [--issue 12 --apply-label] [--done-when K] [--dry-run] [--env KEY=VALUE]...
 //   node tools/harness/review.mjs --self-test   (the reader's samples; no model is called)
 //
 // The brief's first line is the review header the model prints, e.g. "T07 review (Luna)"; with the
@@ -19,6 +19,10 @@
 // readable verdict, opens and closes with different verdicts, or has a finding after its closing
 // verdict is posted whole, exactly as it arrived, under a note, with no label. Closing keywords lose their '#', and the rewrite is logged.
 //
+// The review accounts for each Done-when line of the task file pasted in the brief (or --done-when
+// K): one "DW<k>:" line each, after the verdict (L32). An approve with a line missing, or one not
+// run, is posted under a note and not labelled approved (exit 4).
+//
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
 // unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
 // claudeFallback), unless Claude implemented the PR: then no reviewer of another family is left,
@@ -32,7 +36,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
-import { runChain, excludeImplementers, readReview } from './lib/chain.mjs';
+import { runChain, excludeImplementers, readReview, doneWhenCount, accountDoneWhen } from './lib/chain.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
@@ -52,6 +56,8 @@ if (!a.pr || !a.brief) die(2, '--pr and --brief are required.');
 if (a['apply-label'] && !a.issue) die(2, '--apply-label needs --issue.');
 const brief = fs.readFileSync(a.brief, 'utf8').split(/\r?\n/);
 const briefHeader = brief[0].trim();
+const doneWhen = a['done-when'] !== undefined ? Number(a['done-when']) : doneWhenCount(brief.join('\n'));
+if (!Number.isInteger(doneWhen) || doneWhen < 0) die(2, `--done-when takes a count; got ${a['done-when']}`);
 if (!/review \(/.test(briefHeader)) die(2, `The brief's first line must be the review header, e.g. "T07 review (Luna)"; got: ${briefHeader}`);
 
 let opencode;
@@ -121,7 +127,10 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
   Line 2 is the verdict, alone on its line: approve, approve after named fixes, rework, or user
   decision. Then any where-I-worked lines (worktree, HEAD, diff, the commands you ran), then the
   findings (R1, R2, ... with file and line, blocking or not), then the verdict again as the very
-  last line. Nothing comes after it. A review that does not end with its verdict, or that has a
+  last line. Nothing comes after it.${doneWhen ? `
+- The task has ${doneWhen} Done-when line${doneWhen > 1 ? 's' : ''}. Right after the verdict line, account for each, one
+  line per Done-when line, DW1 to DW${doneWhen}: "DW<k>: ran <command> → <result>", or
+  "DW<k>: not run — <reason>". An approve with one missing, or one not run, is not applied.` : ''} A review that does not end with its verdict, or that has a
   finding after it, is posted flagged and acted on by no one until the main session reads it.
 - Your worktree is ${worktree} at ${headSha}, and it is already your working directory. Run git
   there without -C, and never type that path: a mistyped path ends the run.
@@ -159,13 +168,25 @@ const { kind, review, verdict, note, rewrites, header, model } = result.value;
 for (const r of rewrites) say(`rewrote a closing keyword: ${r}`);
 const lines = review.split('\n');
 if (reasons && kind === 'ok') lines[0] = header.replace(/\)\s*$/, `; ${reasons})`);
+// An approve that does not account for every Done-when line is not an approval (L32).
+const dw = kind === 'ok' && doneWhen ? accountDoneWhen(review, doneWhen)
+  : { missing: [], notRun: [], malformed: [], repeated: [] };
+const unaccounted = verdict === 'approve'
+  ? [dw.missing.length && `no DW line for Done-when ${dw.missing.join(', ')}`,
+    dw.repeated.length && `more than one DW line for Done-when ${dw.repeated.join(', ')}`,
+    dw.malformed.length && `the DW line for Done-when ${dw.malformed.join(', ')} is neither "ran <command> → <result>" nor "not run — <reason>"`,
+    dw.notRun.length && `Done-when ${dw.notRun.join(', ')} not run`].filter(Boolean).join('; ') || null
+  : null;
 const flagNote = kind === 'flagged'
   ? `> Note from tools/harness/review.mjs: ${note}; no label applied${reasons ? ` (${reasons})` : ''}. `
     + 'The main session reads this review and decides.\n\n' : '';
-const body = `${flagNote}${lines.join('\n')}\n\n— ${result.name}, via tools/harness/review.mjs (${model.id})`;
-const label = kind === 'flagged' ? null
+const dwNote = unaccounted
+  ? `> Note from tools/harness/review.mjs: approve not applied: ${unaccounted} (L32). The main session decides: `
+    + 'a supplementary review of those lines, or a rework.\n\n' : '';
+const body = `${flagNote}${dwNote}${lines.join('\n')}\n\n— ${result.name}, via tools/harness/review.mjs (${model.id})`;
+const label = kind === 'flagged' || unaccounted ? null
   : verdict === 'approve' ? 'status:approved' : verdict === 'user decision' ? null : 'status:rework';
-const code = kind === 'flagged' ? 4 : 0;
+const code = kind === 'flagged' || unaccounted ? 4 : 0;
 if (a['dry-run']) {
   say(body);
   say(`dry run: would post the above${a['apply-label'] && label ? `, label ${label}` : ', no label'}, and exit ${code}.`);
@@ -176,6 +197,7 @@ const bodyFile = path.join(os.tmpdir(), `harness-review-${a.pr}-${randomBytes(3)
 fs.writeFileSync(bodyFile, body);
 sh('gh', ['pr', 'comment', String(a.pr), '--body-file', bodyFile], { cwd: top });
 fs.rmSync(bodyFile, { force: true });
+if (unaccounted) die(4, `posted: ${lines[0]} / approve, not applied: ${unaccounted}. Decide on PR ${a.pr}: a supplementary review of those lines, or a rework.`);
 if (kind === 'flagged') die(4, `posted: ${lines[0]}, flagged (${note}); no label. Read the review on PR ${a.pr} and decide.`);
 say(`posted: ${lines[0]} / ${verdict}`);
 if (a['apply-label']) {

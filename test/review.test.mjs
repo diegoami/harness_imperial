@@ -89,6 +89,71 @@ test('the reviewer runs git in its worktree and is never asked to type its path 
   assert.match(instructions, /git rev-parse --show-toplevel/);
 });
 
+// A brief with the task file pasted in, three Done-when lines (L32).
+const TASK = '# T07 Thing\n\n- **Done when**:\n  1. `node a.js` prints 1.\n  2. `node b.js` prints 2.\n  3. `npm test` is green.\n- **Hazards**: none.\n';
+const withTask = (p) => fs.writeFileSync(path.join(p.base, 'brief.md'), `T07 review (x)\nReview PR #7. The task file follows.\n\n${TASK}`);
+const reviewWith = (verdict, dw) => `T07 review (luna)\n${verdict}\n\n${dw.join('\n')}\n\nR1: fine.\n\n${verdict}\n`;
+
+test('an approve without a DW line for every Done-when line is posted, not applied, and exits 4 (L32)', posix, () => {
+  const p = project();
+  withTask(p);
+  const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', ['DW1: ran node a.js → 1', 'DW2: ran node b.js → 2']) }, '--issue', '12', '--apply-label');
+  assert.equal(r.status, 4, r.stderr + r.stdout);
+  assert.match(r.stderr, /approve, not applied: no DW line for Done-when 3/);
+  const s = gh(p);
+  assert.match(s.comments[0].body, /^> Note from tools\/harness\/review\.mjs: approve not applied: no DW line for Done-when 3 \(L32\)\./);
+  assert.match(s.comments[0].body, /\n\nT07 review \(luna\)\napprove\n\nDW1: ran node a\.js → 1/);
+  assert.equal(s.issueLabels['12'], undefined);
+  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  assert.match(session.prompt, /The task has 3 Done-when lines\. Right after the verdict line, account for each/);
+});
+
+test('an approve with every DW line is applied; one "not run" is not (L32)', posix, () => {
+  const p = project();
+  withTask(p);
+  const all = ['DW1: ran node a.js → 1', 'DW2: ran node b.js → 2', 'DW3: ran npm test → 9 pass'];
+  const ok = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', all) }, '--issue', '12', '--apply-label');
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  assert.deepEqual(gh(p).issueLabels['12'], ['status:approved']);
+  const q = project();
+  withTask(q);
+  const notRun = review(q, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', [...all.slice(0, 2), 'DW3: not run — no key']) }, '--issue', '12', '--apply-label');
+  assert.equal(notRun.status, 4);
+  assert.match(notRun.stderr, /Done-when 3 not run/);
+  assert.equal(gh(q).issueLabels['12'], undefined);
+});
+
+test('a dry run of an unaccounted approve says it would apply no label and exit 4 (L32)', posix, () => {
+  const p = project();
+  withTask(p);
+  const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', ['DW1: ran a → 1']) }, '--dry-run', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /approve not applied: no DW line for Done-when 2, 3/);
+  assert.match(r.stdout, /dry run: would post the above, no label, and exit 4\./);
+  assert.equal(gh(p).comments.length, 0);
+});
+
+test('an approve whose DW lines are malformed or repeated is not applied (Luna\'s R1 on PR 22)', posix, () => {
+  const p = project();
+  withTask(p);
+  const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', ['DW1: ran node a.js → 1', 'DW2: looks fine', 'DW3: not run — x', 'DW3: ran npm test → ok']) }, '--issue', '12', '--apply-label');
+  assert.equal(r.status, 4, r.stderr + r.stdout);
+  assert.match(r.stderr, /more than one DW line for Done-when 3; the DW line for Done-when 2 is neither/);
+  assert.equal(gh(p).issueLabels['12'], undefined);
+});
+
+test('a rework is labelled whatever its DW lines; --done-when overrides the count (L32)', posix, () => {
+  const p = project();
+  withTask(p);
+  const rework = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('rework', ['DW1: ran node a.js → 0']) }, '--issue', '12', '--apply-label');
+  assert.equal(rework.status, 0, rework.stderr + rework.stdout);
+  assert.deepEqual(gh(p).issueLabels['12'], ['status:rework']);
+  const q = project();
+  withTask(q);
+  const two = review(q, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', ['DW1: ran a → 1', 'DW2: ran b → 2']) }, '--done-when', '2');
+  assert.equal(two.status, 0, two.stderr + two.stdout);
+});
+
 test('a review that may be cut off is posted under a note, unlabelled, exit 4, and no other model runs', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--issue', '12', '--apply-label');
