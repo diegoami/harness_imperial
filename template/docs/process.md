@@ -87,10 +87,10 @@ You review PR #<n> at <sha>. You did not write it. The task file follows.
 5. Sweep the diff: tests that pass with the behaviour deleted (mutate, rebuild clean, re-take any
    negative result), branches no input reaches, edge comments without a test, <project classes>.
 Prove each finding (run it, or delete the behaviour and name the test that fails) or label it
-unverified. Post one PR comment: the header; the verdict (approve | approve after named fixes |
-rework | user decision); per Done-when line `DW<k>: ran <command> → <result>` or `DW<k>: not run
-— <reason>`; the findings R1..Rn (file:line, blocking or not); the verdict again last. Apply
-status:approved or status:rework to issue #<issue>.
+unverified. Your final message is the review: the header; the verdict (approve | approve after
+named fixes | rework | user decision); per Done-when line `DW<k>: ran <command> → <result>` or
+`DW<k>: not run — <reason>`; the findings R1..Rn (file:line, blocking or not); the verdict again
+last. Never post it: the script posts it and applies the label.
 ```
 
 For a Claude reviewer, the main session also runs `/code-review <pr>` on architecture tasks,

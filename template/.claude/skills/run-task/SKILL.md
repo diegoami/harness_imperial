@@ -28,8 +28,10 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      - Exit 3: OpenCode unavailable, its model not listed, or Go not logged in (the message gives
        the login command). Use the task file's Claude fallback (Sonnet by default), and say so in
        a comment on the issue.
-   - `claude`: `Agent(model = the task file's, isolation: "worktree")`, with the brief plus:
-     create `task/T<nn>-<slug>` from `origin/main`, push it, open the PR with `Closes #<n>`.
+   - `claude`: `Agent(subagent_type: "implementer", isolation: "worktree")`, Sonnet unless the
+     task file names opus, with the brief. The agent file (`.claude/agents/implementer.md`) carries
+     §4's block and the run mechanics, and its hook refuses `git stash`, `git worktree`, a
+     force-push and `gh pr merge`.
 
 3. **Review.** Label `status:in-review`. Use the task file's Reviewer, never the implementer's
    family:
@@ -48,9 +50,12 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
        missing `DW` line, run a supplementary review of those lines alone, or send it to rework. Read it on the PR
        and decide: apply the label it supports, or escalate. Never pay for a second review just
        because the first was flagged.
-   - `claude` (the fallback): `Agent(model = opus; isolation: "worktree")`, with §5's brief filled
-     in. It checks out the PR head with `git fetch origin pull/<pr>/head && git checkout --detach
-     FETCH_HEAD`, posts one PR comment and applies the label.
+   - `claude` (the fallback): `Agent(subagent_type: "reviewer", isolation: "worktree")` (Opus),
+     with §5's brief filled in. The agent file carries the rest; its hook refuses every write. It
+     **returns** its review: save its final message to a file, then post it with
+     `node tools/harness/post-review.mjs --pr <pr> --brief <brief> --review <file>
+     --by "claude (opus)" --issue <n> --apply-label`. Its exits are review.mjs's, but 1 means no
+     review was in the message: re-run the reviewer once, then escalate.
    - Architecture task: also `/code-review <pr>`, always with the number.
 
 4. **Decide** on the label the reviewer applied.
