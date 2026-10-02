@@ -26,8 +26,14 @@ async function probe(withAgent) {
     args: ['run', '--dir', dir, '--agent', 'reviewer', '--model', 'opencode-go/no-such-model-for-tests'],
     prompt: 'line one\nline two', workDir: dir, title: 'harness-real', opencode,
     pollMs: 1000, startupTimeoutMs: 90_000, idleTimeoutMs: 90_000, totalTimeoutMs: 150_000,
-    env: { ...process.env, OPENCODE_API_KEY: '', OPENROUTER_API_KEY: '' },
+    env: clean({ ...process.env, OPENCODE_API_KEY: '', OPENROUTER_API_KEY: '' }),
   });
+}
+// These tests read the project's own .opencode/: drop the reviewer's settings (review.mjs, L34) a
+// review run may have left in the environment, which made one of them fail inside a review.
+function clean(env) {
+  const { OPENCODE_CONFIG_DIR: _dir, OPENCODE_DISABLE_PROJECT_CONFIG: _off, ...rest } = env;
+  return rest;
 }
 
 test('real OpenCode: the session is found, and the agent it ran on is read from its record', { skip }, async () => {

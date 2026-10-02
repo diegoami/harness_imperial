@@ -60,6 +60,15 @@ function implement(p, env, ...args) {
 
 const posix = { skip: process.platform === 'win32' };
 
+test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)', posix, async () => {
+  const p = project();
+  const r = implement(p, { FAKE_OC_MODE: 'implement', OPENCODE_DISABLE_PROJECT_CONFIG: '1', OPENCODE_CONFIG_DIR: path.join(p.base, 'elsewhere') });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  assert.equal(session.projectConfig, 'read');
+  assert.equal(session.agentFile, path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md'));
+});
+
 test('a task runs to an open PR, in its own worktree, with the agent kept out of git', posix, async () => {
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement' });
