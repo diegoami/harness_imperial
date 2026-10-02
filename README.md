@@ -19,6 +19,8 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/docs/lessons.md` | The failure behind every rule. A rule without one does not get in. |
 | `template/.claude/skills/run-task/SKILL.md` | `/run-task`: implement, review, merge, report. |
 | `template/tools/harness/implement.mjs` | Runs a task's implementer on OpenCode in its own worktree, and checks the handover. |
+| `template/.claude/agents/reviewer.md`, `implementer.md` | The Claude reviewer and fallback implementer. Each carries its brief's fixed text from `process.md` §4/§5, and a `PreToolUse` hook (`tools/harness/guard.mjs`) that refuses the commands the role may not run: every write for the reviewer; `git stash`, `git worktree`, force-push and `gh pr merge` for the implementer. |
+| `template/tools/harness/post-review.mjs` | Posts a Claude reviewer's returned review through the same reader and writer as `review.mjs` (`lib/post.mjs`), so only one component writes reviews to GitHub. |
 | `template/tools/harness/review.mjs` | Runs a review on OpenCode, never on the implementer's model family, and posts it. |
 | `template/tools/harness/lib/opencode.mjs` | The watched runner that both use. |
 | `template/.opencode/agents/` | The OpenCode agents, with the permission deny-lists. |
@@ -87,7 +89,12 @@ Exit codes, for both scripts:
 - 1: the main session decides;
 - 3: OpenCode unavailable, a login missing, or no review, so the caller runs Claude (Sonnet
   implements, Opus reviews);
-- 4 (`review.mjs` only): a review was posted under a note; read it and decide.
+- 4 (`review.mjs` and `post-review.mjs`): a review was posted under a note; read it and decide.
+
+The Claude agents' guard blocks a refused command with exit 2, which Claude Code shows the agent as
+the tool's error. The hook runs `node "$CLAUDE_PROJECT_DIR/tools/harness/guard.mjs" <role>`, from the
+main checkout, never the worktree. The documentation does not say which shell runs hooks on Windows:
+check it there on first use (#1).
 
 ## Jev: the third delegate
 

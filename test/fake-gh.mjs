@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A stand-in for `gh`: only what implement.mjs and review.mjs call.
+// A stand-in for `gh`: only what implement.mjs, review.mjs and post-review.mjs call.
 // FAKE_GH_STATE holds { prs: [{ number, head, url, sha, labels }], comments: [], issueLabels: {} }.
 import fs from 'node:fs';
 const args = process.argv.slice(2);

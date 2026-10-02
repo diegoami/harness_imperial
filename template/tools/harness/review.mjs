@@ -35,11 +35,11 @@
 // model.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
-import { runChain, excludeImplementers, readReview, doneWhenCount, accountDoneWhen, briefTargets } from './lib/chain.mjs';
+import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
+import { planPost, publish } from './lib/post.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ocArgs, prepareOpenCode,
@@ -182,43 +182,9 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
 const reasons = result.failures.map((f) => `${f.name} failed: ${f.reason}`).join('; ');
 if (!result.ok) die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}`);
 
-const { kind, review, verdict, note, rewrites, header, model } = result.value;
-for (const r of rewrites) say(`rewrote a closing keyword: ${r}`);
-const lines = review.split('\n');
-if (reasons && kind === 'ok') lines[0] = header.replace(/\)\s*$/, `; ${reasons})`);
-// An approve that does not account for every Done-when line is not an approval (L32).
-const dw = kind === 'ok' && doneWhen ? accountDoneWhen(review, doneWhen)
-  : { missing: [], notRun: [], malformed: [], repeated: [] };
-const unaccounted = verdict === 'approve'
-  ? [dw.missing.length && `no DW line for Done-when ${dw.missing.join(', ')}`,
-    dw.repeated.length && `more than one DW line for Done-when ${dw.repeated.join(', ')}`,
-    dw.malformed.length && `the DW line for Done-when ${dw.malformed.join(', ')} is neither "ran <command> → <result>" nor "not run — <reason>"`,
-    dw.notRun.length && `Done-when ${dw.notRun.join(', ')} not run`].filter(Boolean).join('; ') || null
-  : null;
-const flagNote = kind === 'flagged'
-  ? `> Note from tools/harness/review.mjs: ${note}; no label applied${reasons ? ` (${reasons})` : ''}. `
-    + 'The main session reads this review and decides.\n\n' : '';
-const dwNote = unaccounted
-  ? `> Note from tools/harness/review.mjs: approve not applied: ${unaccounted} (L32). The main session decides: `
-    + 'a supplementary review of those lines, or a rework.\n\n' : '';
-const body = `${flagNote}${dwNote}${lines.join('\n')}\n\n— ${result.name}, via tools/harness/review.mjs (${model.id})`;
-const label = kind === 'flagged' || unaccounted ? null
-  : verdict === 'approve' ? 'status:approved' : verdict === 'user decision' ? null : 'status:rework';
-const code = kind === 'flagged' || unaccounted ? 4 : 0;
-if (a['dry-run']) {
-  say(body);
-  say(`dry run: would post the above${a['apply-label'] && label ? `, label ${label}` : ', no label'}, and exit ${code}.`);
-  process.exit(0);
-}
-
-const bodyFile = path.join(os.tmpdir(), `harness-review-${a.pr}-${randomBytes(3).toString('hex')}.md`);
-fs.writeFileSync(bodyFile, body);
-sh('gh', ['pr', 'comment', String(a.pr), '--body-file', bodyFile], { cwd: top });
-fs.rmSync(bodyFile, { force: true });
-if (unaccounted) die(4, `posted: ${lines[0]} / approve, not applied: ${unaccounted}. Decide on PR ${a.pr}: a supplementary review of those lines, or a rework.`);
-if (kind === 'flagged') die(4, `posted: ${lines[0]}, flagged (${note}); no label. Read the review on PR ${a.pr} and decide.`);
-say(`posted: ${lines[0]} / ${verdict}`);
-if (a['apply-label']) {
-  if (label) sh('gh', ['issue', 'edit', String(a.issue), '--add-label', label, '--remove-label', 'status:in-review'], { cwd: top });
-  else say('verdict "user decision" applies no label; the main session decides.');
-}
+const { header, model } = result.value;
+const plan = planPost({
+  read: result.value, header, reasons, doneWhen, source: 'tools/harness/review.mjs',
+  signature: `${result.name}, via tools/harness/review.mjs (${model.id})`,
+});
+publish({ plan, pr: a.pr, issue: a.issue, applyLabel: a['apply-label'], dryRun: a['dry-run'], top, say, die });
