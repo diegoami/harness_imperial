@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readReview, rewriteClosingKeywords, doneWhenCount, accountDoneWhen } from '../template/tools/harness/lib/chain.mjs';
+import { readReview, rewriteClosingKeywords, doneWhenCount, accountDoneWhen, briefTargets } from '../template/tools/harness/lib/chain.mjs';
 import { SAMPLES, H } from '../template/tools/harness/lib/review-selftest.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -55,4 +55,10 @@ test('a review accounts for each Done-when line, or says which it did not (L32)'
   // Luna's R1 on PR 22: any other text, or the same number twice, does not account for a line.
   assert.deepEqual(accountDoneWhen('DW1: nonsense\nDW2: ran it\nDW3: not run', 3), { ...none, malformed: [1, 2, 3] });
   assert.deepEqual(accountDoneWhen('DW1: not run — no key\nDW1: ran a → ok', 1), { ...none, repeated: [1] });
+});
+
+test('the commits a brief names as the one to review: after "at", "HEAD is" or "HEAD:" (#23)', () => {
+  const h = (c) => c.repeat(40);
+  assert.deepEqual(briefTargets(`You review PR #4 at ${h('a')}.\n0. HEAD is \`${h('B')}\`\nHEAD: ${h('c')}`), [h('a'), h('b'), h('c')]);
+  assert.deepEqual(briefTargets(`Merged as ${h('d')}; see ${h('e')}. At 7 lines, abc1234 is short.`), []);
 });

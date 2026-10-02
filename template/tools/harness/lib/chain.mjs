@@ -198,3 +198,10 @@ export function accountDoneWhen(review, count) {
     malformed: all.filter((k) => one(k) !== null && !ran(one(k)) && !notRun(one(k))),
   };
 }
+
+// The commits a brief names as the one to review: a full 40-hex hash after "at", "HEAD is" or
+// "HEAD:", as process.md §5's brief writes them ("You review PR #<n> at <sha>", "HEAD is <sha>").
+// Other hashes (a PR body citing another commit) are not targets and are left alone (#23).
+export function briefTargets(brief) {
+  return [...String(brief).matchAll(/\b(?:at|HEAD\s+is|HEAD:)\s+`?([0-9a-fA-F]{40})\b/g)].map((m) => m[1].toLowerCase());
+}
