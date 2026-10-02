@@ -97,6 +97,11 @@ const startRemote = originSha();
 const startPr = openPr();
 fs.writeFileSync(logFile, '');
 
+// The implementer runs on the agent copied into its worktree, so it must not inherit the reviewer's
+// settings (review.mjs, L34) from a session that ran a review: OPENCODE_DISABLE_PROJECT_CONFIG would
+// hide that agent, and OPENCODE_CONFIG_DIR would put another in its place.
+const { OPENCODE_CONFIG_DIR: _dir, OPENCODE_DISABLE_PROJECT_CONFIG: _off, ...implementEnv } = pre.env;
+
 const result = await runChain({
   chain: pre.usable,
   log: say,
@@ -108,7 +113,7 @@ const result = await runChain({
       const run = await runOpenCodeWatched({
         args: ocArgs(worktree, impl.agent, model), prompt, workDir: worktree, title: `${name}-${m}`,
         startupTimeoutMs: impl.startupTimeoutSec * 1000, idleTimeoutMs: impl.idleTimeoutSec * 1000,
-        totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: pre.env, log: say,
+        totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: implementEnv, log: say,
       });
       output = run.output;
       if (run.exitCode !== 0) reason = `exit ${run.exitCode}`;

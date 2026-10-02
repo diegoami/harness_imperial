@@ -65,6 +65,10 @@ added. Each behaviour exists because a run failed without it:
 - With a longer chain, they move on only after an infrastructure failure that left no commit, push
   or PR, and stop after the same failure twice.
 - The review never runs on the implementer's model family.
+- The reviewer's agent and OpenCode config come from the main session's checkout, never from the
+  PR under review: `OPENCODE_CONFIG_DIR` points there, and `OPENCODE_DISABLE_PROJECT_CONFIG=1` keeps
+  OpenCode from reading the PR's own `.opencode/`. Without them, a PR's own `reviewer.md` is the
+  one loaded (checked on 1.18.34), so a PR could loosen its reviewer's permissions (L34).
 - A review is never thrown away (L28). Only output with no review at all falls back.
   - A readable review is posted normalised and acted on. It may come through Markdown decoration, a
     `Verdict:` prefix, punctuation, a where-I-worked block before the verdict, a sign-off after the

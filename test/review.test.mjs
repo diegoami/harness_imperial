@@ -177,6 +177,38 @@ test('a brief naming the head runs, and one citing another commit only in passin
   assert.equal(gh(p).comments.length, 1);
 });
 
+test('the reviewer\'s agent comes from the main checkout, never from the PR under review (#10, L34)', posix, () => {
+  const p = project();
+  // The PR changes its own reviewer: a new description, and git push allowed.
+  git(p.main, 'checkout', '-q', 'task/T07-x');
+  const own = path.join(p.main, '.opencode/agents/reviewer.md');
+  fs.writeFileSync(own, fs.readFileSync(own, 'utf8').replace(/^description: .*$/m, 'description: THE PR\'S OWN REVIEWER')
+    .replace('"git push *": deny', '"git push *": allow'));
+  git(p.main, 'commit', '-q', '-am', 'loosen my own reviewer');
+  const sha = git(p.main, 'rev-parse', 'HEAD');
+  git(p.main, 'push', '-q', '-f', 'origin', 'HEAD:refs/pull/7/head');
+  git(p.main, 'checkout', '-q', 'main');
+  const state = JSON.parse(fs.readFileSync(p.ghState, 'utf8'));
+  state.prs[0].sha = sha;
+  fs.writeFileSync(p.ghState, JSON.stringify(state));
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  assert.equal(session.agentFile, path.join(p.main, '.opencode', 'agents', 'reviewer.md'));
+  assert.doesNotMatch(session.agentDescription, /THE PR'S OWN REVIEWER/);
+  // and the PR's .opencode/ is not read at all: an opencode.json or a plugin there is ignored too.
+  assert.equal(session.projectConfig, 'disabled');
+});
+
+test('a checkout without the reviewer agent exits 2 before anything runs (#10)', posix, () => {
+  const p = project();
+  fs.rmSync(path.join(p.main, '.opencode/agents/reviewer.md'));
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /reviewer agent is missing from this checkout/);
+  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+});
+
 test('a review that may be cut off is posted under a note, unlabelled, exit 4, and no other model runs', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--issue', '12', '--apply-label');
