@@ -9,7 +9,9 @@
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
 //   ids harness.json names. A provider with none fails like OpenCode 1.18.34 ("Provider not
 //   found"). FAKE_OC_MODELS_ERROR: stderr for a `models` that fails for another reason.
-//   Each session records the XDG_DATA_HOME it ran with, and the prompt it was given.
+//   Each session records the XDG_DATA_HOME it ran with, the prompt it was given, and the agent file
+//   OpenCode 1.18.34 would load (checked by hand): OPENCODE_CONFIG_DIR's agents/ over the
+//   project's .opencode/agents/; with OPENCODE_DISABLE_PROJECT_CONFIG=1 never the project's.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -58,10 +60,20 @@ const commit = () => {
 };
 const agent = arg('--agent');
 const id = `ses_${Math.random().toString(36).slice(2, 10)}`;
+const agentFile = (() => {
+  if (!agent) return null;
+  const dirs = [
+    ...(process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? [] : [path.join(process.cwd(), '.opencode')]),
+    ...(process.env.OPENCODE_CONFIG_DIR ? [process.env.OPENCODE_CONFIG_DIR] : []),
+  ];
+  return dirs.map((d) => path.join(d, 'agents', `${agent}.md`)).filter((f) => fs.existsSync(f)).at(-1) ?? null;
+})();
 const createSession = (recordedAgent = agent) => {
   const s = load();
   s.push({ id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
-    dataHome: process.env.XDG_DATA_HOME ?? null, prompt: rest.at(-1) });
+    dataHome: process.env.XDG_DATA_HOME ?? null, prompt: rest.at(-1), agentFile,
+    projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
+    agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null });
   save(s);
 };
 const touch = () => { const s = load(); const x = s.find((y) => y.id === id); if (x) { x.updated = Date.now(); save(s); } };

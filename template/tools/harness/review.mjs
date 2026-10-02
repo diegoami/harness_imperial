@@ -42,7 +42,7 @@ import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/o
 import { runChain, excludeImplementers, readReview, doneWhenCount, accountDoneWhen, briefTargets } from './lib/chain.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
-  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
+  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ocArgs, prepareOpenCode,
 } from './lib/common.mjs';
 
 const say = (s) => console.log(s);
@@ -72,7 +72,7 @@ requireTools('git', 'gh');
 
 const top0 = sh('git', ['rev-parse', '--show-toplevel']);
 const config = loadConfig(top0);
-const { top, commonDir, workRoot } = repoPaths(config);
+const { top, workRoot } = repoPaths(config);
 const rev = config.reviewer;
 
 // The implementer's family never reviews.
@@ -91,6 +91,14 @@ const pre = await prepareOpenCode({ opencode, chain, models: config.models, env:
 for (const p of pre.problems) say(p);
 if (!pre.usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
 
+// The reviewer's agent and OpenCode config come from this checkout, the main session's, never from
+// the PR under review: OpenCode reads a project's .opencode/ by default, so a PR's own reviewer.md
+// (or anything else it puts there) would decide what its reviewer may do. Checked on OpenCode
+// 1.18.34: without these two variables a PR's reviewer.md with `git push *: allow` was the one
+// loaded (#10, L34; ic2-conquest's reviewer does the same).
+const agentFile = path.join(top, '.opencode', 'agents', `${rev.agent}.md`);
+if (!fs.existsSync(agentFile)) die(2, `The reviewer agent is missing from this checkout: ${agentFile}. Nothing run.`);
+const reviewEnv = { ...pre.env, OPENCODE_CONFIG_DIR: path.join(top, '.opencode'), OPENCODE_DISABLE_PROJECT_CONFIG: '1' };
 const headSha = sh('gh', ['pr', 'view', String(a.pr), '--json', 'headRefOid', '--jq', '.headRefOid'], { cwd: top });
 // A brief that names another commit as the one to review would make the reviewer's tree proof stop
 // it after a billed run (#23): refuse it before any worktree or model run.
@@ -116,7 +124,6 @@ const newTree = () => {
   fs.mkdirSync(workRoot, { recursive: true });
   sh('git', ['-C', top, 'worktree', 'add', '--detach', worktree, headSha]);
   created = true;
-  ensureAgent({ top, commonDir, worktree, agent: rev.agent });
   say(`worktree: ${worktree} at ${headSha}`);
 };
 
@@ -152,7 +159,7 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
         run = await runOpenCodeWatched({
           args: ocArgs(worktree, rev.agent, model), prompt, workDir: worktree, title: `pr${a.pr}-${m}`,
           startupTimeoutMs: rev.startupTimeoutSec * 1000, idleTimeoutMs: rev.idleTimeoutSec * 1000,
-          totalTimeoutMs: rev.totalTimeoutSec * 1000, opencode, env: pre.env, log: say,
+          totalTimeoutMs: rev.totalTimeoutSec * 1000, opencode, env: reviewEnv, log: say,
         });
       } catch (e) {
         if (!(e instanceof OpenCodeInfraError)) throw e;
