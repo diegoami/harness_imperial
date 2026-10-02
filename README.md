@@ -25,6 +25,8 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/tools/harness/jev.mjs`, `lib/jev.mjs` | Delegates repeated decisions to Jev: `trial` against labels, then `route` the confident ends. |
 | `template/.claude/skills/jev/SKILL.md` | `/jev`: when a decision fits Jev, and the define, label, trial, route procedure. |
 | `template/.claude/skills/delegate/SKILL.md` | `/delegate`: which delegate fits the work (Claude, OpenCode, Jev, OpenRouter, ElevenLabs), and picking its model from a live list. |
+| `template/tools/harness/switch-model.mjs`, `lib/switch.mjs` | Switches the implementer's or reviewer's model in `harness.json`. It checks the live id and the login, keeps effort `high`, enforces the family rule, and can run a one-word probe first. |
+| `template/.claude/skills/switch-model/SKILL.md` | `/switch-model`: why, the candidates (live), a dry run with a probe, the user's yes, the switch and its commit. |
 | `template/tools/harness/models.mjs` | Lists the models OpenRouter or ElevenLabs offer now, filtered by input and output (text, image, audio). |
 | `template/harness.json` | Models, chains, timeouts, providers, and the Jev decisions with their cutoffs. |
 | `template/docs/tasks/`, `template/.github/pull_request_template.md` | The task-file and PR formats. |
