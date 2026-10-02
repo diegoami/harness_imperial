@@ -168,7 +168,7 @@ reproduce each failure above. The cases are:
 - a failed run that left a commit, an implementer that stops and reports, and the same failure
   twice;
 - the review reader's self-test (`lib/review-selftest.mjs`, run by `review.mjs --self-test` and by
-  `test/review-reader.test.mjs`). Its 33 samples assert the outcome and the text kept: decorated,
+  `test/review-reader.test.mjs`). Its 34 samples assert the outcome and the text kept: decorated,
   prefixed, punctuated, where-I-worked, signed-off and one-line reviews; closing keywords; findings
   after the closing verdict; cut-off and unreadable reviews, also on one line; and tool chatter
   only;
