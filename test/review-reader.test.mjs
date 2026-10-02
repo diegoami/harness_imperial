@@ -45,6 +45,8 @@ test('the Done-when lines are counted from the task file in the brief, or a head
   // A mention of the field in prose is not the field (found reviewing PR 22's own body).
   assert.equal(doneWhenCount('- **Counts** from a `**Done when**` field.\n- **Other**: x\n\n**Done when**\n1. a\n2. b\n3. c\n\n**Overlap**'), 3);
   assert.equal(doneWhenCount('**Done when:** the table is posted.'), 0);
+  // An indented bold sub-bullet under a Done-when line does not end the list (PR 27's own body).
+  assert.equal(doneWhenCount('**Done when**\n1. `npm test` passes, including:\n   - **against the real OpenCode:** x\n2. the self-test passes.\n\n🤖 Generated'), 2);
 });
 
 test('a review accounts for each Done-when line, or says which it did not (L32)', () => {

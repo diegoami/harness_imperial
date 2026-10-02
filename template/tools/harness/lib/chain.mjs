@@ -170,7 +170,9 @@ export function doneWhenCount(brief) {
   if (start < 0) return 0;
   let n = 0;
   for (const l of lines.slice(start + 1)) {
-    if (/^\s*-\s+\*\*|^#{1,6}\s|^-{3,}\s*$/.test(l)) break;     // the next field, heading or rule
+    // The next field (an unindented "- **Field**", as in the task template), heading or rule. An
+    // indented bold sub-bullet under a Done-when line is part of it (found on PR 27's own body).
+    if (/^[-*+]\s+\*\*|^#{1,6}\s|^-{3,}\s*$/.test(l)) break;
     if (/^\s*\d+\.\s/.test(l)) n++;
   }
   return n;
