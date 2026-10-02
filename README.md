@@ -135,6 +135,19 @@ Each runs at effort `high`, never `max`.
 
 Add models to a `chain` when a real failure shows you need them, not before (L14).
 
+## Reviewing this repository's PRs
+
+harness_imperial reviews its own PRs with its own tool, like any project that adopts it. The root
+`harness.json` and `.opencode/agents/` are copies of the template's (`test/self-config.test.mjs`
+keeps them equal), so from the root:
+
+```sh
+node template/tools/harness/review.mjs --pr <n> --brief <brief> --exclude claude
+```
+
+Claude writes this repository's PRs, so a Claude agent never reviews them (the family rule): Luna
+does, on the direct OpenAI route.
+
 ## Tests
 
 ```sh
