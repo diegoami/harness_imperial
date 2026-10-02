@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseModality, openrouterModels, elevenlabsModels, filterModels } from '../template/tools/harness/lib/models.mjs';
+import { parseModality, openrouterModels, elevenlabsModels, filterModels, formatModels } from '../template/tools/harness/lib/models.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tool = path.resolve(here, '../template/tools/harness/models.mjs');
@@ -18,17 +18,19 @@ const OR = {
     { id: 'txt/coder', name: 'Coder', architecture: { modality: 'text->text' }, pricing: { prompt: '0.0000003', completion: '0.0000012' } },
     { id: 'aud/listen', name: 'Listen', architecture: { modality: 'text+audio->text' }, pricing: {} },
     { id: 'odd/shape' },
+    { id: 'openrouter/auto', name: 'Auto', architecture: { modality: 'text->text' }, pricing: { prompt: '-1', completion: '-1', image: '-1' } },
   ],
 };
 const EL = [
   { model_id: 'eleven_multilingual_v9', name: 'Multilingual v9', can_do_text_to_speech: true, can_do_voice_conversion: false, languages: [{ language_id: 'it' }, { language_id: 'en' }] },
   { model_id: 'eleven_sfx', name: 'Sound effects', can_do_text_to_speech: false },
+  { model_id: 'eleven_multilingual_sts_v2', name: 'Speech to speech', can_do_text_to_speech: false, can_do_voice_conversion: true },
 ];
 
 test('modalities come from the arrays, or from the "in->out" string', () => {
   assert.deepEqual(parseModality('text+image->text'), { input: ['text', 'image'], output: ['text'] });
   const m = openrouterModels(OR);
-  assert.deepEqual(m.map((x) => x.output), [['image'], ['text'], ['text'], []]);
+  assert.deepEqual(m.map((x) => x.output), [['image'], ['text'], ['text'], [], ['text']]);
   assert.deepEqual(m[2].input, ['text', 'audio']);
 });
 
@@ -37,6 +39,21 @@ test('prices are per million tokens; an unexpected shape is kept, not dropped', 
   assert.equal(m[1].price.inputPerM.toFixed(2), '0.30');
   assert.equal(m[0].price.image, 0.04);
   assert.equal(m[3].id, 'odd/shape');
+});
+
+test('a negative OpenRouter price is the variable-price sentinel, shown as such', () => {
+  const auto = openrouterModels(OR).at(-1);
+  assert.deepEqual(auto.price, { inputPerM: 'variable', outputPerM: 'variable', image: 'variable' });
+  assert.equal(formatModels([auto]), 'openrouter/auto\ttext->text\tin variable out variable image variable');
+  assert.equal(formatModels([openrouterModels(OR)[0]]), 'img/gen-1\ttext->image\tin $1.00/M out $4.00/M image $0.04');
+});
+
+test('a voice-conversion (speech-to-speech) model takes audio in; sound effects default to text', () => {
+  const m = elevenlabsModels(EL);
+  assert.deepEqual(m.find((x) => x.id === 'eleven_multilingual_sts_v2').input, ['audio']);
+  assert.deepEqual(m.find((x) => x.id === 'eleven_sfx').input, ['text']);
+  assert.deepEqual(m[0].input, ['text']);
+  assert.deepEqual(filterModels(m, { input: 'audio' }).map((x) => x.id), ['eleven_multilingual_sts_v2']);
 });
 
 test('ElevenLabs models carry their capabilities and languages', () => {
@@ -86,7 +103,7 @@ test('openrouter lists image models from the live list, with the key when set', 
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^img\/gen-1\ttext->image\tin \$1\.00\/M out \$4\.00\/M image \$0\.04$/m);
   assert.doesNotMatch(r.stdout, /coder/);
-  assert.match(r.stderr, /1 of 4 models/);
+  assert.match(r.stderr, /1 of 5 models/);
   assert.equal(seen.at(-1).url, '/or/v1/models');
   assert.equal(seen.at(-1).headers.authorization, 'Bearer k');
 });

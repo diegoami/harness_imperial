@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { sh, repoPaths, loadConfig, parseArgs } from './lib/common.mjs';
-import { JevUnavailable, askAll, httpPost, jevSettings, questionFor, route, trial } from './lib/jev.mjs';
+import { JevUnavailable, askAll, httpPost, jevSettings, questionFor, route, trial, formatCost } from './lib/jev.mjs';
 
 const die = (code, s) => { console.error(s); process.exit(code); };
 const [cmd, ...rest] = process.argv.slice(2);
@@ -56,7 +56,7 @@ const { answers, error, cost } = await askAll({
   cacheDir: path.join(workRoot, '.jev-cache', a.decision),
 });
 const write = (rows) => { if (a.out) fs.writeFileSync(a.out, rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : '')); };
-const spent = `$${cost.toFixed(4)} (${answers.filter((x) => x.cached).length} cached)`;
+const spent = `${formatCost(cost)} (${answers.filter((x) => x.cached).length} cached)`;
 
 if (cmd === 'ask') {
   write(answers);
