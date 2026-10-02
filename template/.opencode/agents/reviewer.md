@@ -35,6 +35,10 @@ how the run works.
 - Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
   OpenCode rejects a path outside it, and the script then discards the whole review. Call tools by
   name from PATH; never inspect where they are installed.
+  Run every shell command from the worktree root with paths relative to it (`grep -n X src/a.cs`,
+  not `cd src && grep -n X a.cs`). Never `cd`, and never write `..` in a command: OpenCode checks
+  paths against the worktree root, not against an earlier `cd` in the same command, so
+  `cd a && …; cd ../b` is rejected as outside the worktree, and the run fails (L31).
 - Re-run every Done-when line yourself; the PR's evidence is a convenience, never the proof. Prove
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or
   label it unverified. A claim that nothing failed is re-taken before it is believed.

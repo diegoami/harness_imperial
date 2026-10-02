@@ -163,6 +163,14 @@ test('the run uses the scripts\' own data directory, with auth.json copied in', 
   assert.doesNotMatch(r.stdout + r.stderr, /never printed/);
 });
 
+test('a review rejected for cd or .. says so, naming L31 (#14)', posix, () => {
+  const p = project({ chain: ['luna'] });
+  const r = review(p, { FAKE_OC_MODE: 'permission-cd' });
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /permission rejected: external_directory \(\/tmp\/\*\); the rejected command used cd or \.\..*\(L31\)/);
+  assert.equal(gh(p).comments.length, 0);
+});
+
 test('a review whose tool call was rejected is never posted, even when it looks complete', posix, () => {
   const p = project({ chain: ['luna'] });
   const r = review(p, { FAKE_OC_MODE: 'permission-review' });
