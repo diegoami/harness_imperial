@@ -77,6 +77,18 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.doesNotMatch(git(p.main, 'worktree', 'list'), /review/);
 });
 
+test('the reviewer runs git in its worktree and is never asked to type its path (L30)', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  assert.match(session.prompt, /it is already your working directory\. Run git\n {2}there without -C, and never type that path/);
+  assert.doesNotMatch(session.prompt, /git -C/);
+  const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').split(/^---$/m).slice(2).join('');
+  assert.doesNotMatch(instructions, /git -C/);
+  assert.match(instructions, /git rev-parse --show-toplevel/);
+});
+
 test('a review that may be cut off is posted under a note, unlabelled, exit 4, and no other model runs', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--issue', '12', '--apply-label');
