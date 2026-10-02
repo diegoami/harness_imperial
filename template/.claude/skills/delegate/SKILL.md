@@ -32,6 +32,7 @@ another way, or tell the user what is missing (`docs/environment.md`).
      reviewer.
 
    Do the same when you are unsure a model still exists. (L25)
+   To change the implementer's or reviewer's model itself, use `/switch-model`.
 2. **Choose on the evidence you have.** In order of preference:
    - this project's own measurements (review rounds and tokens per task, from the merge comments);
    - a small trial;
