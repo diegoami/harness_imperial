@@ -14,15 +14,23 @@ const root = path.resolve(here, '../template');
 const REFUSED = {
   reviewer: ['git commit -m x', 'git -C /w commit -am x', 'npm test && git push origin HEAD', 'gh pr comment 7 --body x',
     'gh pr merge 7', 'gh pr edit 7 --add-label x', 'gh issue edit 3 --add-label status:approved', 'echo ok; gh pr review 7 --approve',
-    'GH_TOKEN=x gh issue comment 3 -b y', '(git push)'],
+    'GH_TOKEN=x gh issue comment 3 -b y', '(git push)',
+    // Luna's R1 and R2 on PR 29: an escaped quote, a nested shell, a gh api write.
+    'echo \\"; git push origin HEAD', "bash -c 'git push origin HEAD'", 'sh -c "npm test && git commit -m x"',
+    'eval git push', 'env FOO=1 git push', 'xargs git push', 'git push & wait',
+    'gh api -X DELETE repos/o/r/issues/3', 'gh api --method=POST repos/o/r/issues', 'gh api repos/o/r/issues/3/comments -f body=x',
+    'gh pr ready 7', 'gh label create x', 'gh repo delete o/r'],
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
-    'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash'],
+    'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
+    'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge'],
 };
 const ALLOWED = {
   reviewer: ['git log --oneline | head', 'git diff --name-only origin/main...HEAD', 'gh pr view 7 --json body',
-    'git checkout -- src/a.js', 'git fetch origin pull/7/head', 'npm test', 'grep -rn "git push" docs', 'echo "gh pr merge is not for you"'],
+    'git checkout -- src/a.js', 'git fetch origin pull/7/head', 'npm test', 'grep -rn "git push" docs', 'echo "gh pr merge is not for you"',
+    'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls',
+    'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'"],
   implementer: ['git commit -m "fix; then git stash nothing"', 'git push origin task/T07-x', 'git push -u origin task/T07-x',
-    'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test'],
+    'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7'],
 };
 
 for (const role of ['reviewer', 'implementer']) {
@@ -36,6 +44,7 @@ for (const role of ['reviewer', 'implementer']) {
 
 test('simpleCommands splits at ; && || | ( ) $( ) and newlines, but not inside quotes', () => {
   assert.deepEqual(simpleCommands('a && b || c; d | e\nf $(g) "h; i" (j)'), ['a', 'b', 'c', 'd', 'e', 'f', 'g', '"h; i"', 'j']);
+  assert.deepEqual(simpleCommands('echo \\"; git push'), ['echo \\"', 'git push']);          // an escaped quote opens nothing
 });
 
 // The hook itself, fed PreToolUse JSON on stdin as Claude Code does.
@@ -61,10 +70,12 @@ test('the hook refuses what it cannot read, rather than fail open', () => {
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and
 // the briefs' fixed parts equal to process.md's, so the two never drift apart.
-const agent = (name) => fs.readFileSync(path.join(root, '.claude/agents', `${name}.md`), 'utf8');
+// Line endings are normalised: a Windows checkout has CRLF (the test failed there without this).
+const read = (file) => fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+const agent = (name) => read(path.join(root, '.claude/agents', `${name}.md`));
 const front = (text) => text.split(/^---$/m)[1];
 const flat = (s) => s.replace(/\s+/g, ' ').trim();
-const processBlock = (n) => fs.readFileSync(path.join(root, 'docs/process.md'), 'utf8')
+const processBlock = (n) => read(path.join(root, 'docs/process.md'))
   .match(new RegExp(`## ${n}\\..*?\`\`\`text\\n([\\s\\S]*?)\`\`\``, 's'))[1];
 
 test('each agent file declares the guard for its own role on Bash', () => {
