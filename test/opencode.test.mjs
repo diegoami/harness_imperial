@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
-  openCodeHome, listedModels, loginHint,
+  openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem,
 } from '../template/tools/harness/lib/opencode.mjs';
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-opencode.mjs');
@@ -242,4 +242,12 @@ test('a rejection caused by cd or .. in the agent\'s command names L31; any othe
   assert.equal(r.permissionRejected, 'external_directory (/tmp/*)');
   assert.match(r.permissionHint, /\(L31\)/);
   assert.equal((await run('permission')).permissionHint, null);
+});
+
+test('the OpenCode version is read from --version; any major but 1 is refused (#26)', async () => {
+  assert.equal(versionProblem('1.18.34', '/x/opencode'), null);
+  assert.match(versionProblem('2.0.18', '/x/opencode-cli.exe'), /^OpenCode 2\.0\.18 at \/x\/opencode-cli\.exe is not supported: .*desktop app's 2\.x CLI differs \(#26\)/);
+  assert.match(versionProblem(null, '/x/opencode'), /^OpenCode gave no version at \/x\/opencode is not supported/);
+  assert.equal(await openCodeVersion(opencode, { env: setup('ok', { FAKE_OC_VERSION: 'opencode 2.0.18 (desktop)' }).env, cwd: os.tmpdir() }), '2.0.18');
+  assert.equal(await openCodeVersion(opencode, { env: setup('ok', { FAKE_OC_VERSION: 'none' }).env, cwd: os.tmpdir() }), null);
 });

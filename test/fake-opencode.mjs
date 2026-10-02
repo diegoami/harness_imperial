@@ -24,6 +24,12 @@ const save = (s) => { fs.writeFileSync(`${stateFile}.tmp`, JSON.stringify(s)); f
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const forever = () => setInterval(() => {}, 1 << 30);
 
+if (cmd === '--version') {
+  // FAKE_OC_VERSION: what `--version` prints (default 1.18.34); "none" makes it fail.
+  if (process.env.FAKE_OC_VERSION === 'none') process.exit(1);
+  process.stdout.write(`${process.env.FAKE_OC_VERSION ?? '1.18.34'}\n`);
+  process.exit(0);
+}
 if (cmd === 'session') {
   process.stdout.write(JSON.stringify(load()));
   process.exit(0);
