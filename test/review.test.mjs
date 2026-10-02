@@ -133,6 +133,15 @@ test('a dry run of an unaccounted approve says it would apply no label and exit 
   assert.equal(gh(p).comments.length, 0);
 });
 
+test('an approve whose DW lines are malformed or repeated is not applied (Luna\'s R1 on PR 22)', posix, () => {
+  const p = project();
+  withTask(p);
+  const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', ['DW1: ran node a.js → 1', 'DW2: looks fine', 'DW3: not run — x', 'DW3: ran npm test → ok']) }, '--issue', '12', '--apply-label');
+  assert.equal(r.status, 4, r.stderr + r.stdout);
+  assert.match(r.stderr, /more than one DW line for Done-when 3; the DW line for Done-when 2 is neither/);
+  assert.equal(gh(p).issueLabels['12'], undefined);
+});
+
 test('a rework is labelled whatever its DW lines; --done-when overrides the count (L32)', posix, () => {
   const p = project();
   withTask(p);

@@ -176,18 +176,25 @@ export function doneWhenCount(brief) {
   return n;
 }
 
-// Whether a review accounts for each of `count` Done-when lines: one "DW<k>: ran … → …" or
-// "DW<k>: not run — …" line each (L32). An approval with one missing, or one not run, is not an
-// approval. Returns { missing: [k], notRun: [k] }.
+// Whether a review accounts for each of `count` Done-when lines: exactly one line each, either
+// "DW<k>: ran <command> → <result>" or "DW<k>: not run — <reason>" (L32). Anything else on a DW
+// line, or the same number twice, does not account for it (Luna's R1 on PR 22). An approval with a
+// line missing, malformed, repeated or not run is not an approval.
+// Returns { missing: [k], notRun: [k], malformed: [k], repeated: [k] }.
 export function accountDoneWhen(review, count) {
   const seen = new Map();
   for (const l of String(review).split(/\r?\n/)) {
-    const m = l.replace(/[*`_]/g, '').match(/^\s*(?:[-*+]\s+)?DW\s*(\d+)\s*[:.)\-–—]\s*(.*)$/i);
-    if (m) seen.set(Number(m[1]), m[2]);
+    const m = l.replace(/[*_]/g, '').match(/^\s*(?:[-+]\s+)?`?DW\s*(\d+)`?\s*[:.)\-–—]\s*(.*)$/i);
+    if (m) seen.set(Number(m[1]), [...(seen.get(Number(m[1])) ?? []), m[2].trim()]);
   }
   const all = Array.from({ length: count }, (_, i) => i + 1);
+  const one = (k) => (seen.get(k)?.length === 1 ? seen.get(k)[0] : null);
+  const ran = (t) => /^ran\s+\S.*\s(?:→|->)\s*\S/i.test(t);
+  const notRun = (t) => /^not\s+run\s*(?:—|–|-|:)\s*\S/i.test(t);
   return {
     missing: all.filter((k) => !seen.has(k)),
-    notRun: all.filter((k) => seen.has(k) && /^not\s+run\b/i.test(seen.get(k).trim())),
+    repeated: all.filter((k) => seen.get(k)?.length > 1),
+    notRun: all.filter((k) => one(k) !== null && notRun(one(k))),
+    malformed: all.filter((k) => one(k) !== null && !ran(one(k)) && !notRun(one(k))),
   };
 }

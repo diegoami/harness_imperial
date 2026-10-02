@@ -169,10 +169,13 @@ for (const r of rewrites) say(`rewrote a closing keyword: ${r}`);
 const lines = review.split('\n');
 if (reasons && kind === 'ok') lines[0] = header.replace(/\)\s*$/, `; ${reasons})`);
 // An approve that does not account for every Done-when line is not an approval (L32).
-const dw = kind === 'ok' && doneWhen ? accountDoneWhen(review, doneWhen) : { missing: [], notRun: [] };
-const unaccounted = verdict === 'approve' && (dw.missing.length || dw.notRun.length)
-  ? [dw.missing.length && `no DW line for Done-when ${dw.missing.join(', ')}`, dw.notRun.length && `Done-when ${dw.notRun.join(', ')} not run`]
-    .filter(Boolean).join('; ')
+const dw = kind === 'ok' && doneWhen ? accountDoneWhen(review, doneWhen)
+  : { missing: [], notRun: [], malformed: [], repeated: [] };
+const unaccounted = verdict === 'approve'
+  ? [dw.missing.length && `no DW line for Done-when ${dw.missing.join(', ')}`,
+    dw.repeated.length && `more than one DW line for Done-when ${dw.repeated.join(', ')}`,
+    dw.malformed.length && `the DW line for Done-when ${dw.malformed.join(', ')} is neither "ran <command> → <result>" nor "not run — <reason>"`,
+    dw.notRun.length && `Done-when ${dw.notRun.join(', ')} not run`].filter(Boolean).join('; ') || null
   : null;
 const flagNote = kind === 'flagged'
   ? `> Note from tools/harness/review.mjs: ${note}; no label applied${reasons ? ` (${reasons})` : ''}. `

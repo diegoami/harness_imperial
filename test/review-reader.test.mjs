@@ -48,7 +48,11 @@ test('the Done-when lines are counted from the task file in the brief, or a head
 });
 
 test('a review accounts for each Done-when line, or says which it did not (L32)', () => {
-  assert.deepEqual(accountDoneWhen('DW1: ran a → ok\n- **DW2:** not run — no key\nDW4: ran d', 4), { missing: [3], notRun: [2] });
-  assert.deepEqual(accountDoneWhen('DW1: ran a → ok\nDW2. ran b → ok', 2), { missing: [], notRun: [] });
-  assert.deepEqual(accountDoneWhen('R1: fine', 0), { missing: [], notRun: [] });
+  const none = { missing: [], repeated: [], notRun: [], malformed: [] };
+  assert.deepEqual(accountDoneWhen('DW1: ran a → ok\n- **DW2:** not run — no key\nDW4: ran d -> 3 pass', 4), { ...none, missing: [3], notRun: [2] });
+  assert.deepEqual(accountDoneWhen('DW1: ran `a` → ok\nDW2. ran b -> ok', 2), none);
+  assert.deepEqual(accountDoneWhen('R1: fine', 0), none);
+  // Luna's R1 on PR 22: any other text, or the same number twice, does not account for a line.
+  assert.deepEqual(accountDoneWhen('DW1: nonsense\nDW2: ran it\nDW3: not run', 3), { ...none, malformed: [1, 2, 3] });
+  assert.deepEqual(accountDoneWhen('DW1: not run — no key\nDW1: ran a → ok', 1), { ...none, repeated: [1] });
 });
