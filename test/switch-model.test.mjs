@@ -49,6 +49,12 @@ test('refused: max effort, the other role\'s family (unless forced), a taken nam
   assert.match(forced.conflict, /every review would exit 3/);
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', name: 'luna' }), /already holds openai\/gpt-6-luna/);
   assert.throws(() => planSwitch(template(), { role: 'tester', id: 'opencode-go/kimi-k3' }), /--role must be/);
+  // --family cannot carry a model past the family rule (Luna's R1 on PR 17).
+  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', family: 'kimi' }),
+    /^Error: Refused: --family kimi contradicts opencode-go\/deepseek-v4-pro, whose vendor is deepseek/);
+  assert.match(planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', family: 'kimi', force: true }).conflict,
+    /^deepseek is also the implementer's family/);
+  assert.equal(planSwitch(template(), { role: 'reviewer', id: 'opencode-go/space-bunny-free', family: 'bunny' }).entry.family, 'bunny');
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'kimi-k3' }), /provider\/model id/);
 });
 

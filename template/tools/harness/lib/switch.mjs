@@ -11,10 +11,14 @@ const FAMILIES = [
   [/^mimo/, 'mimo'], [/^grok/, 'xai'], [/^gemini/, 'google'], [/^longcat/, 'longcat'],
   [/^hy\d/, 'hunyuan'], [/^(llama|muse)/, 'meta'], [/^mistral|^devstral|^codestral/, 'mistral'],
 ];
+const modelPart = (id) => String(id).split('/').slice(1).join('/').toLowerCase();
+// The vendor's family when the id names a known vendor, else null: only then may --family name it.
+export function knownFamilyOf(id) {
+  return FAMILIES.find(([re]) => re.test(modelPart(id)))?.[1] ?? null;
+}
 export function familyOf(id) {
-  const model = String(id).split('/').slice(1).join('/').toLowerCase();
-  const hit = FAMILIES.find(([re]) => re.test(model));
-  return hit ? hit[1] : (model.match(/^[a-z]+/)?.[0] ?? model);
+  const model = modelPart(id);
+  return knownFamilyOf(id) ?? (model.match(/^[a-z]+/)?.[0] ?? model);
 }
 
 // The harness.json name for an id: the existing entry's, else the id's model part.
@@ -27,7 +31,9 @@ export function nameOf(config, id) {
  * The new harness.json for making `id` the role's one model (L27): the entry is added or updated,
  * the role's chain becomes [name], and every other model stays for an explicit --model. Refuses a
  * model of the other role's family unless `force`: the reviewer is never the implementer's family,
- * so every review would exit 3.
+ * so every review would exit 3. A `family` that contradicts a known vendor in the id is refused
+ * too, so --family can never carry a model past the family rule (Luna's R1 on PR 17); the vendor's
+ * family is checked either way.
  * Returns { config, name, entry, before, after, conflict } or throws with the reason.
  */
 export function planSwitch(config, { role, id, variant = 'high', name, family, fallback, force = false }) {
@@ -38,11 +44,16 @@ export function planSwitch(config, { role, id, variant = 'high', name, family, f
   const n = name ?? nameOf(config, id);
   const existing = config.models?.[n];
   if (existing && existing.id !== id) throw new Error(`The name ${n} already holds ${existing.id}; pass --name for ${id}.`);
+  const known = knownFamilyOf(id);
+  if (family && known && family !== known && !force) {
+    throw new Error(`Refused: --family ${family} contradicts ${id}, whose vendor is ${known}; the family rule compares vendors. Drop --family, or pass --force.`);
+  }
   const entry = { id, ...(variant ? { variant } : {}), family: family ?? existing?.family ?? familyOf(id) };
   const other = ROLES.find((r) => r !== role);
   const otherFamilies = (config[other]?.chain ?? []).map((m) => config.models?.[m]?.family ?? m);
-  const conflict = otherFamilies.includes(entry.family)
-    ? `${entry.family} is also the ${other}'s family: the reviewer is never the implementer's family, so every review would exit 3 to Claude`
+  const clash = [entry.family, known].find((f) => f && otherFamilies.includes(f));
+  const conflict = clash
+    ? `${clash} is also the ${other}'s family: the reviewer is never the implementer's family, so every review would exit 3 to Claude`
     : null;
   if (conflict && !force) throw new Error(`Refused: ${conflict}. Switch the ${other} too, or pass --force.`);
   const describe = (c) => (c[role]?.chain ?? []).map((m) => `${m} (${c.models?.[m]?.id ?? '?'}, ${c.models?.[m]?.variant ?? 'no variant'})`).join(', ')
