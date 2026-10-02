@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   trial, route, parseAnswer, askAll, httpPost, inTuningHalf, questionFor,
+  formatCost,
 } from '../template/tools/harness/lib/jev.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -178,4 +179,11 @@ test('trial, then route with the recorded cutoffs, end to end', async () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /1 yes, 1 no, 1 for the main session, of 3/);
   assert.deepEqual(fs.readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l).route), ['yes', 'middle', 'no']);
+});
+
+test('a cost is shown with its significant digits, never rounded away to $0.0000', () => {
+  assert.equal(formatCost(0), '$0');
+  assert.equal(formatCost(0.000033768), '$0.000034');
+  assert.equal(formatCost(0.0042), '$0.0042');
+  assert.equal(formatCost(0.12345), '$0.1235');
 });

@@ -158,3 +158,9 @@ export function jevSettings(config, env = process.env) {
   if (!apiKey) throw new JevUnavailable(`${jev.apiKeyEnv} is not set, so Jev is off`);
   return { ...jev, apiKey };
 }
+
+// A cost to show: Jev's answers cost fractions of a cent, so "$0.0000" would hide them.
+export function formatCost(usd) {
+  if (!usd) return '$0';
+  return usd >= 0.01 ? `$${usd.toFixed(4)}` : `$${Number(usd.toPrecision(2))}`;
+}
