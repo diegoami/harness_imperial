@@ -1,0 +1,58 @@
+{
+  "worktreeRoot": "../{repo}-work",
+  "models": {
+    "deepseek-flash": {
+      "id": "opencode-go/deepseek-v4.1-flash",
+      "variant": "high",
+      "family": "deepseek"
+    },
+    "luna": {
+      "id": "openai/gpt-6-luna",
+      "variant": "high",
+      "family": "openai"
+    }
+  },
+  "implementer": {
+    "agent": "implementer",
+    "chain": [
+      "deepseek-flash"
+    ],
+    "claudeFallback": "sonnet",
+    "startupTimeoutSec": 180,
+    "idleTimeoutSec": 900,
+    "totalTimeoutSec": 10800
+  },
+  "reviewer": {
+    "agent": "reviewer",
+    "chain": [
+      "luna"
+    ],
+    "claudeFallback": "opus",
+    "startupTimeoutSec": 180,
+    "idleTimeoutSec": 600,
+    "totalTimeoutSec": 3600
+  },
+  "jev": {
+    "model": "jev-1.13",
+    "baseUrl": "https://openrouter.ai/api",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "timeoutSec": 30,
+    "targetPrecision": 0.95,
+    "decisions": {
+      "breaks-play": {
+        "type": "noul",
+        "instructionsFile": "docs/jev/breaks-play.md"
+      }
+    }
+  },
+  "providers": {
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    },
+    "elevenlabs": {
+      "baseUrl": "https://api.elevenlabs.io",
+      "apiKeyEnv": "ELEVENLABS_API_KEY"
+    }
+  }
+}
