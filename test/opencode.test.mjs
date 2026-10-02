@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, resolveOpenCode,
+  runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
   openCodeHome, listedModels, loginHint,
 } from '../template/tools/harness/lib/opencode.mjs';
 
@@ -227,4 +227,19 @@ test('an `opencode models` that fails for another reason is an OpenCode failure,
   assert.match(hint, /`opencode models opencode-go` failed with exit 1: Error: Unexpected error: no such column: project_id/);
   assert.match(hint, /not a missing login/);
   assert.doesNotMatch(hint, /console login/);
+});
+
+test('a rejection caused by cd or .. in the agent\'s command names L31; any other gets no hint (#14)', async () => {
+  const rej = '\x1b[93m\x1b[1m! \x1b[0mpermission requested: external_directory (/w/*); auto-rejecting\n';
+  for (const cmd of ['cd evidence/a && grep x f; cd ../b && ls', 'grep -n x ../other/README.md', '(cd src && ls)']) {
+    assert.match(rejectionHint(`${rej}\x1b[31m✗\x1b[0m ${cmd} failed\n`), /cd or \.\..*\(L31\)/, cmd);
+  }
+  for (const cmd of ['cat /tmp/notes.txt', 'grep -n abcd src/a.js', 'ls ...', 'echo cdrom']) {
+    assert.equal(rejectionHint(`${rej}\x1b[31m✗\x1b[0m ${cmd} failed\n`), null, cmd);
+  }
+  assert.equal(rejectionHint('✗ cd a && cd ../b failed\n'), null);                // no rejection line, no hint
+  const r = await run('permission-cd');
+  assert.equal(r.permissionRejected, 'external_directory (/tmp/*)');
+  assert.match(r.permissionHint, /\(L31\)/);
+  assert.equal((await run('permission')).permissionHint, null);
 });

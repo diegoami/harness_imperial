@@ -109,6 +109,13 @@ test('a rejected tool call is a failure, not a clean finish: the next model runs
   assert.match(r.stdout, /implemented by: luna/);
 });
 
+test('a rejection from cd or .. says so in the failure, naming L31 (#14)', posix, async () => {
+  const p = project({ chain: ['deepseek-flash'] });
+  const r = implement(p, { FAKE_OC_MODE: 'permission-cd' });
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /permission rejected: external_directory \(\/tmp\/\*\); the rejected command used cd or \.\.: run commands from the worktree root.*\(L31\)/);
+});
+
 test('the same failure twice stops the chain with exit 3', posix, async () => {
   const p = project({ chain: ['deepseek-flash', 'spare', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'no-session' });

@@ -17,3 +17,13 @@ const same = (rel) => assert.equal(
 for (const rel of ['harness.json', '.opencode/agents/reviewer.md', '.opencode/agents/implementer.md']) {
   test(`the root ${rel} is the template's`, () => same(rel));
 }
+
+// The agents' working rules that came from real failures stay in both agent files.
+const body = (rel) => fs.readFileSync(path.join(repo, 'template', rel), 'utf8').split(/^---$/m).slice(2).join('').replace(/\s+/g, ' ');
+for (const agent of ['implementer', 'reviewer']) {
+  test(`the ${agent} runs commands from the worktree root, never with cd or .. (L31)`, () => {
+    const text = body(`.opencode/agents/${agent}.md`);
+    assert.match(text, /Run every shell command from the worktree root with paths relative to it/);
+    assert.match(text, /Never `cd`, and never write `\.\.` in a command/);
+  });
+}

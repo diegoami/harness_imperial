@@ -75,6 +75,19 @@ export function permissionRejection(text) {
   return what;
 }
 
+// Why a rejection happened, when the agent's own command shows it: OpenCode prints the rejected
+// command on a `✗` line after its rejection line. A `cd` or a `..` in it means the agent wrote a path
+// relative to an earlier `cd`, which OpenCode resolves against --dir instead (#14): a false
+// positive the agent files now forbid (L31). Returns the hint, or null.
+export function rejectionHint(text) {
+  const plain = String(text).replace(/\x1b\[[0-9;]*m/g, '');
+  const at = plain.search(/^[ \t]*![ \t]*permission requested: [^\n]*auto-rejecting/m);
+  if (at < 0) return null;
+  const cmd = plain.slice(at).split(/\r?\n/).slice(1).find((l) => /^\s*✗/.test(l));
+  if (!cmd || !/(^|[\s;&|(])cd\s|(^|[\s/'"=])\.\.(\/|\s|$)/.test(cmd.replace(/^\s*✗\s*/, ''))) return null;
+  return 'the rejected command used cd or ..: run commands from the worktree root, with paths relative to it (L31)';
+}
+
 // The Windows npm shim as WSL sees it: a shell script that execs opencode.exe. Under WSL it runs
 // the Windows OpenCode, which cannot read the run's Linux paths and survives the kill of its
 // process group: both real-OpenCode tests failed through it on 2026-10-01.
@@ -260,7 +273,7 @@ function tail(file, lines = 30) {
 /**
  * Runs `opencode <args...> --title <title-token> <prompt>` in workDir, watched.
  * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent,
- *   permissionRejected, files, seconds }.
+ *   permissionRejected, permissionHint, files, seconds }.
  * A non-zero exit is returned, not thrown: the caller decides.
  */
 export async function runOpenCodeWatched({
@@ -370,12 +383,13 @@ export async function runOpenCodeWatched({
     : recordedAgent ? recordedAgent !== requestedAgent
     : agentWarning(stderr, requestedAgent);
   const permissionRejected = permissionRejection(`${stdout}\n${stderr}`);
+  const permissionHint = permissionRejected ? rejectionHint(`${stdout}\n${stderr}`) : null;
   if (exitCode === 0 && !permissionRejected) for (const f of files) fs.rmSync(f, { force: true });
   else log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
   return {
     output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
     stdout, stderr, exitCode, sessionId: session.id, title,
-    agentFallback, sessionAgent: recordedAgent, permissionRejected,
+    agentFallback, sessionAgent: recordedAgent, permissionRejected, permissionHint,
     files: exitCode === 0 && !permissionRejected ? [] : files,
     seconds: Math.round(elapsed() / 1000),
   };

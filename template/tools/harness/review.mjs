@@ -140,7 +140,9 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
       }
       if (run.exitCode !== 0) return { ok: false, reason: `exit ${run.exitCode}`, detail: run.output };
       if (run.agentFallback) return { ok: false, reason: 'fell back to the default agent', detail: run.output };
-      if (run.permissionRejected) return { ok: false, reason: `permission rejected: ${run.permissionRejected}`, detail: run.output };
+      if (run.permissionRejected) {
+        return { ok: false, reason: `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`, detail: run.output };
+      }
       const read = readReview(run.stdout, header);
       if (read.kind === 'none') return { ok: false, reason: read.reason, detail: run.output };
       return { ok: true, value: { ...read, header, model } };

@@ -47,6 +47,9 @@ added. Each behaviour exists because a run failed without it:
 - **UTF-8 output.**
 - **A rejected tool call is a failure.** OpenCode auto-rejects a path outside the worktree and exits
   0, so the run looks clean (IC2 #501). The runner reads OpenCode's own rejection line.
+  - A `cd` or `..` in an agent's command can trip the same check with nothing leaving the worktree,
+    because OpenCode resolves the path against `--dir`, not the `cd` before it (#14). The agent
+    files forbid both (L31), and when the rejected command used one, the failure says so.
 - **The export is read from a file.** Through a pipe, a large export arrives truncated, and the agent
   check loses its evidence (ic2-conquest's WSL reviewer).
 - **Its own data directory.** OpenCode's desktop app (2.x) can migrate the default database to a

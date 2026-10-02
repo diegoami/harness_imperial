@@ -135,12 +135,17 @@ switch (mode) {
     break;
   }
   case 'permission':
+  case 'permission-cd':
   case 'permission-review': {
-    // OpenCode 1.18 auto-rejects a path outside --dir in a non-interactive run, and exits 0.
+    // OpenCode 1.18 auto-rejects a path outside --dir in a non-interactive run, and exits 0. It then
+    // prints the rejected command; permission-cd's chains cd and .. (#14).
     createSession();
     process.stderr.write('\x1b[93m\x1b[1m! \x1b[0mpermission requested: external_directory (/tmp/*); auto-rejecting\n');
+    process.stderr.write(mode === 'permission-cd'
+      ? '\x1b[31m✗\x1b[0m cd evidence/a && grep -n x README.md; cd ../b && ls failed\n'
+      : '\x1b[31m✗\x1b[0m cat /tmp/notes.txt failed\n');
     const header = rest.at(-1).split('\n')[0];
-    process.stdout.write(mode === 'permission' ? 'report: built nothing\n' : `${header}\napprove\n\nR1: fine\n\napprove\n`);
+    process.stdout.write(mode !== 'permission-review' ? 'report: built nothing\n' : `${header}\napprove\n\nR1: fine\n\napprove\n`);
     process.exit(0);
     break;
   }
