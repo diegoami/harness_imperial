@@ -35,7 +35,9 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
    family:
    - `opencode` (the default, GPT-6 Luna on the direct OpenAI route): `node tools/harness/review.mjs
      --pr <pr> --brief <file> --exclude <implemented by> --issue <n> --apply-label`, in the
-     background.
+     background. Name the PR's head in the brief only after the push has landed: take it from the
+     local branch (`git rev-parse <branch>`). A brief naming another commit exits 2 before
+     anything runs (L33).
      - Exit 0: posted and labelled.
      - Exit 3: no review came back, or OpenCode or its login is unavailable. Nothing was posted:
        run the Claude reviewer (Opus). If a Claude agent implemented the PR, Claude may not

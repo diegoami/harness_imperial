@@ -154,6 +154,29 @@ test('a rework is labelled whatever its DW lines; --done-when overrides the coun
   assert.equal(two.status, 0, two.stderr + two.stdout);
 });
 
+test('a brief naming another commit as the one to review exits 2 before anything runs (#23)', posix, () => {
+  const p = project();
+  const other = 'b'.repeat(40);
+  fs.writeFileSync(path.join(p.base, 'brief.md'), `T07 review (x)\nYou review PR #7 at ${other}.\n0. Prove the tree: HEAD is ${other}.\n`);
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.match(r.stderr, new RegExp(`names ${other} as the commit to review, but PR 7's head is ${p.sha}`));
+  assert.match(r.stderr, /git rev-parse <branch>/);
+  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);              // no OpenCode run
+  const work = path.join(p.base, 'proj-work');
+  assert.deepEqual(fs.existsSync(work) ? fs.readdirSync(work) : [], []);          // no worktree
+  assert.equal(gh(p).comments.length, 0);
+});
+
+test('a brief naming the head runs, and one citing another commit only in passing runs too (#23)', posix, () => {
+  const p = project();
+  fs.writeFileSync(path.join(p.base, 'brief.md'),
+    `T07 review (x)\nYou review PR #7 at ${p.sha}.\n0. Prove the tree: HEAD is ${p.sha}.\nThe PR body: reverts what was merged as ${'c'.repeat(40)}.\n`);
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(gh(p).comments.length, 1);
+});
+
 test('a review that may be cut off is posted under a note, unlabelled, exit 4, and no other model runs', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--issue', '12', '--apply-label');

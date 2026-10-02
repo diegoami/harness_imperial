@@ -23,6 +23,9 @@
 // K): one "DW<k>:" line each, after the verdict (L32). An approve with a line missing, or one not
 // run, is posted under a note and not labelled approved (exit 4).
 //
+// A brief naming a commit other than the PR's head as the one to review is refused, exit 2, before
+// anything runs (#23).
+//
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
 // unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
 // claudeFallback), unless Claude implemented the PR: then no reviewer of another family is left,
@@ -36,7 +39,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
-import { runChain, excludeImplementers, readReview, doneWhenCount, accountDoneWhen } from './lib/chain.mjs';
+import { runChain, excludeImplementers, readReview, doneWhenCount, accountDoneWhen, briefTargets } from './lib/chain.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
@@ -89,6 +92,14 @@ for (const p of pre.problems) say(p);
 if (!pre.usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
 
 const headSha = sh('gh', ['pr', 'view', String(a.pr), '--json', 'headRefOid', '--jq', '.headRefOid'], { cwd: top });
+// A brief that names another commit as the one to review would make the reviewer's tree proof stop
+// it after a billed run (#23): refuse it before any worktree or model run.
+const stale = [...new Set(briefTargets(brief.join('\n')))].filter((c) => c !== headSha.toLowerCase());
+if (stale.length) {
+  die(2, `The brief names ${stale.join(', ')} as the commit to review, but PR ${a.pr}'s head is ${headSha}. `
+    + 'Nothing was run or posted. The brief was written before the latest push, or the head was read before '
+    + 'GitHub updated: take it from the local branch (git rev-parse <branch>), or rerun once GitHub shows it.');
+}
 sh('git', ['-C', top, 'fetch', '-q', 'origin', `pull/${a.pr}/head`]);
 // A path of this invocation's own, recreated for each attempt; only this tree is ever removed.
 const worktree = path.join(workRoot, `${a.pr}-review-${randomBytes(4).toString('hex')}`);
