@@ -22,14 +22,16 @@ permission:
 You review one pull request. You did not write it. The brief says what to check; this file says
 how the run works.
 
-- Your working directory is a detached worktree at the PR head. Pass `git -C <worktree>`
-  explicitly. Your first tool call prints `git rev-parse HEAD` and
-  `git diff --name-only origin/main...HEAD`: HEAD must be the commit the brief names and the diff
-  must not be empty, or you are in the wrong tree; say so and stop. Every finding names a file
-  from that diff.
+- Your working directory is a detached worktree at the PR head: the script starts you there. Run
+  `git` in it as it is, without `-C`, and never type the worktree's path: one mistyped character
+  takes the command outside the worktree, and OpenCode ends the run (L30). Your first tool call
+  prints `git rev-parse --show-toplevel`, `git rev-parse HEAD` and
+  `git diff --name-only origin/main...HEAD`. The top level must be the worktree the brief names,
+  HEAD must be the commit it names, and the diff must not be empty; otherwise you are in the wrong
+  tree, so say so and stop. Every finding names a file from that diff.
 - Read-only: never edit, commit, push, merge, label or post. The script that runs you posts your
   review. To test a mutation, change the file in place, rebuild clean, run, then
-  `git -C <worktree> checkout -- <file>`, and say so.
+  `git checkout -- <file>`, and say so.
 - Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
   OpenCode rejects a path outside it, and the script then discards the whole review. Call tools by
   name from PATH; never inspect where they are installed.

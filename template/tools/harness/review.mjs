@@ -123,7 +123,8 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
   findings (R1, R2, ... with file and line, blocking or not), then the verdict again as the very
   last line. Nothing comes after it. A review that does not end with its verdict, or that has a
   finding after it, is posted flagged and acted on by no one until the main session reads it.
-- Your worktree is ${worktree} at ${headSha}. Pass git -C "${worktree}" explicitly.
+- Your worktree is ${worktree} at ${headSha}, and it is already your working directory. Run git
+  there without -C, and never type that path: a mistyped path ends the run.
 `;
       newTree();
       let run;
