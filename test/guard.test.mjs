@@ -19,16 +19,20 @@ const REFUSED = {
     'echo \\"; git push origin HEAD', "bash -c 'git push origin HEAD'", 'sh -c "npm test && git commit -m x"',
     'eval git push', 'env FOO=1 git push', 'xargs git push', 'git push & wait',
     'gh api -X DELETE repos/o/r/issues/3', 'gh api --method=POST repos/o/r/issues', 'gh api repos/o/r/issues/3/comments -f body=x',
-    'gh pr ready 7', 'gh label create x', 'gh repo delete o/r'],
+    'gh pr ready 7', 'gh label create x', 'gh repo delete o/r',
+    // Luna's R1, round 2: a substitution inside double quotes, git options before the subcommand.
+    'echo "$(git push origin HEAD)"', 'echo "x `git push` y"', 'echo "$(echo "$(git commit -m x)")"',
+    'git --no-pager push origin HEAD', 'git --git-dir=.git push', 'git --git-dir .git -p commit -m x'],
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
     'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
-    'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge'],
+    'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"'],
 };
 const ALLOWED = {
   reviewer: ['git log --oneline | head', 'git diff --name-only origin/main...HEAD', 'gh pr view 7 --json body',
     'git checkout -- src/a.js', 'git fetch origin pull/7/head', 'npm test', 'grep -rn "git push" docs', 'echo "gh pr merge is not for you"',
     'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls',
-    'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'"],
+    'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
+    "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3'],
   implementer: ['git commit -m "fix; then git stash nothing"', 'git push origin task/T07-x', 'git push -u origin task/T07-x',
     'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7'],
 };
@@ -66,6 +70,12 @@ test('the hook refuses what it cannot read, rather than fail open', () => {
   const r = hook('reviewer', 'not json');
   assert.equal(r.status, 2);
   assert.match(r.stderr, /not JSON/);
+  // Luna's R2, round 2: a Bash call without a command string.
+  for (const tool_input of [{}, null, { command: 42 }]) {
+    const b = hook('reviewer', { tool_name: 'Bash', tool_input });
+    assert.equal(b.status, 2, JSON.stringify(tool_input));
+    assert.match(b.stderr, /no command string/);
+  }
 });
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and

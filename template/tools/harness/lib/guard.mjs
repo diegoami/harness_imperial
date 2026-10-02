@@ -8,8 +8,10 @@
 // safeguard against an agent's mistakes, not a sandbox: a program that makes the call itself (a
 // Python script, say) is beyond it.
 
-// A git command, after git's own -C <dir> / -c <key=value> options.
-const git = (sub) => new RegExp(`^git(?:\\s+(?:-C|-c)\\s+(?:"[^"]*"|'[^']*'|\\S+))*\\s+${sub}`);
+// A git command, after any of git's own options: -C <dir>, -c <key=value>, --git-dir <dir> and the
+// like with their argument, and flags such as --no-pager or --git-dir=<dir> (Luna's R1, round 2).
+const GIT_OPT = `(?:\\s+(?:-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--config-env)\\s+(?:"[^"]*"|'[^']*'|\\S+)|\\s+-{1,2}[\\w-]+(?:=\\S+)?)*`;
+const git = (sub) => new RegExp(`^git${GIT_OPT}\\s+${sub}`);
 
 // gh commands that only read. Every other gh command is a write for the reviewer.
 const GH_READ = /^gh\s+(?:--version\b|version\b|auth\s+status\b|pr\s+(?:view|diff|list|checks|status)\b|issue\s+(?:view|list|status)\b|run\s+(?:view|list|watch)\b|workflow\s+(?:view|list)\b|repo\s+view\b|release\s+(?:view|list)\b|label\s+list\b|search\s+\w+)/;
@@ -54,6 +56,45 @@ export function simpleCommands(line) {
   return out.map((x) => x.trim()).filter(Boolean);
 }
 
+// The command lines inside $( … ) and backquotes, wherever they are but in single quotes: the shell
+// runs them inside double quotes too (`echo "$(git push)"`, Luna's R1, round 2). Nested ones are
+// found when these are read in turn.
+export function substitutions(line) {
+  const s = String(line);
+  const out = [];
+  let single = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\' && !single) { i++; continue; }
+    if (c === "'" && !single && !inDouble(s, i)) { single = true; continue; }
+    if (c === "'" && single) { single = false; continue; }
+    if (single) continue;
+    if (c === '$' && s[i + 1] === '(') {
+      let depth = 1;
+      let j = i + 2;
+      for (; j < s.length && depth; j++) { if (s[j] === '(') depth++; else if (s[j] === ')') depth--; }
+      out.push(s.slice(i + 2, depth ? s.length : j - 1));
+      i = j - 1;
+    } else if (c === '`') {
+      const j = s.indexOf('`', i + 1);
+      out.push(s.slice(i + 1, j < 0 ? s.length : j));
+      i = j < 0 ? s.length : j;
+    }
+  }
+  return out;
+}
+// Whether position i of s is inside double quotes (a single quote there is a plain character).
+function inDouble(s, i) {
+  let d = false;
+  let q = false;
+  for (let k = 0; k < i; k++) {
+    if (s[k] === '\\' && !q) { k++; continue; }
+    if (s[k] === "'" && !d) q = !q;
+    else if (s[k] === '"' && !q) d = !d;
+  }
+  return d;
+}
+
 // One shell word with its quotes and escapes removed.
 const unquote = (w) => w.replace(/^'(.*)'$/s, '$1').replace(/^"(.*)"$/s, '$1').replace(/\\(.)/g, '$1');
 
@@ -74,11 +115,20 @@ function effective(cmd, depth = 0) {
   return [c, ...simpleCommands(unquote(first)).flatMap((x) => effective(x, depth + 1))];
 }
 
+// Every command a command line runs: its simple commands, what they wrap, and what its command
+// substitutions run, recursively.
+function commandsOf(line, depth = 0) {
+  const own = simpleCommands(line).flatMap((x) => effective(x));
+  if (depth > 4) return own;
+  return [...own, ...substitutions(line).flatMap((x) => commandsOf(x, depth + 1)),
+    ...own.flatMap((x) => (x === line ? [] : substitutions(x).flatMap((y) => commandsOf(y, depth + 1))))];
+}
+
 // Why `command` is refused for `role`, or null when it is allowed.
 export function refusal(command, role) {
   const rules = RULES[role];
   if (!rules) return `unknown role ${role}`;
-  for (const part of simpleCommands(command).flatMap((x) => effective(x))) {
+  for (const part of commandsOf(command)) {
     const hit = rules.find(([test]) => (typeof test === 'function' ? test(part) : test.test(part)));
     if (hit) return `the ${role} may not run ${hit[1]}: refused \`${part}\``;
   }

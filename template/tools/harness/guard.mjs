@@ -18,7 +18,12 @@ try { event = JSON.parse(input); } catch {
   process.exit(2);
 }
 if (event?.tool_name !== 'Bash') process.exit(0);
-const reason = refusal(String(event?.tool_input?.command ?? ''), role);
+// A Bash call whose command cannot be read is refused too (Luna's R2, round 2).
+if (typeof event?.tool_input?.command !== 'string') {
+  console.error(`guard (${role}): the Bash call has no command string, so it is refused.`);
+  process.exit(2);
+}
+const reason = refusal(event.tool_input.command, role);
 if (reason) {
   console.error(`guard: ${reason}. The harness forbids it for this agent (tools/harness/lib/guard.mjs).`);
   process.exit(2);
