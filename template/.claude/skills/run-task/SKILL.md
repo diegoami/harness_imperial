@@ -71,8 +71,31 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      1. Check that every finding names a file in `gh pr diff <pr> --name-only`. A review that
         does not reviewed the wrong tree: discard it, say so, and re-review.
      2. At `review-round:2` (at `review-round:1` for a fix), go to step 5.
-     3. Otherwise set the next round and return to step 1, with the full review's URL in the
-        brief. The implementer script resumes the branch.
+     3. **A heavy review moves the implementer up (L38)**, decided before the next round starts.
+        The review just posted is heavy when it asks for rework with three or more blocking
+        findings, or when it brings new blocking findings of a class the previous round raised:
+        the same kind of defect again, in new or unchanged code (a sibling the last round missed
+        counts). Then the next round goes one step up the ladder: a light OpenCode model → a
+        heavy one → a Claude Opus agent (where the owner pairs by difficulty: GLM-5.3 Flash →
+        DeepSeek V4.1 Flash → Opus), and Sonnet → Opus; never down within a task. At the top
+        there is no stronger model: the round fixes the class as below, and changes the approach
+        when the class needs it (as golden screenshots did in malpaco T02), saying so on the task file.
+        - The round count does not reset, and the reviewer stays of another family: with Opus
+          implementing, no Claude reviewer may review; if the OpenCode reviewers fail, go to step 5.
+          The Done-when is never weakened for the stronger model.
+        - Hand-over: stop the current implementer if it is mid-round; save its unpushed work as a
+          patch (`git add -N` new files, then `git diff > <patch>`); start the new implementer on
+          the pushed branch with the task file pasted in full, every review so far (the current
+          one pasted in full), the patch path "to weigh, never to apply blindly", and the
+          instruction to fix the class of the findings, not each instance, then sweep its own
+          code for the same class and list the sweep in the PR body.
+        - Record the change on the task file's Implementer line, committed on `main`, with the
+          reason: the blocking counts, and for a repeated class, the class and the finding ids of
+          both rounds (e.g. "R1–R2 of round 0 and R3 of round 1: an alias at write time"). After
+          the round, the measurement comment (§9) gives the models, the trigger, the classes, the
+          blocking counts before and after, and whether it converged.
+     4. Set the next round and return to step 1, with the full review's URL in the brief (and,
+        after step 3, the hand-over's). The implementer script resumes the branch.
 
 5. **Escalate** (`docs/process.md` §7): label `status:escalated`, comment the evidence on the issue,
    and bring the user the decision with options and a recommendation. Stop.
