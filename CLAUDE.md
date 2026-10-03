@@ -14,4 +14,6 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - `npm test` before every push. Commits and PRs as usual; no status in any document.
 - A cloud session here runs `template/.claude/hooks/session-start.sh` (see `.claude/settings.json`):
   it installs OpenCode and `gh` and reports which keys are set (`template/docs/environment.md`).
+- `docs/models.md` is the main session's model strategy here: the roster, which pair for which work,
+  and what each model has shown. Update it in the same commit as a model change or a lesson from a run.
 - The backlog is this repository's open GitHub issues; the issue titled "Start here" orders them.
