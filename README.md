@@ -211,7 +211,9 @@ reproduce each failure above. The cases are:
   implementer's family;
 - the scripts' own data directory, the copied `auth.json`, and a model OpenCode does not list;
 - `adopt.mjs`: each profile's files, the review profile's reviewers and its imports, a conflict
-  that writes nothing, an identical file left alone, a dry run, and `harness.lock`'s hashes;
+  that writes nothing (a different file, a file where a directory belongs, a symlink), a failed
+  write rolled back, an identical file left alone, executable bits, a dry run, and `harness.lock`'s
+  hashes and bump note;
 - a second opinion: both reviews posted and the stricter label applied, never by the first review's
   model or one that failed, and without one an exit 3 to the owner; with no Claude reviewer, a
   failure escalates to the owner;
