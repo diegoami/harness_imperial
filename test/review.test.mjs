@@ -74,7 +74,7 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.doesNotMatch(s.comments[0].body, /reading the diff/);
   assert.deepEqual(s.issueLabels['12'], ['status:approved']);
   assert.deepEqual(fs.readdirSync(path.join(p.base, 'proj-work')), []);
-  assert.doesNotMatch(git(p.main, 'worktree', 'list'), /review/);
+  assert.doesNotMatch(git(p.main, 'worktree', 'list'), /proj-work[\\/]7-review-/);
 });
 
 test('the reviewer runs git in its worktree and is never asked to type its path (L30)', posix, () => {
@@ -395,6 +395,56 @@ test('with no Claude reviewer, or when Claude implemented, a failure escalates t
   const u = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'review-ok' }, '--second-opinion');
   assert.equal(u.status, 2);
   assert.match(u.stderr, /--second-opinion needs reviewer\.secondOpinion/);
+});
+
+const withLabels = (p, l) => { const s = JSON.parse(fs.readFileSync(p.ghState, 'utf8')); s.issueLabels = { 12: l }; fs.writeFileSync(p.ghState, JSON.stringify(s)); };
+const withAlias = (p) => {   // a second name for GLM-5.3 Flash, as the second opinion
+  const f = path.join(p.main, 'harness.json');
+  const c = JSON.parse(fs.readFileSync(f, 'utf8'));
+  c.models['glm-alias'] = { ...c.models['glm-flash'] };
+  c.reviewer.secondOpinion = 'glm-alias';
+  fs.writeFileSync(f, JSON.stringify(c));
+};
+
+test('an earlier approval never survives two reviews that did not both approve (Sol\'s R3 on PR 41)', posix, () => {
+  const p = project(PROFILE);
+  withLabels(p, ['status:approved', 'status:in-review']);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-fixes']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(labels(p), ['status:rework']);
+  const q = project(PROFILE);
+  withLabels(q, ['status:rework']);
+  review(q, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.deepEqual(labels(q), ['status:approved']);
+  const n = project(PROFILE);
+  withLabels(n, ['status:approved']);
+  const none = review(n, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'exit-no-session', 'exit2']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(none.status, 3);
+  assert.deepEqual(labels(n), []);
+});
+
+test('two names for one model never make two opinions, nor retry a failed model (Sol\'s R2 on PR 41)', posix, () => {
+  const p = project(PROFILE);
+  withAlias(p);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(gh(p).comments.map((c) => c.body.split('\n')[0]), ['T07 review (glm-flash)', 'T07 review (luna, second opinion)']);
+  const q = project(PROFILE);
+  withAlias(q);
+  const s = review(q, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
+  assert.equal(s.status, 0, s.stderr + s.stdout);
+  assert.match(gh(q).comments[1].body, /^T07 review \(deepseek-flash, second opinion\)/);
+});
+
+test('OpenCode missing says the same as any other failure: the owner, or a Claude reviewer (Sol\'s R1 on PR 41)', posix, () => {
+  const missing = { HARNESS_OPENCODE_EXE: '/no/such/opencode' };
+  const a = review(project({ chain: ['luna'] }), missing, '--exclude', 'claude');
+  assert.equal(a.status, 3);
+  assert.match(a.stderr, /OpenCode unavailable: .*escalate to the owner: Claude implemented this PR/);
+  const b = review(project(PROFILE), missing, '--exclude', 'deepseek-flash');
+  assert.match(b.stderr, /escalate to the owner \(harness\.json names no Claude reviewer\)/);
+  const c = review(project({ chain: ['luna'] }), missing, '--exclude', 'deepseek-flash');
+  assert.match(c.stderr, /OpenCode unavailable: .*use a Claude reviewer \(opus\)/);
 });
 
 test('the implementer\'s family never reviews: dropped from the chain, or refused when named', posix, () => {

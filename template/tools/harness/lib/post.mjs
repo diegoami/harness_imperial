@@ -63,9 +63,16 @@ export function postComment({ plan, pr, top }) {
   try { sh('gh', ['pr', 'comment', String(pr), '--body-file', bodyFile], { cwd: top }); } finally { fs.rmSync(bodyFile, { force: true }); }
 }
 
+// A verdict's label replaces the other verdict's and status:in-review, so an issue never carries
+// both approved and rework (Sol's R3 on PR 41).
 export function applyLabel({ label, issue, top, say }) {
-  if (label) sh('gh', ['issue', 'edit', String(issue), '--add-label', label, '--remove-label', 'status:in-review'], { cwd: top });
+  const stale = ['status:in-review', ...['status:approved', 'status:rework'].filter((l) => l !== label)].join(',');
+  if (label) sh('gh', ['issue', 'edit', String(issue), '--add-label', label, '--remove-label', stale], { cwd: top });
   else say('verdict "user decision" applies no label; the main session decides.');
+}
+
+export function withdrawApproval({ issue, top }) {
+  sh('gh', ['issue', 'edit', String(issue), '--remove-label', 'status:approved'], { cwd: top });
 }
 
 // Posts a planned review as one PR comment and applies its label; or, with dryRun, prints both.
