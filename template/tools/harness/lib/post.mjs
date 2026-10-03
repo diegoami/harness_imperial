@@ -46,23 +46,47 @@ export function planPost({ read, header, reasons = '', doneWhen = 0, source, sig
   };
 }
 
-// Posts a planned review as one PR comment and applies its label; or, with dryRun, prints both.
-// Exits through `die` with 4 when the review was posted but not acted on.
-export function publish({ plan, pr, issue, applyLabel, dryRun, top, say, die }) {
-  for (const r of plan.rewrites) say(`rewrote a closing keyword: ${r}`);
-  if (dryRun) {
-    say(plan.body);
-    say(`dry run: would post the above${applyLabel && plan.label ? `, label ${plan.label}` : ', no label'}, and exit ${plan.code}.`);
-    process.exit(0);
-  }
+// Two reviews of one PR (a second opinion, #39): the stricter decides. Either one posted but not
+// acted on (a flagged review, an unaccounted approve) holds both: exit 4, no label. A "user decision"
+// applies no label; either rework applies rework; approved needs both.
+export function combinePlans(plans) {
+  const held = plans.filter((p) => p.code === 4);
+  if (held.length) return { label: null, code: 4, why: held.map((p) => `${p.first}: ${p.unaccounted ?? p.note}`).join('; ') };
+  if (plans.some((p) => p.verdict === 'user decision')) return { label: null, code: 0, why: 'a "user decision" verdict; the main session decides' };
+  if (plans.some((p) => p.label === 'status:rework')) return { label: 'status:rework', code: 0, why: null };
+  return { label: 'status:approved', code: 0, why: null };
+}
+
+export function postComment({ plan, pr, top }) {
   const bodyFile = path.join(os.tmpdir(), `harness-review-${pr}-${randomBytes(3).toString('hex')}.md`);
   fs.writeFileSync(bodyFile, plan.body);
   try { sh('gh', ['pr', 'comment', String(pr), '--body-file', bodyFile], { cwd: top }); } finally { fs.rmSync(bodyFile, { force: true }); }
+}
+
+// A verdict's label replaces the other verdict's and status:in-review, so an issue never carries
+// both approved and rework (Sol's R3 on PR 41).
+export function applyLabel({ label, issue, top, say }) {
+  const stale = ['status:in-review', ...['status:approved', 'status:rework'].filter((l) => l !== label)].join(',');
+  if (label) sh('gh', ['issue', 'edit', String(issue), '--add-label', label, '--remove-label', stale], { cwd: top });
+  else say('verdict "user decision" applies no label; the main session decides.');
+}
+
+export function withdrawApproval({ issue, top }) {
+  sh('gh', ['issue', 'edit', String(issue), '--remove-label', 'status:approved'], { cwd: top });
+}
+
+// Posts a planned review as one PR comment and applies its label; or, with dryRun, prints both.
+// Exits through `die` with 4 when the review was posted but not acted on.
+export function publish({ plan, pr, issue, applyLabel: apply, dryRun, top, say, die }) {
+  for (const r of plan.rewrites) say(`rewrote a closing keyword: ${r}`);
+  if (dryRun) {
+    say(plan.body);
+    say(`dry run: would post the above${apply && plan.label ? `, label ${plan.label}` : ', no label'}, and exit ${plan.code}.`);
+    process.exit(0);
+  }
+  postComment({ plan, pr, top });
   if (plan.unaccounted) die(4, `posted: ${plan.first} / approve, not applied: ${plan.unaccounted}. Decide on PR ${pr}: a supplementary review of those lines, or a rework.`);
   if (plan.kind === 'flagged') die(4, `posted: ${plan.first}, flagged (${plan.note}); no label. Read the review on PR ${pr} and decide.`);
   say(`posted: ${plan.first} / ${plan.verdict}`);
-  if (applyLabel) {
-    if (plan.label) sh('gh', ['issue', 'edit', String(issue), '--add-label', plan.label, '--remove-label', 'status:in-review'], { cwd: top });
-    else say('verdict "user decision" applies no label; the main session decides.');
-  }
+  if (apply) applyLabel({ label: plan.label, issue, top, say });
 }

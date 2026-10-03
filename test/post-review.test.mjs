@@ -94,3 +94,17 @@ test('usage: the four required options, and a brief whose first line is the head
   assert.equal(r.status, 2);
   assert.match(r.stderr, /--pr, --brief, --review and --by are required/);
 });
+
+test('combinePlans: of two reviews, the stricter decides the label (#39)', async () => {
+  const { combinePlans } = await import('../template/tools/harness/lib/post.mjs');
+  const p = (verdict, label, code = 0, extra = {}) => ({ verdict, label, code, first: `T07 review (${verdict})`, ...extra });
+  assert.deepEqual(combinePlans([p('approve', 'status:approved'), p('approve', 'status:approved')]), { label: 'status:approved', code: 0, why: null });
+  assert.equal(combinePlans([p('approve', 'status:approved'), p('rework', 'status:rework')]).label, 'status:rework');
+  assert.equal(combinePlans([p('approve after named fixes', 'status:rework'), p('approve', 'status:approved')]).label, 'status:rework');
+  const ud = combinePlans([p('rework', 'status:rework'), p('user decision', null)]);
+  assert.equal(ud.label, null);
+  assert.equal(ud.code, 0);
+  const held = combinePlans([p('approve', null, 4, { unaccounted: 'Done-when 2 not run' }), p('rework', 'status:rework')]);
+  assert.deepEqual([held.label, held.code], [null, 4]);
+  assert.match(held.why, /Done-when 2 not run/);
+});
