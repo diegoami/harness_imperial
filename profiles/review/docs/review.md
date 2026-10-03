@@ -14,7 +14,8 @@ rules; `docs/environment.md` holds the logins.
 | 3, on failure | DeepSeek V4.1 Flash (`deepseek-flash`) | OpenCode Go, `opencode-go/deepseek-v4.1-flash` |
 | then | the user | no Claude reviewer (`claudeFallback: null`) |
 
-The next model runs only when one produced no review at all; the same failure twice stops the
+There is no `--hard` chain here (`reviewer.hard` is null): a critical PR gets a second opinion
+instead. The next model runs only when one produced no review at all; the same failure twice stops the
 chain (L12). A critical PR's second opinion is Luna, or, when Luna wrote the first review, the
 chain's next model. Each reviewer works read-only in a detached worktree of the PR's head.
 
