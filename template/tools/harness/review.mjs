@@ -24,7 +24,7 @@
 // run, is posted under a note and not labelled approved (exit 4).
 //
 // A brief naming a commit other than the PR's head as the one to review is refused, exit 2, before
-// anything runs (#23). Only the lines before the pasted task file's first heading are read (#32).
+// anything runs (#23). Only the lines before the pasted task file's title (`# T<nn>`) are read (#32).
 //
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
 // unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
