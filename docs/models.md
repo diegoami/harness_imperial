@@ -83,6 +83,7 @@ Every model runs at effort `high`, never `max` (L27).
 | Only the reviewer's block names the head; a task file may cite commits freely | malpaco PR 4 was refused for citing its source "at `<sha>`" | #32 |
 | The reviewer runs `git` in its worktree and never types the path | Luna mistyped a 90-character path, and the run ended | L30, #15 |
 | Commands run from the worktree root: no `cd`, no `..` | a GLM-5.3 review was rejected as `external_directory` after about 25 minutes | L31, #14 |
+| OpenCode's file tools get paths relative to the worktree root, never absolute ones | Luna read `/home/diegoami/CLAUDE.md`, a home directory guessed from the repository's owner, and the run ended with no review | L36, PR 35 |
 | Keep the scratch project at a short path (`~/projects/harness-scratch`) | the long path was what Luna mistyped | #15 |
 | Done-when lines a read-only reviewer can run; mutation checks run by the main session | a reviewer cannot edit files to break a behaviour | #24, PR 33 |
 | Node on PATH through a user-level `SessionStart` hook (`~/.claude/hooks/session-path.sh`) | desktop sessions started without `~/.bashrc`, so `node` was missing | 2026-10-03 |
@@ -102,7 +103,8 @@ Each observation has a source. The PRs hold the full record.
   - It catches docs that drift from the code: the sample count on PR 22, the skill's wording on
     PR 33.
   - Its misses: it approved game-archaeologist PR 2 with no evidence for one Done-when line
-    (L32). It mistyped a long path (L30). Being read-only, it cannot run a mutation check.
+    (L32). It mistyped a long path (L30), and guessed a home directory for a file
+    read (L36). Being read-only, it cannot run a mutation check.
 - **Claude Opus, as an agent reviewer** (PRs 12 and 13, before PR 18 handed this repository's
   reviews to Luna): approved after named fixes both times.
 - **DeepSeek V4.1 Flash** (implementer): it created no session while WSL was short of memory, in
