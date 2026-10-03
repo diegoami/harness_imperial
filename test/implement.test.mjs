@@ -152,6 +152,17 @@ test('OpenCode Go not logged in: exit 3 with the login command for the scripts\'
   assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
 });
 
+test('a 2.x OpenCode (the desktop app\'s CLI) exits 3 with the fallback, before any worktree or run (#26)', posix, async () => {
+  const p = project();
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_VERSION: '2.0.18' });
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported.*Fall back to a Claude implementer \(sonnet\)/);
+  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
+  const ok = implement(project(), { FAKE_OC_MODE: 'implement' });
+  assert.match(ok.stdout, /^opencode: 1\.18\.34 \(/m);                             // the version is logged
+});
+
 test('OpenCode missing exits 3 before touching anything', posix, async () => {
   const p = project();
   const r = implement(p, { HARNESS_OPENCODE_EXE: '/no/such/opencode' });

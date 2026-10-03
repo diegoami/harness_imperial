@@ -140,3 +140,11 @@ test('--probe asks for one word through the runner; a failed probe writes nothin
     assert.deepEqual(fs.existsSync(work) ? fs.readdirSync(work).filter((f) => f.startsWith('probe-')) : [], []);
   }
 });
+
+test('a 2.x OpenCode exits 3 and writes nothing (#26)', posix, () => {
+  const p = project();
+  const r = sw(p, { FAKE_OC_VERSION: '2.0.18' }, '--role', 'reviewer', '--model', 'opencode-go/kimi-k3');
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported/);
+  assert.deepEqual(p.config().reviewer.chain, ['luna']);
+});

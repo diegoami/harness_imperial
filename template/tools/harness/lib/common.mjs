@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { openCodeHome, listedModels, loginHint } from './opencode.mjs';
+import { openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem } from './opencode.mjs';
 
 export function sh(cmd, args, { cwd, allowFail = false, env } = {}) {
   const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -78,11 +78,15 @@ export function ensureAgent({ top, commonDir, worktree, agent }) {
   }
 }
 
-// Before anything is billed: the scripts' own data directory, and which models of the chain
-// OpenCode lists there. A model it does not list (an unknown id, or a provider not logged in in
+// Before anything is billed: the scripts' own data directory, the OpenCode version (any major but
+// the supported one is refused, #26), and which models of the chain OpenCode lists there. A model it does not list (an unknown id, or a provider not logged in in
 // that directory) is dropped, with the command that fixes it. Returns { env, usable, problems }.
 export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }) {
   const oc = openCodeHome(env, { log });
+  const version = await openCodeVersion(opencode, { env: oc.env, cwd });
+  log(`opencode: ${version ?? 'unknown version'} (${opencode.exe})`);
+  const bad = versionProblem(version, opencode.exe);
+  if (bad) return { env: oc.env, usable: [], problems: [bad], version };
   const { listed, errors } = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
   const problems = [];
   const usable = chain.filter((m) => {
@@ -90,7 +94,7 @@ export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }
     problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome, errors)}`);
     return false;
   });
-  return { env: oc.env, usable, problems };
+  return { env: oc.env, usable, problems, version };
 }
 
 export const ocArgs = (worktree, agent, model) =>

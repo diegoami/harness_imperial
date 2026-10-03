@@ -209,6 +209,15 @@ test('a checkout without the reviewer agent exits 2 before anything runs (#10)',
   assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
 });
 
+test('a 2.x OpenCode exits 3 before any worktree or run, and nothing is posted (#26)', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_VERSION: '2.0.18' });
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported.*use a Claude reviewer \(opus\)/);
+  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(gh(p).comments.length, 0);
+});
+
 test('a review that may be cut off is posted under a note, unlabelled, exit 4, and no other model runs', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, { FAKE_OC_MODE: 'review-cut' }, '--issue', '12', '--apply-label');

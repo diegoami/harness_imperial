@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runOpenCodeWatched, resolveOpenCode } from '../template/tools/harness/lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, openCodeVersion, versionProblem } from '../template/tools/harness/lib/opencode.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let opencode = null;
@@ -82,4 +82,10 @@ test('real OpenCode: with the reviewer\'s settings, the runner still finds the s
   assert.match(r.sessionId, /^ses_/);
   assert.equal(r.sessionAgent, 'reviewer');
   assert.equal(r.agentFallback, false);
+});
+
+test('real OpenCode: --version gives a supported 1.x version (#26)', { skip }, async () => {
+  const v = await openCodeVersion(opencode, { env: process.env, cwd: os.tmpdir() });
+  assert.match(v, /^1\.\d+\.\d+$/);
+  assert.equal(versionProblem(v, opencode.exe), null);
 });
