@@ -31,6 +31,10 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 
 Every model runs at effort `high`, never `max` (L27), except Sol: it runs sparingly, at effort `low`,
 `medium` at most and never `high` (the owner, 2026-10-03, L39).
+- Light first: both Sol entries (`sol-6.1`, `sol`) are at `low` in `harness.json`. Going to
+  `medium` is a switch through `/switch-model`, with the owner's reason in the commit message.
+- OpenAI credit being restored (2026-10-03) is not a reason to raise it. Sol is for hard reviews
+  only (L39), and it stays sparing.
 
 **Not used:**
 - OpenCode Zen's `opencode/…` models;
@@ -93,6 +97,27 @@ GitHub. At about 60 items, the decision `task-hard` is defined, in the same word
 the two are to share items, and trialled (`/jev`). Until then, the main session decides. Jev would
 give only the decision, so the main session still writes the reason. Its key loads from
 `~/.openrouter_env`, which this machine's sessions do not read on their own.
+
+## Faster game cycles
+
+Not about models, but the time one game cycle takes sets how long every research run lasts, and so
+how much implementer and reviewer time a driver costs. isle-wars-archaeology measured Isle Wars Pro
+under Wine (its `docs/models.md`, T08's control runs): a cycle of about 25 s fell to about 10 s.
+Its lessons, for any driver that a project of this harness builds:
+
+- **Measure each step once** (environment ready, window or screen up, first stable screen, one
+  action, terminate, processes gone), so the slow step is known before optimising.
+- **Do not patch the game to skip what is slow.** A title or registration screen that is the main
+  menu stays; stripping an unregistered notice would be a crack.
+- **Terminate by killing, not through the game's menus** (Wine: Alt+F4 or `wineserver -k`). The
+  full quit path is tested once, not in every cycle.
+- **Relaunch less often.** A driver keeps the game running between trials and starts each one from
+  a known state: a new game or a loaded save. The launch is paid once per session.
+- **Run in parallel.** Each run gets its own display (Xvfb) and its own copy of the game's files,
+  so runs side by side cannot interfere.
+
+The step timings are in isle-wars-archaeology's `docs/models.md`, "Faster game cycles (Isle Wars
+Pro)". A number measured for another game is a target to measure, not a promise.
 
 ## How a run is made
 
