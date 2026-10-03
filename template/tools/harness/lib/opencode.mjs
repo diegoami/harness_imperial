@@ -66,13 +66,19 @@ export function agentWarning(stderr, agent) {
 
 // OpenCode's own line when a non-interactive run rejects a tool call (OpenCode 1.18):
 //   ESC[93mESC[1m! ESC[0mpermission requested: external_directory (/tmp/*); auto-rejecting
-// Anchored like agentWarning. Returns what was rejected (the last one), or null.
-export function permissionRejection(text) {
+// Anchored like agentWarning. When OpenCode colours its output, its own line is coloured too, so a
+// plain copy of it is text a tool printed, such as an issue quoting a rejection (PR 35, #14), and
+// does not count. Output with no colour at all is read plain. Returns the rejection lines' matches.
+function rejectionLines(text) {
+  const s = String(text);
   const ansi = '(?:\\x1b\\[[0-9;]*m|[ \\t])*';
-  const re = new RegExp(`^${ansi}!${ansi}permission requested: ([^\\r\\n]*?); auto-rejecting`, 'gm');
-  let what = null;
-  for (const m of String(text).matchAll(re)) what = m[1];
-  return what;
+  const lead = /\x1b\[[0-9;]*m/.test(s) ? `[ \\t]*\\x1b\\[[0-9;]*m${ansi}` : ansi;
+  return [...s.matchAll(new RegExp(`^${lead}!${ansi}permission requested: ([^\\r\\n]*?); auto-rejecting`, 'gm'))];
+}
+
+// What was rejected (the last rejection), or null.
+export function permissionRejection(text) {
+  return rejectionLines(text).at(-1)?.[1] ?? null;
 }
 
 // Why a rejection happened, when the agent's own command shows it: OpenCode prints the rejected
@@ -80,10 +86,10 @@ export function permissionRejection(text) {
 // relative to an earlier `cd`, which OpenCode resolves against --dir instead (#14): a false
 // positive the agent files now forbid (L31). Returns the hint, or null.
 export function rejectionHint(text) {
-  const plain = String(text).replace(/\x1b\[[0-9;]*m/g, '');
-  const at = plain.search(/^[ \t]*![ \t]*permission requested: [^\n]*auto-rejecting/m);
-  if (at < 0) return null;
-  const cmd = plain.slice(at).split(/\r?\n/).slice(1).find((l) => /^\s*✗/.test(l));
+  const first = rejectionLines(text)[0];
+  if (!first) return null;
+  const plain = String(text).slice(first.index).replace(/\x1b\[[0-9;]*m/g, '');
+  const cmd = plain.split(/\r?\n/).slice(1).find((l) => /^\s*✗/.test(l));
   if (!cmd || !/(^|[\s;&|(])cd\s|(^|[\s/'"=])\.\.(\/|\s|$)/.test(cmd.replace(/^\s*✗\s*/, ''))) return null;
   return 'the rejected command used cd or ..: run commands from the worktree root, with paths relative to it (L31)';
 }

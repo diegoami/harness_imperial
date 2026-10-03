@@ -3,7 +3,7 @@
 // FAKE_OC_STATE: the JSON file that plays OpenCode's session store.
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
 //   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission |
-//   permission-review | review-ok | review-cut
+//   permission-review | permission-quoted | review-ok | review-cut
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
@@ -164,6 +164,17 @@ switch (mode) {
       : '\x1b[31m✗\x1b[0m cat /tmp/notes.txt failed\n');
     const header = rest.at(-1).split('\n')[0];
     process.stdout.write(mode !== 'permission-review' ? 'report: built nothing\n' : `${header}\napprove\n\nR1: fine\n\napprove\n`);
+    process.exit(0);
+    break;
+  }
+  case 'permission-quoted': {
+    // A clean review whose tool printed an issue quoting a rejection line: plain text inside
+    // OpenCode's coloured output, not OpenCode's own line (PR 35).
+    createSession();
+    process.stderr.write('\x1b[0m$ \x1b[0mgh issue view 14\n');
+    process.stderr.write('! permission requested: external_directory (<review-dir>/*); auto-rejecting\n✗ cd evidence/a && ls failed\n');
+    const header = rest.at(-1).split('\n')[0];
+    process.stdout.write(`${header}\napprove\n\nR1: fine\n\napprove\n`);
     process.exit(0);
     break;
   }

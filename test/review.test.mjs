@@ -300,6 +300,14 @@ test('a review rejected for cd or .. says so, naming L31 (#14)', posix, () => {
   assert.equal(gh(p).comments.length, 0);
 });
 
+test('a review whose tool printed a quoted rejection line is posted: only OpenCode\'s coloured line counts (PR 35)', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'permission-quoted' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.doesNotMatch(r.stdout + r.stderr, /permission rejected/);
+  assert.equal(gh(p).comments.length, 1);
+});
+
 test('a review whose tool call was rejected is never posted, even when it looks complete', posix, () => {
   const p = project({ chain: ['luna'] });
   const r = review(p, { FAKE_OC_MODE: 'permission-review' });
