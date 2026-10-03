@@ -363,6 +363,14 @@ test('a second opinion posts both reviews, and the stricter verdict decides the 
   assert.deepEqual(labels(q), ['status:approved']);
 });
 
+test('a second opinion\'s dry run names a label only with --apply-label (Sol\'s R2 on PR 41, round 2)', posix, () => {
+  const run = (...x) => review(project(PROFILE), { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion', '--dry-run', ...x);
+  const plain = run();
+  assert.equal(plain.status, 0, plain.stderr + plain.stdout);
+  assert.match(plain.stdout, /dry run: would post 2 review\(s\), no label, and exit 0/);
+  assert.match(run('--issue', '12', '--apply-label').stdout, /dry run: would post 2 review\(s\), label status:approved, and exit 0/);
+});
+
 test('the second opinion is never the model that wrote the first review (#39)', posix, () => {
   const p = project(PROFILE);
   const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
