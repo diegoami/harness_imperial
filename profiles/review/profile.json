@@ -1,0 +1,21 @@
+{
+  "description": "The main session plans and implements; only reviewers run as agents (#39, L37).",
+  "files": [
+    "tools/harness/review.mjs",
+    "tools/harness/switch-model.mjs",
+    "tools/harness/lib/opencode.mjs",
+    "tools/harness/lib/chain.mjs",
+    "tools/harness/lib/common.mjs",
+    "tools/harness/lib/post.mjs",
+    "tools/harness/lib/review-selftest.mjs",
+    "tools/harness/lib/switch.mjs",
+    ".opencode/agents/reviewer.md",
+    "docs/environment.md"
+  ],
+  "overlay": ["CLAUDE.md", "docs/review.md"],
+  "adapt": ["CLAUDE.md"],
+  "harness": {
+    "models": ["glm-flash", "luna", "deepseek-flash"],
+    "reviewer": { "chain": ["glm-flash", "luna", "deepseek-flash"], "secondOpinion": "luna", "claudeFallback": null }
+  }
+}

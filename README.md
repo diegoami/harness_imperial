@@ -130,7 +130,23 @@ environment's network policy must allow. A session-start hook installs OpenCode 
 
 ## Adopt it
 
-In a project (Node 20 or later, `gh` logged in, OpenCode installed):
+`adopt.mjs` installs a profile into a project's git checkout. It writes nothing if the project
+already has one of its files with other content, and it records what it copied in `harness.lock`:
+
+```sh
+node /path/to/harness_imperial/adopt.mjs --profile full|review --target . [--dry-run]
+```
+
+- **full**: the whole template, as below. The main session orchestrates: OpenCode implements, a
+  reviewer of another family reviews, and task files are the contracts.
+- **review**, for a simpler repository (L37): only the reviewer. The main session plans and
+  implements; the PR body is the contract, and related changes may share a PR. GLM-5.3 Flash
+  reviews, then Luna, then DeepSeek V4.1 Flash, then the user: there is no Claude reviewer. A
+  critical PR gets a second opinion (`review.mjs --second-opinion`, Luna). The profile is
+  `profiles/review/`: its rules (`CLAUDE.md`), `docs/review.md`, and `profile.json`, which lists the
+  template files it takes and the reviewers it sets.
+
+The full profile by hand, in a project (Node 20 or later, `gh` logged in, OpenCode installed):
 
 ```sh
 cp -r /path/to/harness_imperial/template/. .
@@ -191,6 +207,8 @@ reproduce each failure above. The cases are:
 - a flagged review posted with no label and exit 4, a dry run, and a review requested from the
   implementer's family;
 - the scripts' own data directory, the copied `auth.json`, and a model OpenCode does not list;
+- `adopt.mjs`: each profile's files, the review profile's reviewers and its imports, a conflict
+  that writes nothing, an identical file left alone, a dry run, and `harness.lock`'s hashes;
 - a second opinion: both reviews posted and the stricter label applied, never by the first review's
   model or one that failed, and without one an exit 3 to the owner; with no Claude reviewer, a
   failure escalates to the owner;
