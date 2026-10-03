@@ -63,4 +63,6 @@ test('the commits a brief names as the one to review: after "at", "HEAD is" or "
   const h = (c) => c.repeat(40);
   assert.deepEqual(briefTargets(`You review PR #4 at ${h('a')}.\n0. HEAD is \`${h('B')}\`\nHEAD: ${h('c')}`), [h('a'), h('b'), h('c')]);
   assert.deepEqual(briefTargets(`Merged as ${h('d')}; see ${h('e')}. At 7 lines, abc1234 is short.`), []);
+  // Only the reviewer's block: the pasted task file, from its first heading on, may cite "at <sha>" (#32).
+  assert.deepEqual(briefTargets(`You review PR #4 at ${h('a')}.\n# T03 Port\nmalpaco-godot-poc at \`${h('f')}\`, the merge of PR #9.\n## Done when\nHEAD is ${h('9')}`), [h('a')]);
 });

@@ -203,7 +203,10 @@ export function accountDoneWhen(review, count) {
 
 // The commits a brief names as the one to review: a full 40-hex hash after "at", "HEAD is" or
 // "HEAD:", as process.md §5's brief writes them ("You review PR #<n> at <sha>", "HEAD is <sha>").
-// Other hashes (a PR body citing another commit) are not targets and are left alone (#23).
+// Other hashes (a PR body citing another commit) are not targets and are left alone (#23). Only the
+// reviewer's block is read, the lines before the pasted task file's first heading: a task file may
+// cite its evidence "at <sha>" too (#32).
 export function briefTargets(brief) {
-  return [...String(brief).matchAll(/\b(?:at|HEAD\s+is|HEAD:)\s+`?([0-9a-fA-F]{40})\b/g)].map((m) => m[1].toLowerCase());
+  const block = String(brief).split(/^#{1,6}\s/m)[0];
+  return [...block.matchAll(/\b(?:at|HEAD\s+is|HEAD:)\s+`?([0-9a-fA-F]{40})\b/g)].map((m) => m[1].toLowerCase());
 }

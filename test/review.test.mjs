@@ -177,6 +177,15 @@ test('a brief naming the head runs, and one citing another commit only in passin
   assert.equal(gh(p).comments.length, 1);
 });
 
+test('a task file citing its evidence "at <sha>" does not block the review (#32)', posix, () => {
+  const p = project();
+  fs.writeFileSync(path.join(p.base, 'brief.md'),
+    `T07 review (x)\nYou review PR #7 at ${p.sha}.\n0. Prove the tree: HEAD is ${p.sha}.\n\n# T07 Calendar\n\nThe source: malpaco-godot-poc at \`${'d'.repeat(40)}\`, the merge of PR #9.\n`);
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(gh(p).comments.length, 1);
+});
+
 test('the reviewer\'s agent comes from the main checkout, never from the PR under review (#10, L34)', posix, () => {
   const p = project();
   // The PR changes its own reviewer: a new description, and git push allowed.
