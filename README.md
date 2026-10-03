@@ -142,8 +142,8 @@ node /path/to/harness_imperial/adopt.mjs --profile full|review --target . [--dry
 
 - **full**: the whole template, as below. The main session orchestrates: OpenCode implements, a
   reviewer of another family reviews, and task files are the contracts.
-- **review**, for a simpler repository (L37): only the reviewer. The main session plans and
-  implements; the PR body is the contract, and related changes may share a PR. GLM-5.3 Flash
+- **review**, for a simpler repository (L37): only the reviewer. The main session, on Opus, plans
+  and implements; the PR body is the contract, and related changes may share a PR. GLM-5.3 Flash
   reviews, then Luna, then DeepSeek V4.1 Flash, then the user: there is no Claude reviewer. A
   critical PR gets a second opinion (`review.mjs --second-opinion`, Luna). The profile is
   `profiles/review/`: its rules (`CLAUDE.md`), `docs/review.md`, and `profile.json`, which lists the

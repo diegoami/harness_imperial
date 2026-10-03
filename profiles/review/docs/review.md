@@ -28,7 +28,10 @@ chain's next model. Each reviewer works read-only in a detached worktree of the 
    the PR (L34).
 4. Read the outcome:
    - exit 0: the review is posted. `approve`: merge. `approve after named fixes` or `rework`: fix,
-     push, review again. With a second opinion, the stricter verdict counts.
+     push, review again. With a second opinion, the stricter verdict counts. A heavy review (three
+     or more blocking findings, or new ones of the last round's class) changes how the next round
+     works, not who does it: fix the class, sweep the PR's own code for it, list the sweep in the
+     PR body, or change the approach (`CLAUDE.md` rule 5, L38).
    - exit 3: no review, or no second opinion. Tell the user.
    - exit 4: a review posted but not acted on (cut off, unreadable, an approve that skipped a
      Done-when line). Read it on the PR and tell the user.

@@ -103,6 +103,10 @@ give only the decision, so the main session still writes the reason. Its key loa
   - `approve after named fixes`: fix and push, then ask the owner to merge, without paying for a
     second review (PR 33).
   - `rework`: fix, push, and review again, as on PRs 17, 21, 22 and 29.
+  - A heavy review (three or more blocking findings, or new ones of the last round's class, L38):
+    Claude Opus writes here, the top of the ladder, so the next round fixes the class, sweeps its
+    own code for it and lists the sweep in the PR body, or changes the approach. PR 42's rounds
+    (a half-written install, then a half-written file) are the case.
   - Exit 3: no review came back. Escalate, because no Claude reviewer may review here.
   - Exit 4: the review is posted under a note. Read it on the PR.
 - **A model on watch** prints its note each time it runs. Its outcome goes in the measurement

@@ -73,6 +73,27 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      2. At `review-round:2` (at `review-round:1` for a fix), go to step 5.
      3. Otherwise set the next round and return to step 1, with the full review's URL in the
         brief. The implementer script resumes the branch.
+     4. **A heavy review moves the implementer up (L38).** The review just posted is heavy when
+        it asks for rework with three or more blocking findings, or when a rework round brings
+        new blocking findings of the class the previous round raised (the same kind of defect in
+        new code: the fix did not converge). Then the next round goes one step up the ladder:
+        a light OpenCode model → a heavy one → a Claude Opus agent (where the owner pairs by
+        difficulty: GLM-5.3 Flash → DeepSeek V4.1 Flash → Opus), and Sonnet → Opus; never down
+        within a task. At the top, or when a stronger model
+        cannot help (the class needs another approach, as golden screenshots did in malpaco T02),
+        the next round changes the approach instead, and says so on the task file.
+        - The round count does not reset, and the reviewer stays of another family: with Opus
+          implementing, no Claude reviewer may review; if the OpenCode reviewers fail, go to step 5.
+          The Done-when is never weakened for the stronger model.
+        - Hand-over: stop the current implementer if it is mid-round; save its unpushed work as a
+          patch (`git add -N` new files, then `git diff > <patch>`); start the new implementer on
+          the pushed branch with the task file pasted in full, every review so far (the current
+          one pasted in full), the patch path "to weigh, never to apply blindly", and the
+          instruction to fix the class of the findings, not each instance, then sweep its own
+          code for the same class and list the sweep in the PR body.
+        - Record the change on the task file's Implementer line, with the finding counts as the
+          reason, committed on `main`. After the round, the measurement comment (§9) gives the
+          models, the trigger, the blocking counts before and after, and whether it converged.
 
 5. **Escalate** (`docs/process.md` §7): label `status:escalated`, comment the evidence on the issue,
    and bring the user the decision with options and a recommendation. Stop.

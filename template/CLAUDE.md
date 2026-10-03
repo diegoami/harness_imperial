@@ -15,13 +15,13 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
    assertion, skips a test or edits its task file. The main session amends a Done-when on `main`
    with the reason in the commit message.
 6. The reviewer is never the implementer's model family. It re-runs every Done-when line itself.
-7. Merge only with an approving review and green CI. Two rework rounds, then escalate.
+7. Merge only with an approving review and green CI. Two rework rounds, then escalate. After a heavy
+   review, the next round's implementer moves one step up, never down (`/run-task`). (L38)
 8. Relay review findings in full, never a subset.
 9. A test proves behaviour only if it fails when the behaviour is removed; a claim that nothing
    failed is re-taken before it is believed.
 10. A comment asserting behaviour at an edge arrives with the test that visits that edge.
-11. Until the first playable build, schedule only bugs that break play; label the rest
-    `post-playable`.
+11. Until the first playable build, schedule only bugs that break play; the rest are `post-playable`.
 12. A bug whose fix stays in the files it names and changes no outcome is a `fix`; a blocking
     one-file mechanical fix may ride the PR that found it, declared under Scope.
 13. Design decisions go to the user; nothing else waits for the user.
