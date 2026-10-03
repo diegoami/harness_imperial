@@ -22,7 +22,7 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | light | the implementer chain's one model; real runs of `implement.mjs` in the scratch project |
 | `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | light | the reviewer of every PR in this repository |
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol` | OpenAI | heavy | on watch; the candidate for an adversarial review of guards and gates |
-| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol` | OpenAI | heavy | on watch; probed only |
+| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol` | OpenAI | heavy | on watch; a candidate reviewer |
 | `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | heavy | on watch; the candidate heavy implementer |
 | `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | heavy | on watch; an implementer by `--model` |
 | `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | light | on watch; an implementer by `--model` |
@@ -86,12 +86,12 @@ Every model runs at effort `high`, never `max` (L27).
 | OpenCode's file tools get paths relative to the worktree root, never absolute ones | Luna read `/home/diegoami/CLAUDE.md`, a home directory guessed from the repository's owner, and the run ended with no review | L36, PR 35 |
 | Keep the scratch project at a short path (`~/projects/harness-scratch`) | the long path was what Luna mistyped | #15 |
 | Done-when lines a read-only reviewer can run; mutation checks run by the main session | a reviewer cannot edit files to break a behaviour | #24, PR 33 |
-| Node on PATH through a user-level `SessionStart` hook (`~/.claude/hooks/session-path.sh`) | desktop sessions started without `~/.bashrc`, so `node` was missing | 2026-10-03 |
-| Source `~/.openrouter_env` before `models.mjs` or `jev.mjs` | this machine's sessions do not read the keys from `~/.bashrc` | 2026-10-03 |
 
 ## What each model has shown so far
 
-Each observation has a source. The PRs hold the full record.
+Each observation has a source. The PRs hold the full record. "At Isle Wars" means
+[isle-wars-archaeology's `docs/models.md`](https://github.com/diegoami/isle-wars-archaeology/blob/main/docs/models.md)
+and the trials issue it names.
 
 - **GPT-6 Luna** (reviewer of every PR here since PR 18):
   - Its blocking findings were real:
@@ -118,9 +118,9 @@ Each observation has a source. The PRs hold the full record.
 - **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
   followed an amended contract, but missed stale counts in its own doc.
-- **GPT-6 Sol**: not run here yet. At Isle Wars it was the adversary, finding bypasses in T06 and
+- **GPT-6 Sol**: at Isle Wars it was the adversary, finding bypasses in T06 and
   in each round of malpaco T02.
-- **GPT-6.1 Sol**: probed only.
+- **GPT-6.1 Sol**: it answered a one-word probe on 2026-10-03 (L35).
 
 ## Keeping this page current
 
