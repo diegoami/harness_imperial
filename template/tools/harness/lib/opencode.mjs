@@ -17,9 +17,10 @@
 //      (ic2-conquest's WSL reviewer).
 //   6. Output is read back as UTF-8.
 //   7. A tool call OpenCode auto-rejected (a path outside --dir, in a non-interactive run) ends the
-//      run with exit 0, so it looks like a clean finish. It is read from OpenCode's own warning
-//      line and reported as `permissionRejected` (IC2 #501: three runs in one day, on TEMP and on
-//      tools' install directories).
+//      run with exit 0, so it looks like a clean finish. It is read from the session record, and
+//      reported as `permissionRejected` with what OpenCode's warning line says was rejected (IC2
+//      #501: three runs in one day, on TEMP and on tools' install directories). The line decides
+//      alone only when the record cannot be read: a tool's output can quote it (PR 35).
 //
 // Every failure of OpenCode itself throws an OpenCodeInfraError with a short `reason`; a fallback
 // chain may move past it. Anything else thrown is a defect of the caller.
