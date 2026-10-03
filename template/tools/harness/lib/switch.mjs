@@ -57,22 +57,27 @@ export function planSwitch(config, { role, id, variant = 'high', name, family, f
     : null;
   if (conflict && !force) throw new Error(`Refused: ${conflict}. Switch the ${other} too, or pass --force.`);
   const describe = (c) => (c[role]?.chain ?? []).map((m) => `${m} (${c.models?.[m]?.id ?? '?'}, ${c.models?.[m]?.variant ?? 'no variant'})`).join(', ')
-    + ` then Claude ${c[role]?.claudeFallback ?? '?'}`;
+    + ` then ${afterChain(c[role])}`;
   const next = structuredClone(config);
   next.models = { ...next.models, [n]: entry };
   next[role] = { ...next[role], chain: [n], ...(fallback ? { claudeFallback: fallback } : {}) };
   return { config: next, name: n, entry, before: describe(config), after: describe(next), conflict };
 }
 
-// One line per role: what runs now. Then the models on watch (L35), if any.
+// What follows a role's chain: its Claude fallback, or the owner when claudeFallback is null (the
+// review profile, #39); "?" when harness.json does not say (#43).
+const afterChain = (c) => (c?.claudeFallback === null ? 'the owner' : `Claude ${c?.claudeFallback ?? '?'}`);
+
+// One line per role harness.json has (the review profile has no implementer, #43): what runs now.
+// Then the models on watch (L35), if any.
 export function showRoles(config) {
-  const roles = ROLES.map((r) => {
+  const roles = ROLES.filter((r) => config[r]).map((r) => {
     const c = config[r] ?? {};
     const models = (c.chain ?? []).map((m) => {
       const e = config.models?.[m] ?? {};
       return `${m} = ${e.id ?? '?'} (${e.variant ?? 'no variant'}, family ${e.family ?? '?'})`;
     });
-    return `${r}: ${models.join(', ') || '(none)'}, then Claude ${c.claudeFallback ?? '?'}`;
+    return `${r}: ${models.join(', ') || '(none)'}, then ${afterChain(c)}`;
   });
   const watched = Object.entries(config.models ?? {}).filter(([, e]) => e.watch).map(([m, e]) => `${m} = ${e.id}`);
   return [...roles, ...(watched.length ? [`on watch: ${watched.join(', ')}`] : [])].join('\n');
