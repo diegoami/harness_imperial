@@ -63,11 +63,11 @@ test('a file the project already has with other content stops everything; an ide
   fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# Mine\n');
   const r = adopt('--profile', 'review', '--target', dir);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /Nothing written: .* already has CLAUDE\.md with other content/);
+  assert.match(r.stderr, /Nothing written: .* already has CLAUDE\.md, with other content/);
   assert.deepEqual(files(dir), ['CLAUDE.md']);
   const same = project();
   fs.mkdirSync(path.join(same, 'docs'));
-  fs.copyFileSync(path.join(repo, 'template/docs/environment.md'), path.join(same, 'docs/environment.md'));
+  fs.copyFileSync(path.join(repo, 'profiles/review/docs/environment.md'), path.join(same, 'docs/environment.md'));
   const s = adopt('--profile', 'review', '--target', same);
   assert.equal(s.status, 0, s.stderr);
   assert.equal(adopt('--profile', 'review', '--target', same).status, 1);         // a second run meets its own lock
@@ -90,4 +90,53 @@ test('the full profile copies the whole template', () => {
   const all = files(path.join(repo, 'template'));
   assert.deepEqual(files(dir), [...all, 'harness.lock'].sort());
   assert.equal(verify(dir), all.length - 1);
+});
+
+test('a file where a directory belongs, or a symlink, stops everything before a write (Sol\'s R1, R2 on PR 42)', () => {
+  const dir = project();
+  fs.writeFileSync(path.join(dir, 'docs'), 'a file\n');                            // where docs/ must go
+  const r = adopt('--profile', 'review', '--target', dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /docs \(not a directory\)/);
+  assert.deepEqual(files(dir), ['docs']);
+  const link = project();
+  fs.mkdirSync(path.join(link, 'tools/harness'), { recursive: true });
+  fs.symlinkSync('switch-model.mjs', path.join(link, 'tools/harness/review.mjs')); // dangling, onto another of its files
+  const s = adopt('--profile', 'review', '--target', link);
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /tools\/harness\/review\.mjs \(a symlink\)/);
+  assert.equal(fs.existsSync(path.join(link, 'tools/harness/switch-model.mjs')), false);
+  const outside = project();
+  fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-elsewhere-')), path.join(outside, 'tools'));
+  const t = adopt('--profile', 'review', '--target', outside);
+  assert.equal(t.status, 1);
+  assert.match(t.stderr, /tools \(not a directory\)/);
+});
+
+test('a write that fails removes what the run wrote', { skip: process.getuid?.() === 0 || process.platform === 'win32' }, () => {
+  const dir = project();
+  fs.mkdirSync(path.join(dir, '.opencode'), { mode: 0o500 });                   // its agent cannot be written
+  const r = adopt('--profile', 'review', '--target', dir);
+  fs.chmodSync(path.join(dir, '.opencode'), 0o700);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /What this run had written was removed/);
+  assert.deepEqual(files(dir), []);
+  assert.equal(fs.existsSync(path.join(dir, 'tools')), false);
+});
+
+test('installed files keep the template\'s executable bit (Sol\'s R3 on PR 42)', { skip: process.platform === 'win32' }, () => {
+  const dir = project();
+  assert.equal(adopt('--profile', 'full', '--target', dir).status, 0);
+  const hook = '.claude/hooks/session-start.sh';
+  assert.equal(fs.statSync(path.join(dir, hook)).mode & 0o111, fs.statSync(path.join(repo, 'template', hook)).mode & 0o111);
+  assert.notEqual(fs.statSync(path.join(dir, hook)).mode & 0o100, 0);
+});
+
+test('the review profile\'s environment guide is its own: its reviewers, no Claude reviewer, no Jev (Sol\'s R4 on PR 42)', () => {
+  const dir = project();
+  assert.equal(adopt('--profile', 'review', '--target', dir).status, 0);
+  const env = fs.readFileSync(path.join(dir, 'docs/environment.md'), 'utf8');
+  for (const m of profile.harness.models) assert.match(env, new RegExp(template.models[m].id.replace(/[.]/g, '\\.')));
+  assert.match(env, /there is no Claude reviewer here/);
+  assert.doesNotMatch(env, /Jev|session-start|falls back to Claude/);
 });

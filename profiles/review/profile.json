@@ -9,10 +9,9 @@
     "tools/harness/lib/post.mjs",
     "tools/harness/lib/review-selftest.mjs",
     "tools/harness/lib/switch.mjs",
-    ".opencode/agents/reviewer.md",
-    "docs/environment.md"
+    ".opencode/agents/reviewer.md"
   ],
-  "overlay": ["CLAUDE.md", "docs/review.md"],
+  "overlay": ["CLAUDE.md", "docs/review.md", "docs/environment.md"],
   "adapt": ["CLAUDE.md"],
   "harness": {
     "models": ["glm-flash", "luna", "deepseek-flash"],
