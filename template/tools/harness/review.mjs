@@ -35,8 +35,9 @@
 //
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
 // unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
-// claudeFallback), unless Claude implemented the PR: then no reviewer of another family is left,
-// and the caller escalates. Exit 4: posted under a note, no label; the caller reads it on the PR and decides,
+// claudeFallback), unless Claude implemented the PR or claudeFallback is null: then the caller
+// escalates to the owner, as the message says. With --second-opinion, exit 3 also means the first
+// review was posted but no second one came back: no label, and the owner decides. Exit 4: posted under a note, no label; the caller reads it on the PR and decides,
 // and never pays for a second review because of it. --dry-run prints
 // what would be posted and the exit code it would use, and exits 0; it still runs, and bills, the
 // model.
@@ -46,7 +47,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
 import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
-import { planPost, publish, postComment, applyLabel, combinePlans } from './lib/post.mjs';
+import { planPost, publish, postComment, applyLabel, withdrawApproval, combinePlans } from './lib/post.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ocArgs, prepareOpenCode, watchLine,
@@ -70,11 +71,6 @@ const doneWhen = a['done-when'] !== undefined ? Number(a['done-when']) : doneWhe
 if (!Number.isInteger(doneWhen) || doneWhen < 0) die(2, `--done-when takes a count; got ${a['done-when']}`);
 if (!/review \(/.test(briefHeader)) die(2, `The brief's first line must be the review header, e.g. "T07 review (Luna)"; got: ${briefHeader}`);
 
-let opencode;
-try { opencode = resolveOpenCode(); } catch (e) {
-  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Nothing posted; use a Claude reviewer (see harness.json).`);
-  throw e;
-}
 requireTools('git', 'gh');
 
 const top0 = sh('git', ['rev-parse', '--show-toplevel']);
@@ -97,6 +93,12 @@ if (a.reviewer && !chain.length) die(1, `Refused: ${a.reviewer} is the implement
 const fallback = rev.claudeFallback === null ? 'Nothing posted; escalate to the owner (harness.json names no Claude reviewer).'
   : implementedBy.includes('claude') ? 'Nothing posted; escalate to the owner: Claude implemented this PR, so no Claude reviewer may review it.'
     : `Nothing posted; use a Claude reviewer (${rev.claudeFallback ?? 'opus'}).`;
+// OpenCode is looked for only now, so that its absence is reported with the same fallback (Sol's R1 on PR 41).
+let opencode;
+try { opencode = resolveOpenCode(); } catch (e) {
+  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} ${fallback}`);
+  throw e;
+}
 if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);
 // A second opinion (--second-opinion, for a critical PR): reviewer.secondOpinion, else the chain's
 // other models, never the model that wrote the first review (#39).
@@ -214,8 +216,11 @@ if (!a['second-opinion']) {
 
 // The second opinion: another model reviews the same head. Both reviews are posted; the stricter
 // decides the label (lib/post.mjs combinePlans). Without one, the first is posted and the owner decides.
-// Neither the first review's model nor one that failed in this run is tried again.
-const others = seconds.filter((m) => m !== result.name && !result.failures.some((f) => f.name === m) && pre.usable.includes(m));
+// Neither the first review's model nor one that failed in this run is tried again, compared by the
+// model's id, so that two names for one model never count as two opinions (Sol's R2 on PR 41).
+const idOf = (m) => config.models[m].id;
+const spent = new Set([result.name, ...result.failures.map((f) => f.name)].map(idOf));
+const others = [...new Map(seconds.filter((m) => !spent.has(idOf(m)) && pre.usable.includes(m)).map((m) => [idOf(m), m])).values()];
 say(`second opinion: ${others.join(', ') || 'no other reviewer left'}`);
 const second = others.length ? await runReview(others, true) : { ok: false, failures: [], sameCause: null };
 const plans = second.ok ? [plan, planOf(second)] : [plan];
@@ -231,6 +236,8 @@ for (const p of plans) {
   postComment({ plan: p, pr: a.pr, top });
   say(`posted: ${p.first} / ${p.kind === 'flagged' ? `flagged (${p.note})` : p.verdict}`);
 }
+// An approval from an earlier round never outlives two reviews that did not both approve (Sol's R3 on PR 41).
+if (a['apply-label'] && outcome.label !== 'status:approved') withdrawApproval({ issue: a.issue, top });
 if (outcome.code) die(outcome.code, `No label applied: ${outcome.why}. Read the reviews on PR ${a.pr} and decide.`);
 if (a['apply-label']) applyLabel({ label: outcome.label, issue: a.issue, top, say });
 say(`second opinion: ${outcome.label ?? 'no label'}${outcome.why ? ` (${outcome.why})` : ''}`);

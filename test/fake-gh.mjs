@@ -25,7 +25,8 @@ if (noun === 'pr' && verb === 'list') {
   state.comments.push({ pr: id, body: fs.readFileSync(opt('--body-file'), 'utf8') });
   save();
 } else if (noun === 'issue' && verb === 'edit') {
-  state.issueLabels[id] = [...(state.issueLabels[id] ?? []).filter((l) => l !== opt('--remove-label')), opt('--add-label')];
+  const removed = (opt('--remove-label') ?? '').split(',');
+  state.issueLabels[id] = [...(state.issueLabels[id] ?? []).filter((l) => !removed.includes(l)), ...(opt('--add-label') ? [opt('--add-label')] : [])];
   save();
 } else {
   console.error(`fake gh: unsupported ${args.join(' ')}`);
