@@ -13,13 +13,13 @@
     },
     "sol": {
       "id": "openai/gpt-6-sol",
-      "variant": "high",
+      "variant": "low",
       "family": "openai",
       "watch": "A candidate, probed only (2026-10-03, L35): compare with luna on the same kind of review, or with deepseek-flash on the same kind of task."
     },
     "sol-6.1": {
       "id": "openai/gpt-6.1-sol",
-      "variant": "high",
+      "variant": "low",
       "family": "openai",
       "watch": "A candidate, probed only (2026-10-03, L35): compare with luna on the same kind of review, or with deepseek-flash on the same kind of task."
     },
@@ -60,7 +60,13 @@
     "claudeFallback": "opus",
     "startupTimeoutSec": 180,
     "idleTimeoutSec": 600,
-    "totalTimeoutSec": 3600
+    "totalTimeoutSec": 3600,
+    "hard": [
+      "sol-6.1",
+      "glm",
+      "deepseek-pro",
+      "luna"
+    ]
   },
   "jev": {
     "model": "jev-1.13",

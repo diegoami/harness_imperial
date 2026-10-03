@@ -2,7 +2,7 @@
 // Hands one pull request to OpenCode for a review, and posts the result as one PR comment.
 //
 //   node tools/harness/review.mjs --pr 42 --brief brief.md [--reviewer NAME] [--exclude NAME,...]
-//     [--issue 12 --apply-label] [--done-when K] [--second-opinion] [--dry-run] [--env KEY=VALUE]...
+//     [--issue 12 --apply-label] [--done-when K] [--hard] [--second-opinion] [--dry-run] [--env KEY=VALUE]...
 //   node tools/harness/review.mjs --self-test   (the reader's samples; no model is called)
 //
 // The brief's first line is the review header the model prints, e.g. "T07 review (Luna)"; with the
@@ -27,6 +27,9 @@
 // A brief naming a commit other than the PR's head as the one to review is refused, exit 2, before
 // anything runs (#23). Only the lines before the pasted task file's title (`# T<nn>`) are read (#32).
 //
+// --hard (a hard task, L39) runs reviewer.hard instead of reviewer.chain: GPT-6.1 Sol, then GLM-5.3
+// (Z.AI), DeepSeek V4 Pro (Go) and Luna, so that one OpenAI quota cannot block a hard review. The
+// review's header names each model that failed before it, so a light substitute is visible.
 // --second-opinion (for a critical PR, #39): after the first review, reviewer.secondOpinion reviews the
 // same head (else the chain's other models), never the model that wrote the first review or one that
 // failed in this run. Both are posted; the stricter verdict decides the label. Without a second
@@ -57,7 +60,7 @@ import {
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
 
-const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test', 'second-opinion'], repeatable: ['env'] });
+const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test', 'second-opinion', 'hard'], repeatable: ['env'] });
 if (a['self-test']) {
   const failures = selfTest();
   for (const f of failures) console.error(`FAIL ${f}`);
@@ -85,7 +88,14 @@ const implementedBy = a.exclude ? a.exclude.split(',').map((s) => s.trim()).filt
   : [...labelsOf('pr', a.pr), ...(a.issue ? labelsOf('issue', a.issue) : [])]
     .filter((l) => l.startsWith('model:')).map((l) => l.slice(6));
 if (a.reviewer && !config.models[a.reviewer]) die(2, `Unknown reviewer ${a.reviewer}.`);
-const wanted = a.reviewer ? [a.reviewer] : rev.chain;
+// --hard (L39): reviewer.hard, a heavy reviewer first, then reviewers on other providers and
+// families, so that one account's quota cannot block a hard review; the implementer's family is
+// skipped as in any chain.
+if (a.hard && a.reviewer) die(2, '--hard runs reviewer.hard; it does not take --reviewer.');
+if (a.hard && !rev.hard?.length) die(2, '--hard needs reviewer.hard in harness.json.');
+for (const m of a.hard ? rev.hard : []) if (!config.models[m]) die(2, `Unknown reviewer ${m} in reviewer.hard.`);
+const base = a.hard ? rev.hard : rev.chain;
+const wanted = a.reviewer ? [a.reviewer] : base;
 const chain = excludeImplementers(wanted, config.models, implementedBy);
 if (implementedBy.length) say(`implemented by: ${implementedBy.join(', ')}`);
 if (a.reviewer && !chain.length) die(1, `Refused: ${a.reviewer} is the implementer's model family. Nothing posted.`);
@@ -105,7 +115,7 @@ if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excludin
 // other models, never the model that wrote the first review (#39).
 if (a['second-opinion'] && !rev.secondOpinion) die(2, '--second-opinion needs reviewer.secondOpinion in harness.json.');
 if (a['second-opinion'] && !config.models[rev.secondOpinion]) die(2, `Unknown second-opinion reviewer ${rev.secondOpinion}.`);
-const seconds = a['second-opinion'] ? excludeImplementers([...new Set([rev.secondOpinion, ...rev.chain])], config.models, implementedBy) : [];
+const seconds = a['second-opinion'] ? excludeImplementers([...new Set([rev.secondOpinion, ...base])], config.models, implementedBy) : [];
 const pre = await prepareOpenCode({ opencode, chain: [...new Set([...chain, ...seconds])], models: config.models, env: envWith(a.env), cwd: top, log: say });
 for (const p of pre.problems) say(p);
 const usable = chain.filter((m) => pre.usable.includes(m));

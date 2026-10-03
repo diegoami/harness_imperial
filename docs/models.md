@@ -20,16 +20,17 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | Name | Model and route | Family | Used for, here |
 | --- | --- | --- | --- |
 | `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer**, the `harness.json` default |
-| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol` | OpenAI | **hard reviewer** (`--reviewer sol-6.1`); still on watch (L35) |
+| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **hard reviewer**, first in `--hard` (L39); used sparingly; still on watch (L35) |
 | `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project (`--model glm-flash`); on watch |
 | `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project; the `harness.json` default chain |
-| `sol` | GPT-6 Sol, `openai/gpt-6-sol` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
+| `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
 | `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | on watch; not in a pair |
 | `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | on watch; not in a pair |
 | (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
 | (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
 
-Every model runs at effort `high`, never `max` (L27).
+Every model runs at effort `high`, never `max` (L27), except Sol: it runs sparingly, at effort `low`,
+`medium` at most and never `high` (the owner, 2026-10-03, L39).
 
 **Not used:**
 - OpenCode Zen's `opencode/…` models;
@@ -49,9 +50,17 @@ follows the work's difficulty. Claude writes every PR here, so here only the rev
 | Difficulty | Writes | Reviews | If the reviewer is unavailable |
 | --- | --- | --- | --- |
 | Easy, the default | Claude, the main session | GPT-6 Luna (`luna`) | escalate: no Claude reviewer may review here |
-| Hard | Claude, the main session | GPT-6.1 Sol (`--reviewer sol-6.1`) | Luna, and say so on the PR |
+| Hard | Claude, the main session | `--hard`: GPT-6.1 Sol | GLM-5.3, then DeepSeek V4 Pro, then Luna, by itself (L39) |
 
 The review always runs through `review.mjs` from the root, with `--exclude claude`.
+
+**Speedups: a hard review never waits for one provider (L39).** `--hard` runs `reviewer.hard`:
+GPT-6.1 Sol, then GLM-5.3 (Z.AI), then DeepSeek V4 Pro (Go), then Luna. The next model runs only
+when one produced no review, such as when the OpenAI quota is used up (Isle Wars T08 lost Sol and
+Luna together that way). The implementer's family is skipped; the posted header names each model
+that failed before the one that reviewed, so a light substitute on a hard review is visible; with
+no reviewer left, the script exits 3 and the owner decides. Sol runs at effort `low`, so a hard
+review costs a fraction of a `high` one.
 
 **When work is hard.** A PR is hard if any of these holds:
 - it is a guard, a gate or a check whose failure lets a wrong result through: the runner's
