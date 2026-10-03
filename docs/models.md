@@ -17,17 +17,17 @@ covers only this repository.
 
 The names are `harness.json`'s. Both copies, the template's and the root's, are equal.
 
-| Name | Model and route | Family | Tier | Used for, here |
-| --- | --- | --- | --- | --- |
-| `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | light | the implementer chain's one model; real runs of `implement.mjs` in the scratch project |
-| `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | light | the reviewer of every PR in this repository |
-| `sol` | GPT-6 Sol, `openai/gpt-6-sol` | OpenAI | heavy | on watch; the candidate for an adversarial review of guards and gates |
-| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol` | OpenAI | heavy | on watch; a candidate reviewer |
-| `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | heavy | on watch; the candidate heavy implementer |
-| `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | heavy | on watch; an implementer by `--model` |
-| `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | light | on watch; an implementer by `--model` |
-| (Claude) Opus | the main session | Claude | heavy | writes every PR here, so it never reviews one (the family rule) |
-| (Claude) Sonnet | `claudeFallback` of the implementer | Claude | light | the fallback when OpenCode cannot implement |
+| Name | Model and route | Family | Used for, here |
+| --- | --- | --- | --- |
+| `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer**, the `harness.json` default |
+| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol` | OpenAI | **hard reviewer** (`--reviewer sol-6.1`); still on watch (L35) |
+| `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project (`--model glm-flash`); on watch |
+| `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project; the `harness.json` default chain |
+| `sol` | GPT-6 Sol, `openai/gpt-6-sol` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
+| `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | on watch; not in a pair |
+| `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | on watch; not in a pair |
+| (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
+| (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
 
 Every model runs at effort `high`, never `max` (L27).
 
@@ -41,14 +41,48 @@ Every model runs at effort `high`, never `max` (L27).
 - DeepSeek runs on OpenCode Go.
 - Luna and Sol run on the direct OpenAI route.
 
-## Routing: which pair for which work
+## Routing: easy or hard
 
-| Work | Writes | Reviews | Why |
+The owner decided on 2026-10-03, for this repository as for Isle Wars and malpaco, that the pair
+follows the work's difficulty. Claude writes every PR here, so here only the reviewer changes:
+
+| Difficulty | Writes | Reviews | If the reviewer is unavailable |
 | --- | --- | --- | --- |
-| Any PR in this repository | Claude, the main session | Luna, through `review.mjs` from the root, `--exclude claude` | the family rule; `CLAUDE.md` |
-| A guard, a gate or the review reader (`guard.mjs`, `briefTargets`, `accountDoneWhen`, the family check) | Claude | Luna; a second review by Sol only on the owner's say | Luna's blocking findings on PRs 17, 22 and 29 were bypasses; at Isle Wars, Sol found bypasses that the implementer's tests missed |
-| A real run of `implement.mjs` or `review.mjs`, to check the runner | `deepseek-flash`, or a model on watch by `--model` | `luna` | in `~/projects/harness-scratch`, never in this repository |
-| A small doc fix | Claude | Luna | one round |
+| Easy, the default | Claude, the main session | GPT-6 Luna (`luna`) | escalate: no Claude reviewer may review here |
+| Hard | Claude, the main session | GPT-6.1 Sol (`--reviewer sol-6.1`) | Luna, and say so on the PR |
+
+The review always runs through `review.mjs` from the root, with `--exclude claude`.
+
+**When work is hard.** A PR is hard if any of these holds:
+- it is a guard, a gate or a check whose failure lets a wrong result through: the runner's
+  rejection, agent and family checks, `guard.mjs`, the review reader (`readReview`,
+  `accountDoneWhen`), `briefTargets`;
+- it adds a new mechanism across several files, or a new external dependency;
+- an earlier round found blocking bypasses.
+
+Everything else is easy: docs, lessons, config, and single-mechanism code with clear tests. The
+main session decides, and the PR body says `Difficulty: easy` or `Difficulty: hard`, with the
+reason. Luna's blocking findings on PRs 17, 22 and 29 were bypasses of exactly such checks; at Isle
+Wars, Sol found bypasses that the implementer's own tests missed.
+
+**Real runs in the scratch project** (`~/projects/harness-scratch`, never this repository) use
+Isle Wars' full pairs: easy, GLM-5.3 Flash implements (`--model glm-flash`) and Luna reviews; hard,
+DeepSeek V4.1 Flash implements and GPT-6.1 Sol reviews. GLM-5.3 Flash is on watch (L27, L35): a
+stall is diagnosed before any fallback.
+
+**Jev, for easy or hard (planned).** The owner cleared sending this text to OpenRouter for a Jev
+trial (2026-10-03). A trial needs about 60 labelled items, and labels that the main session makes
+itself measure Jev against the main session, not against the truth. So the outcome is the label:
+- a hard PR whose review found nothing blocking says the call was too cautious;
+- an easy PR whose review found blocking bypasses says the call was wrong;
+- otherwise the call stands.
+
+Each PR body records the call and its reason, and the outcome adds the label after the review. The
+PRs already merged here can be labelled from their outcomes alone, since their reviews are on
+GitHub. At about 60 items, the decision `task-hard` is defined, in the same words as Isle Wars' if
+the two are to share items, and trialled (`/jev`). Until then, the main session decides. Jev would
+give only the decision, so the main session still writes the reason. Its key loads from
+`~/.openrouter_env`, which this machine's sessions do not read on their own.
 
 ## How a run is made
 
@@ -59,8 +93,9 @@ Every model runs at effort `high`, never `max` (L27).
 - **The brief.**
   - First comes `process.md` §5's block, naming the head taken from the local branch after the
     push has landed (L33).
-  - Then the issue or contract, under a heading, with its Done-when list. Only the block before
-    the first heading is checked for the head (#32), so the contract may cite other commits.
+  - Then the contract with its Done-when list, under a title of the form `# T<nn> …` (here, the
+    PR's number). Only the block before that title is checked for the head (#32), so the contract
+    may cite other commits; a brief without one is checked whole.
   - List only the Done-when lines that a read-only reviewer can run. The main session runs the
     mutation checks itself and says so in the brief (#24; DW2 on PR 33 came back "not run").
 - **Reading the verdict.**
