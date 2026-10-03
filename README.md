@@ -21,7 +21,7 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/tools/harness/implement.mjs` | Runs a task's implementer on OpenCode in its own worktree, and checks the handover. |
 | `template/.claude/agents/reviewer.md`, `implementer.md` | The Claude reviewer and fallback implementer. Each carries its brief's fixed text from `process.md` §4/§5, and a `PreToolUse` hook (`tools/harness/guard.mjs`) that refuses the commands the role may not run: every write for the reviewer; `git stash`, `git worktree`, force-push and `gh pr merge` for the implementer. |
 | `template/tools/harness/post-review.mjs` | Posts a Claude reviewer's returned review through the same reader and writer as `review.mjs` (`lib/post.mjs`), so only one component writes reviews to GitHub. |
-| `template/tools/harness/review.mjs` | Runs a review on OpenCode, never on the implementer's model family, and posts it. |
+| `template/tools/harness/review.mjs` | Runs a review on OpenCode, never on the implementer's model family, and posts it. `--second-opinion` adds a review by another model for a critical PR; the stricter verdict decides the label. |
 | `template/tools/harness/lib/opencode.mjs` | The watched runner that both use. |
 | `template/.opencode/agents/` | The OpenCode agents, with the permission deny-lists. |
 | `template/tools/harness/jev.mjs`, `lib/jev.mjs` | Delegates repeated decisions to Jev: `trial` against labels, then `route` the confident ends. |
@@ -191,6 +191,9 @@ reproduce each failure above. The cases are:
 - a flagged review posted with no label and exit 4, a dry run, and a review requested from the
   implementer's family;
 - the scripts' own data directory, the copied `auth.json`, and a model OpenCode does not list;
+- a second opinion: both reviews posted and the stricter label applied, never by the first review's
+  model or one that failed, and without one an exit 3 to the owner; with no Claude reviewer, a
+  failure escalates to the owner;
 - a model on watch printing its note, on the console and in the run log, and keeping it through a
   switch;
 - a tool call OpenCode rejected (in the runner, the implementer and the review), a large export, and

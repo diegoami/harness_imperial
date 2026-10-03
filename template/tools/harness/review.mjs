@@ -2,7 +2,7 @@
 // Hands one pull request to OpenCode for a review, and posts the result as one PR comment.
 //
 //   node tools/harness/review.mjs --pr 42 --brief brief.md [--reviewer NAME] [--exclude NAME,...]
-//     [--issue 12 --apply-label] [--done-when K] [--dry-run] [--env KEY=VALUE]...
+//     [--issue 12 --apply-label] [--done-when K] [--second-opinion] [--dry-run] [--env KEY=VALUE]...
 //   node tools/harness/review.mjs --self-test   (the reader's samples; no model is called)
 //
 // The brief's first line is the review header the model prints, e.g. "T07 review (Luna)"; with the
@@ -26,6 +26,13 @@
 // A brief naming a commit other than the PR's head as the one to review is refused, exit 2, before
 // anything runs (#23). Only the lines before the pasted task file's title (`# T<nn>`) are read (#32).
 //
+// --second-opinion (for a critical PR, #39): after the first review, reviewer.secondOpinion reviews the
+// same head (else the chain's other models), never the model that wrote the first review or one that
+// failed in this run. Both are posted; the stricter verdict decides the label. Without a second
+// review, the first is posted unlabelled and the script exits 3: the owner decides.
+// harness.json's claudeFallback: null names no Claude reviewer: an exit 3 then says to escalate to
+// the owner, as it does when Claude implemented the PR.
+//
 // Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
 // unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
 // claudeFallback), unless Claude implemented the PR: then no reviewer of another family is left,
@@ -39,7 +46,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
 import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
-import { planPost, publish } from './lib/post.mjs';
+import { planPost, publish, postComment, applyLabel, combinePlans } from './lib/post.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ocArgs, prepareOpenCode, watchLine,
@@ -48,7 +55,7 @@ import {
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
 
-const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test'], repeatable: ['env'] });
+const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test', 'second-opinion'], repeatable: ['env'] });
 if (a['self-test']) {
   const failures = selfTest();
   for (const f of failures) console.error(`FAIL ${f}`);
@@ -85,11 +92,21 @@ const wanted = a.reviewer ? [a.reviewer] : rev.chain;
 const chain = excludeImplementers(wanted, config.models, implementedBy);
 if (implementedBy.length) say(`implemented by: ${implementedBy.join(', ')}`);
 if (a.reviewer && !chain.length) die(1, `Refused: ${a.reviewer} is the implementer's model family. Nothing posted.`);
-const fallback = `Nothing posted; use a Claude reviewer (${rev.claudeFallback ?? 'opus'}).`;
+// harness.json's claudeFallback: null means no Claude reviewer, so a failure goes to the owner (#39).
+// So does a PR Claude implemented: a Claude reviewer would be its own family.
+const fallback = rev.claudeFallback === null ? 'Nothing posted; escalate to the owner (harness.json names no Claude reviewer).'
+  : implementedBy.includes('claude') ? 'Nothing posted; escalate to the owner: Claude implemented this PR, so no Claude reviewer may review it.'
+    : `Nothing posted; use a Claude reviewer (${rev.claudeFallback ?? 'opus'}).`;
 if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);
-const pre = await prepareOpenCode({ opencode, chain, models: config.models, env: envWith(a.env), cwd: top, log: say });
+// A second opinion (--second-opinion, for a critical PR): reviewer.secondOpinion, else the chain's
+// other models, never the model that wrote the first review (#39).
+if (a['second-opinion'] && !rev.secondOpinion) die(2, '--second-opinion needs reviewer.secondOpinion in harness.json.');
+if (a['second-opinion'] && !config.models[rev.secondOpinion]) die(2, `Unknown second-opinion reviewer ${rev.secondOpinion}.`);
+const seconds = a['second-opinion'] ? excludeImplementers([...new Set([rev.secondOpinion, ...rev.chain])], config.models, implementedBy) : [];
+const pre = await prepareOpenCode({ opencode, chain: [...new Set([...chain, ...seconds])], models: config.models, env: envWith(a.env), cwd: top, log: say });
 for (const p of pre.problems) say(p);
-if (!pre.usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
+const usable = chain.filter((m) => pre.usable.includes(m));
+if (!usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
 
 // The reviewer's agent and OpenCode config come from this checkout, the main session's, never from
 // the PR under review: OpenCode reads a project's .opencode/ by default, so a PR's own reviewer.md
@@ -127,15 +144,18 @@ const newTree = () => {
   say(`worktree: ${worktree} at ${headSha}`);
 };
 
-let result;
-try {
-  result = await runChain({
-    chain: pre.usable,
-    log: say,
-    reset: async () => {},
-    attempt: async (m) => {
+// One review: the chain's models in turn, each in a fresh worktree; a second opinion says so in its header.
+const runReview = async (names, second) => {
+  try {
+    return await runChain({ chain: names, log: say, reset: async () => {}, attempt: (m) => attempt(m, second) });
+  } finally {
+    removeTree();
+  }
+};
+const attempt = async (m, second) => {
       const model = config.models[m];
-      const header = a.reviewer ? briefHeader : briefHeader.replace(/\([^()]*\)\s*$/, `(${m})`);
+      const header = second ? briefHeader.replace(/\([^()]*\)\s*$/, `(${m}, second opinion)`)
+        : a.reviewer ? briefHeader : briefHeader.replace(/\([^()]*\)\s*$/, `(${m})`);
       const prompt = `${header}\n${brief.slice(1).join('\n')}
 
 ---
@@ -175,18 +195,42 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
       const read = readReview(run.stdout, header);
       if (read.kind === 'none') return { ok: false, reason: read.reason, detail: run.output };
       return { ok: true, value: { ...read, header, model } };
-    },
-  });
-} finally {
-  removeTree();
+};
+
+const failed = (r) => r.failures.map((f) => `${f.name} failed: ${f.reason}`).join('; ');
+const why = (r) => (r.sameCause ? `same failure twice: ${r.sameCause} (${failed(r)})` : failed(r));
+const planOf = (r) => planPost({
+  read: r.value, header: r.value.header, reasons: failed(r), doneWhen, source: 'tools/harness/review.mjs',
+  signature: `${r.name}, via tools/harness/review.mjs (${r.value.model.id})`,
+});
+
+const result = await runReview(usable, false);
+if (!result.ok) die(3, `OpenCode unavailable: ${why(result)}. ${fallback}`);
+const plan = planOf(result);
+if (!a['second-opinion']) {
+  publish({ plan, pr: a.pr, issue: a.issue, applyLabel: a['apply-label'], dryRun: a['dry-run'], top, say, die });
+  process.exit(0);
 }
 
-const reasons = result.failures.map((f) => `${f.name} failed: ${f.reason}`).join('; ');
-if (!result.ok) die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}`);
-
-const { header, model } = result.value;
-const plan = planPost({
-  read: result.value, header, reasons, doneWhen, source: 'tools/harness/review.mjs',
-  signature: `${result.name}, via tools/harness/review.mjs (${model.id})`,
-});
-publish({ plan, pr: a.pr, issue: a.issue, applyLabel: a['apply-label'], dryRun: a['dry-run'], top, say, die });
+// The second opinion: another model reviews the same head. Both reviews are posted; the stricter
+// decides the label (lib/post.mjs combinePlans). Without one, the first is posted and the owner decides.
+// Neither the first review's model nor one that failed in this run is tried again.
+const others = seconds.filter((m) => m !== result.name && !result.failures.some((f) => f.name === m) && pre.usable.includes(m));
+say(`second opinion: ${others.join(', ') || 'no other reviewer left'}`);
+const second = others.length ? await runReview(others, true) : { ok: false, failures: [], sameCause: null };
+const plans = second.ok ? [plan, planOf(second)] : [plan];
+const outcome = second.ok ? combinePlans(plans)
+  : { label: null, code: 3, why: `no second opinion (${why(second) || `only ${result.name} could review`}): escalate to the owner` };
+for (const p of plans) for (const r of p.rewrites) say(`rewrote a closing keyword: ${r}`);
+if (a['dry-run']) {
+  for (const p of plans) say(p.body);
+  say(`dry run: would post ${plans.length} review(s), ${outcome.label ? `label ${outcome.label}` : 'no label'}, and exit ${outcome.code}${outcome.why ? ` (${outcome.why})` : ''}.`);
+  process.exit(0);
+}
+for (const p of plans) {
+  postComment({ plan: p, pr: a.pr, top });
+  say(`posted: ${p.first} / ${p.kind === 'flagged' ? `flagged (${p.note})` : p.verdict}`);
+}
+if (outcome.code) die(outcome.code, `No label applied: ${outcome.why}. Read the reviews on PR ${a.pr} and decide.`);
+if (a['apply-label']) applyLabel({ label: outcome.label, issue: a.issue, top, say });
+say(`second opinion: ${outcome.label ?? 'no label'}${outcome.why ? ` (${outcome.why})` : ''}`);

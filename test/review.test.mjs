@@ -342,6 +342,61 @@ test('a reviewer on watch says what to look for before it runs (L35)', posix, ()
   assert.doesNotMatch(review(project(), { FAKE_OC_MODE: 'review-ok' }).stdout, /watch:/);
 });
 
+// The review profile's reviewers (#39): GLM-5.3 Flash, then Luna, then DeepSeek; Luna's second opinion; no Claude.
+const PROFILE = { chain: ['glm-flash', 'luna', 'deepseek-flash'], secondOpinion: 'luna', claudeFallback: null };
+const LISTED = JSON.stringify(['zai-coding-plan/glm-5.3-flash', 'openai/gpt-6-luna', 'opencode-go/deepseek-v4.1-flash']);
+const modes = (m) => JSON.stringify({ 'zai-coding-plan/glm-5.3-flash': m[0], 'openai/gpt-6-luna': m[1], 'opencode-go/deepseek-v4.1-flash': m[2] ?? 'review-ok' });
+const labels = (p) => gh(p).issueLabels['12'] ?? [];
+
+test('a second opinion posts both reviews, and the stricter verdict decides the label (#39)', posix, () => {
+  const p = project(PROFILE);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-fixes']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const [first, second] = gh(p).comments.map((c) => c.body);
+  assert.match(first, /^T07 review \(glm-flash\)\napprove/);
+  assert.match(second, /^T07 review \(luna, second opinion\)\nrework/);
+  assert.deepEqual(labels(p), ['status:rework']);
+  const q = project(PROFILE);
+  const both = review(q, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(both.status, 0, both.stderr + both.stdout);
+  assert.equal(gh(q).comments.length, 2);
+  assert.deepEqual(labels(q), ['status:approved']);
+});
+
+test('the second opinion is never the model that wrote the first review (#39)', posix, () => {
+  const p = project(PROFILE);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const bodies = gh(p).comments.map((c) => c.body.split('\n')[0]);
+  assert.deepEqual(bodies, ['T07 review (luna; glm-flash failed: exited without a session (exit 1))', 'T07 review (deepseek-flash, second opinion)']);
+});
+
+test('no second opinion: the first review is posted, no label, exit 3 to the owner (#39)', posix, () => {
+  const p = project(PROFILE);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'exit-no-session', 'exit2']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.match(r.stderr, /no second opinion \(.*luna failed.*\): escalate to the owner/);
+  assert.equal(gh(p).comments.length, 1);
+  assert.deepEqual(labels(p), []);
+});
+
+test('with no Claude reviewer, or when Claude implemented, a failure escalates to the owner (#39)', posix, () => {
+  const p = project(PROFILE);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude');
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /Nothing posted; escalate to the owner \(harness\.json names no Claude reviewer\)/);
+  assert.doesNotMatch(r.stderr, /use a Claude reviewer/);
+  const q = project({ chain: ['luna'] });
+  const s = review(q, { FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude');
+  assert.equal(s.status, 3);
+  assert.match(s.stderr, /escalate to the owner: Claude implemented this PR/);
+  const t = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'exit2' }, '--exclude', 'deepseek-flash');
+  assert.match(t.stderr, /use a Claude reviewer \(opus\)/);
+  const u = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'review-ok' }, '--second-opinion');
+  assert.equal(u.status, 2);
+  assert.match(u.stderr, /--second-opinion needs reviewer\.secondOpinion/);
+});
+
 test('the implementer\'s family never reviews: dropped from the chain, or refused when named', posix, () => {
   const p = project({ chain: ['luna'] });
   const dropped = review(p, { FAKE_OC_MODE: 'review-ok' }, '--exclude', 'luna');
