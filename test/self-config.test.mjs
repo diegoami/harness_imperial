@@ -26,4 +26,7 @@ for (const agent of ['implementer', 'reviewer']) {
     assert.match(text, /Run every shell command from the worktree root with paths relative to it/);
     assert.match(text, /Never `cd`, and never write `\.\.` in a command/);
   });
+  test(`the ${agent} gives OpenCode's file tools paths relative to the worktree root, never absolute (L36)`, () => {
+    assert.match(body(`.opencode/agents/${agent}.md`), /paths? relative to the worktree root too \(`[^`]+`\), never an absolute path/);
+  });
 }

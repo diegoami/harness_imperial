@@ -39,6 +39,9 @@ how the run works.
   not `cd src && grep -n X a.cs`). Never `cd`, and never write `..` in a command: OpenCode checks
   paths against the worktree root, not against an earlier `cd` in the same command, so
   `cd a && …; cd ../b` is rejected as outside the worktree, and the run fails (L31).
+  Give the read tool a path relative to the worktree root too (`docs/models.md`), never an
+  absolute path: OpenCode resolves a relative path there, although the tool's description asks
+  for an absolute one, and a guessed absolute path is rejected and ends the run (L36).
 - Re-run every Done-when line yourself; the PR's evidence is a convenience, never the proof. Prove
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or
   label it unverified. A claim that nothing failed is re-taken before it is believed.
