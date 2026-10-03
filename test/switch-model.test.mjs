@@ -66,6 +66,17 @@ test('showRoles says what runs now', () => {
   ].join('\n'));
 });
 
+test('showRoles in the review profile: no implementer line, and the owner after the reviewers (#43)', () => {
+  const t = template();
+  const p = JSON.parse(fs.readFileSync(path.resolve(here, '../profiles/review/profile.json'), 'utf8'));
+  const config = { models: Object.fromEntries(p.harness.models.map((m) => [m, t.models[m]])), reviewer: { ...t.reviewer, ...p.harness.reviewer } };
+  const shown = showRoles(config).split('\n');
+  assert.equal(shown.filter((l) => l.startsWith('implementer')).length, 0);
+  assert.match(shown[0], /^reviewer: glm-flash = zai-coding-plan\/glm-5\.3-flash .*, deepseek-flash = opencode-go\/deepseek-v4\.1-flash \(high, family deepseek\), then the owner$/);
+  assert.match(planSwitch(config, { role: 'reviewer', id: 'openai/gpt-6-luna' }).after, /then the owner$/);
+  assert.match(showRoles({ reviewer: { chain: [] } }), /then Claude \?$/);       // unsaid stays visible
+});
+
 test('a switch to a model on watch keeps its watch (L35)', () => {
   const p = planSwitch(template(), { role: 'implementer', id: 'zai-coding-plan/glm-5.3' });
   assert.equal(p.name, 'glm');

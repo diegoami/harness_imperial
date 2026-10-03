@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -265,4 +266,16 @@ test('the OpenCode version is read from --version; any major but 1 is refused (#
   assert.match(versionProblem(null, '/x/opencode'), /^OpenCode gave no version at \/x\/opencode is not supported/);
   assert.equal(await openCodeVersion(opencode, { env: setup('ok', { FAKE_OC_VERSION: 'opencode 2.0.18 (desktop)' }).env, cwd: os.tmpdir() }), '2.0.18');
   assert.equal(await openCodeVersion(opencode, { env: setup('ok', { FAKE_OC_VERSION: 'none' }).env, cwd: os.tmpdir() }), null);
+});
+
+test('fake opencode processes saving at once never crash on each other\'s temporary file (#45)', { skip: process.platform === 'win32' }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-race-'));
+  const env = { ...process.env, FAKE_OC_STATE: path.join(dir, 'state.json'), FAKE_OC_MODE: 'ok' };
+  const runs = Array.from({ length: 16 }, (_, i) => new Promise((resolve) => {
+    const c = spawn(process.execPath, [fake, 'run', '--title', `t${i}`, 'go'], { cwd: dir, env, stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    c.stderr.on('data', (d) => { err += d; });
+    c.on('close', (code) => resolve({ code, err }));
+  }));
+  for (const r of await Promise.all(runs)) assert.equal(r.code, 0, r.err);
 });

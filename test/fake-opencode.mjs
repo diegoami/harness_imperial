@@ -20,7 +20,13 @@ const [cmd, ...rest] = process.argv.slice(2);
 const stateFile = process.env.FAKE_OC_STATE;
 let mode = process.env.FAKE_OC_MODE || 'ok';
 const load = () => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return []; } };
-const save = (s) => { fs.writeFileSync(`${stateFile}.tmp`, JSON.stringify(s)); fs.renameSync(`${stateFile}.tmp`, stateFile); };
+// Each process writes through its own temporary file: two fake processes saving at once must never
+// rename each other's half-written state into place (#45).
+const save = (s) => {
+  const tmp = `${stateFile}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(s));
+  fs.renameSync(tmp, stateFile);
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const forever = () => setInterval(() => {}, 1 << 30);
 
