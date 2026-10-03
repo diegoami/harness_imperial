@@ -58,6 +58,20 @@ test('the review profile installs only the reviewer, with its own reviewers and 
   assert.equal(self.status, 0, self.stderr);                                      // its imports are all there
 });
 
+test('every model a profile\'s reviewer names is one it has: no hard chain inherited from the template', () => {
+  for (const p of ['full', 'review']) {
+    const dir = project();
+    assert.equal(adopt('--profile', p, '--target', dir).status, 0);
+    const c = JSON.parse(fs.readFileSync(path.join(dir, 'harness.json'), 'utf8'));
+    const named = [...(c.reviewer.chain ?? []), ...(c.reviewer.hard ?? []), ...(c.reviewer.secondOpinion ? [c.reviewer.secondOpinion] : []),
+      ...(c.implementer?.chain ?? [])];
+    for (const m of named) assert.ok(c.models[m], `${p}: ${m} is named but not defined`);
+  }
+  const review = project();
+  adopt('--profile', 'review', '--target', review);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(review, 'harness.json'), 'utf8')).reviewer.hard, null);
+});
+
 test('a file the project already has with other content stops everything; an identical one is left alone', () => {
   const dir = project();
   fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# Mine\n');

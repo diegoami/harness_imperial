@@ -15,6 +15,6 @@
   "adapt": ["CLAUDE.md"],
   "harness": {
     "models": ["glm-flash", "luna", "deepseek-flash"],
-    "reviewer": { "chain": ["glm-flash", "luna", "deepseek-flash"], "secondOpinion": "luna", "claudeFallback": null }
+    "reviewer": { "chain": ["glm-flash", "luna", "deepseek-flash"], "secondOpinion": "luna", "claudeFallback": null, "hard": null }
   }
 }
