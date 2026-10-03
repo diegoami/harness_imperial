@@ -470,6 +470,17 @@ test('--hard reviews with Sol, and with a third family when Sol cannot run, sayi
   assert.match(gh(q).comments[0].body, /^T07 review \(glm; sol-6\.1 failed: exit 2\)\napprove/);
 });
 
+test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s R2 on PR 47)', posix, () => {
+  const p = project();
+  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-6-luna']);
+  const r = review(p, { FAKE_OC_MODELS: notListed, FAKE_OC_MODE: 'review-ok' }, '--exclude', 'claude', '--hard');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(gh(p).comments[0].body, /^T07 review \(glm; sol-6\.1 not available\)\napprove/);
+  const q = project();                                                           // unchanged without --hard
+  review(q, { FAKE_OC_MODE: 'review-ok' });
+  assert.match(gh(q).comments[0].body, /^T07 review \(luna\)\napprove/);
+});
+
 test('--hard skips the implementer\'s family: a GLM implementer gets DeepSeek V4 Pro after Sol (L39)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2', 'review-ok', 'review-ok']) }, '--exclude', 'glm', '--hard');
@@ -478,12 +489,15 @@ test('--hard skips the implementer\'s family: a GLM implementer gets DeepSeek V4
   assert.doesNotMatch(r.stdout, /attempt: glm\b/);
 });
 
-test('--hard with no reviewer left exits 3 to the owner; --hard with --reviewer, or without reviewer.hard, is refused (L39)', posix, () => {
+test('--hard with no reviewer left exits 3, to the owner when Claude implemented; --hard with --reviewer, or without reviewer.hard, is refused (L39)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude', '--hard');
   assert.equal(r.status, 3);
   assert.match(r.stderr, /escalate to the owner: Claude implemented this PR/);
   assert.equal(gh(p).comments.length, 0);
+  const glm = review(project(), { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'exit2' }, '--exclude', 'glm', '--hard');
+  assert.equal(glm.status, 3);                                                   // a non-Claude implementer: the Claude fallback
+  assert.match(glm.stderr, /use a Claude reviewer \(opus\)/);
   const both = review(project(), { FAKE_OC_MODELS: HARD }, '--hard', '--reviewer', 'luna');
   assert.equal(both.status, 2);
   assert.match(both.stderr, /--hard runs reviewer\.hard; it does not take --reviewer/);

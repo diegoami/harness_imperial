@@ -212,14 +212,19 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
 
 const failed = (r) => r.failures.map((f) => `${f.name} failed: ${f.reason}`).join('; ');
 const why = (r) => (r.sameCause ? `same failure twice: ${r.sameCause} (${failed(r)})` : failed(r));
-const planOf = (r) => planPost({
-  read: r.value, header: r.value.header, reasons: failed(r), doneWhen, source: 'tools/harness/review.mjs',
+// The models of `list` ahead of the one that reviewed that could not run at all (not listed, or not
+// logged in): the header names them too, so a substitute is always visible (Sol's R2 on PR 47).
+const unavailable = (list, name) => list.slice(0, Math.max(0, list.indexOf(name)))
+  .filter((m) => !pre.usable.includes(m)).map((m) => `${m} not available`);
+const planOf = (r, list) => planPost({
+  read: r.value, header: r.value.header, reasons: [...unavailable(list, r.name), failed(r)].filter(Boolean).join('; '),
+  doneWhen, source: 'tools/harness/review.mjs',
   signature: `${r.name}, via tools/harness/review.mjs (${r.value.model.id})`,
 });
 
 const result = await runReview(usable, false);
 if (!result.ok) die(3, `OpenCode unavailable: ${why(result)}. ${fallback}`);
-const plan = planOf(result);
+const plan = planOf(result, chain);
 if (!a['second-opinion']) {
   publish({ plan, pr: a.pr, issue: a.issue, applyLabel: a['apply-label'], dryRun: a['dry-run'], top, say, die });
   process.exit(0);
@@ -234,7 +239,7 @@ const spent = new Set([result.name, ...result.failures.map((f) => f.name)].map(i
 const others = [...new Map(seconds.filter((m) => !spent.has(idOf(m)) && pre.usable.includes(m)).map((m) => [idOf(m), m])).values()];
 say(`second opinion: ${others.join(', ') || 'no other reviewer left'}`);
 const second = others.length ? await runReview(others, true) : { ok: false, failures: [], sameCause: null };
-const plans = second.ok ? [plan, planOf(second)] : [plan];
+const plans = second.ok ? [plan, planOf(second, seconds.filter((m) => !spent.has(idOf(m)) || m === second.name))] : [plan];
 const outcome = second.ok ? combinePlans(plans)
   : { label: null, code: 3, why: `no second opinion (${why(second) || `only ${result.name} could review`}): escalate to the owner` };
 for (const p of plans) for (const r of p.rewrites) say(`rewrote a closing keyword: ${r}`);
