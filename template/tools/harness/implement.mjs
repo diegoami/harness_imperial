@@ -27,7 +27,7 @@ import path from 'node:path';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
 import { runChain } from './lib/chain.mjs';
 import {
-  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode,
+  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode, watchLine,
 } from './lib/common.mjs';
 
 const say = (s) => console.log(s);
@@ -107,6 +107,8 @@ const result = await runChain({
   log: say,
   attempt: async (m) => {
     const model = config.models[m];
+    const watch = watchLine(m, model);
+    if (watch) say(watch);
     let reason = null;
     let output;
     try {
@@ -124,7 +126,7 @@ const result = await runChain({
       reason = e.reason;
       output = e.message;
     }
-    fs.appendFileSync(logFile, `=== ${m} (${model.id}): ${reason ? `failed: ${reason}` : 'ran'} ===\n${output}\n`);
+    fs.appendFileSync(logFile, `=== ${m} (${model.id}): ${reason ? `failed: ${reason}` : 'ran'} ===\n${watch ? `${watch}\n` : ''}${output}\n`);
     return reason ? { ok: false, reason } : { ok: true, value: output };
   },
   leftWork: async () => {

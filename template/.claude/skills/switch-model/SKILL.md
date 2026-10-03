@@ -19,8 +19,10 @@ propose it and the user says yes.
    - the direct routes, with their own logins: `opencode models openai`, and so on.
 
    Leave out a model of the other role's family (the reviewer is never the implementer's family),
-   and models already ruled out in `docs/lessons.md` (L27: GLM ends long implementer runs early;
-   Go's own GPT-6 Luna returns `Bad Request` in long loops).
+   and models already ruled out in `docs/lessons.md` (L27: Go's own GPT-6 Luna returns
+   `Bad Request` in long loops). `--show` lists the models on watch (L35): registered candidates,
+   each with a `watch` note in `harness.json` on what to look for, which the runner prints when it
+   runs one; their measured runs are the best reason to switch.
 4. **Dry run with a probe:**
    `node tools/harness/switch-model.mjs --role implementer|reviewer --model PROVIDER/ID --probe --dry-run`.
    - It checks the id against OpenCode's list in the scripts' data directory. On exit 3, give
@@ -33,7 +35,8 @@ propose it and the user says yes.
    recommendation. Switch only on their yes.
 6. **Switch.** Run the same command without `--dry-run` (and without `--probe`, which already
    passed). Then commit `harness.json` on `main` with the reason and the probe in the message
-   (L6, L25). Keep the old model's entry: an explicit `--model` can still use it.
+   (L6, L25). Keep the old model's entry: an explicit `--model` can still use it. A model on watch
+   keeps its note through the switch; only the user's decision removes it.
 7. **Watch the first run** on the new model. That means the log's tail and, for a reviewer, the
    posted review. Afterwards, add a line to the task's measurement comment (process.md §9).
    Switch back the same way if it fails.
