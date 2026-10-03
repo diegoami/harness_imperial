@@ -40,3 +40,9 @@ test('a heavy review moves the implementer up, in both profiles (L38)', () => {
     assert.doesNotMatch(read(f).replace(/\s+/g, ' '), /, or changes? the approach/, f);
   }
 });
+
+test('Sol runs at low or medium effort, never high, and the hard chain starts with it (L39)', () => {
+  const c = JSON.parse(read('template/harness.json'));
+  for (const m of ['sol', 'sol-6.1']) assert.ok(['low', 'medium'].includes(c.models[m].variant), `${m} at ${c.models[m].variant}`);
+  assert.deepEqual(c.reviewer.hard, ['sol-6.1', 'glm', 'deepseek-pro', 'luna']);
+});
