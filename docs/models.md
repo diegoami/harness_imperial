@@ -105,7 +105,8 @@ give only the decision, so the main session still writes the reason. Its key loa
   - `rework`: fix, push, and review again, as on PRs 17, 21, 22 and 29.
   - A heavy review (three or more blocking findings, or new ones of the last round's class, L38):
     Claude Opus writes here, the top of the ladder, so the next round fixes the class, sweeps its
-    own code for it and lists the sweep in the PR body, or changes the approach. PR 42's rounds
+    own code for it and lists the sweep in the PR body, and changes the approach when the class
+    needs it. PR 42's rounds
     (a half-written install, then a half-written file) are the case.
   - Exit 3: no review came back. Escalate, because no Claude reviewer may review here.
   - Exit 4: the review is posted under a note. Read it on the PR.

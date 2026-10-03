@@ -19,7 +19,7 @@ PR. How a review is run is `docs/review.md`; the L-numbers are harness_imperial'
    after two rework rounds, escalate to the user. After a heavy review (three or more blocking
    findings, or new ones of the last round's class) there is no stronger implementer than Opus:
    the next round fixes the class, not each instance, sweeps for it and lists the sweep in the PR,
-   or changes the approach; the same class again goes to the user. (L38)
+   and changes the approach when the class needs it; the same class again goes to the user. (L38)
 6. Any failure escalates to the user: a review that did not run (exit 3), one posted but not acted
    on (exit 4), a reviewer that cannot run a Done-when line. Never fall back to a Claude reviewer.
 7. Relay review findings in full, never a subset.
