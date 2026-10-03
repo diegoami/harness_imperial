@@ -3,7 +3,7 @@
 // FAKE_OC_STATE: the JSON file that plays OpenCode's session store.
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
 //   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission |
-//   permission-review | review-ok | review-cut
+//   permission-review | permission-quoted | permission-plain | review-ok | review-cut
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
@@ -45,10 +45,12 @@ if (cmd === 'models') {
 }
 if (cmd === 'export') {
   const s = load().find((x) => x.id === rest[0]);
-  if (!s) process.exit(1);
+  if (!s || process.env.FAKE_OC_EXPORT_FAIL) process.exit(1);
   // A long session's export is large; the real OpenCode exits before a pipe has taken all of it.
   // So does Node: process.exit() drops what a pipe has not yet taken, but a file is written at once.
   const messages = process.env.FAKE_OC_BIG_EXPORT ? [{ text: 'x'.repeat(4 << 20) }] : [];
+  // A rejected tool call, as OpenCode 1.18.34 records it.
+  if (s.rejected) messages.push({ parts: [{ type: 'tool', tool: 'read', state: { status: 'error', error: 'The user rejected permission to use this specific tool call.' } }] });
   process.stdout.write(JSON.stringify({ messages, info: { agent: s.agent } }));
   process.exit(0);
 }
@@ -74,9 +76,9 @@ const agentFile = (() => {
   ];
   return dirs.map((d) => path.join(d, 'agents', `${agent}.md`)).filter((f) => fs.existsSync(f)).at(-1) ?? null;
 })();
-const createSession = (recordedAgent = agent) => {
+const createSession = (recordedAgent = agent, extra = {}) => {
   const s = load();
-  s.push({ id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
+  s.push({ ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
     dataHome: process.env.XDG_DATA_HOME ?? null, prompt: rest.at(-1), agentFile,
     projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
     agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null });
@@ -157,13 +159,33 @@ switch (mode) {
   case 'permission-review': {
     // OpenCode 1.18 auto-rejects a path outside --dir in a non-interactive run, and exits 0. It then
     // prints the rejected command; permission-cd's chains cd and .. (#14).
-    createSession();
+    createSession(agent, { rejected: true });
     process.stderr.write('\x1b[93m\x1b[1m! \x1b[0mpermission requested: external_directory (/tmp/*); auto-rejecting\n');
     process.stderr.write(mode === 'permission-cd'
       ? '\x1b[31m✗\x1b[0m cd evidence/a && grep -n x README.md; cd ../b && ls failed\n'
       : '\x1b[31m✗\x1b[0m cat /tmp/notes.txt failed\n');
     const header = rest.at(-1).split('\n')[0];
     process.stdout.write(mode !== 'permission-review' ? 'report: built nothing\n' : `${header}\napprove\n\nR1: fine\n\napprove\n`);
+    process.exit(0);
+    break;
+  }
+  case 'permission-quoted': {
+    // A clean review whose tool printed an issue quoting a rejection line: plain text inside
+    // OpenCode's coloured output, not OpenCode's own line (PR 35).
+    createSession();
+    process.stderr.write('\x1b[0m$ \x1b[0mgh issue view 14\n');
+    process.stderr.write('! permission requested: external_directory (<review-dir>/*); auto-rejecting\n✗ cd evidence/a && ls failed\n');
+    const header = rest.at(-1).split('\n')[0];
+    process.stdout.write(`${header}\napprove\n\nR1: fine\n\napprove\n`);
+    process.exit(0);
+    break;
+  }
+  case 'permission-plain': {
+    // A real rejection whose line came out without colour, in otherwise coloured output: the
+    // session record has it (Luna's R1 on PR 37).
+    createSession(agent, { rejected: true });
+    process.stderr.write('\x1b[0m$ \x1b[0mcat /tmp/notes.txt\n! permission requested: external_directory (/tmp/*); auto-rejecting\n');
+    process.stdout.write('report: built nothing\n');
     process.exit(0);
     break;
   }
