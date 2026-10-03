@@ -268,14 +268,17 @@ test('the OpenCode version is read from --version; any major but 1 is refused (#
   assert.equal(await openCodeVersion(opencode, { env: setup('ok', { FAKE_OC_VERSION: 'none' }).env, cwd: os.tmpdir() }), null);
 });
 
-test('fake opencode processes saving at once never crash on each other\'s temporary file (#45)', { skip: process.platform === 'win32' }, async () => {
+test('fake opencode processes saving at once neither crash nor lose a session (#45)', { skip: process.platform === 'win32' }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-race-'));
   const env = { ...process.env, FAKE_OC_STATE: path.join(dir, 'state.json'), FAKE_OC_MODE: 'ok' };
-  const runs = Array.from({ length: 16 }, (_, i) => new Promise((resolve) => {
+  const runs = Array.from({ length: 32 }, (_, i) => new Promise((resolve) => {
     const c = spawn(process.execPath, [fake, 'run', '--title', `t${i}`, 'go'], { cwd: dir, env, stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
     c.stderr.on('data', (d) => { err += d; });
     c.on('close', (code) => resolve({ code, err }));
   }));
   for (const r of await Promise.all(runs)) assert.equal(r.code, 0, r.err);
+  // And none lost another's session: a lost one is what the runner reports as "exited without a session".
+  const titles = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')).map((s) => s.title).sort();
+  assert.deepEqual(titles, Array.from({ length: 32 }, (_, i) => `t${i}`).sort());
 });
