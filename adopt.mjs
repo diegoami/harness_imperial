@@ -71,11 +71,13 @@ if (profile === 'full') {
 }
 
 const commit = git(root, 'rev-parse', 'HEAD').stdout.trim();
-const dirty = git(root, 'status', '--porcelain', '--', 'template', 'profiles', 'adopt.mjs').stdout.trim();
+// --no-optional-locks: status never writes the index, so a run that fails (a size limit) leaves no index.lock.
+const dirty = git(root, '--no-optional-locks', 'status', '--porcelain', '--', 'template', 'profiles', 'adopt.mjs').stdout.trim();
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const lock = [
   `# harness.lock: what this repository copied from diegoami/harness_imperial (profile ${profile}).`,
-  '# A bump runs adopt.mjs again at the new commit, after setting the adapted files aside.',
+  '# A bump: move this file and every file it lists aside, run adopt.mjs at the new commit,',
+  '# then carry your changes to the adapted files (and any other) over to the new copies.',
   "# Verify:  grep -E '^[0-9a-f]{64}  ' harness.lock | sha256sum -c --quiet",
   `commit ${commit}${dirty ? ' (with uncommitted changes)' : ''}`,
   `profile ${profile}`,
@@ -120,8 +122,18 @@ try {
     const dest = path.join(target, f.path);
     const dir = fs.mkdirSync(path.dirname(dest), { recursive: true });
     if (dir) made.push({ dir });
-    fs.writeFileSync(dest, f.content, { flag: 'wx', mode: f.mode });
+    // Created first and recorded, then written: a write that fails part-way (a full disk, a size
+    // limit) is still removed (Sol's R1 on PR 42, round 2).
+    const fd = fs.openSync(dest, 'wx', f.mode);
     made.push({ file: dest });
+    try {
+      // writeSync may write less than asked (a size limit): write the rest, and fail on no progress.
+      for (let off = 0; off < f.content.length;) {
+        const n = fs.writeSync(fd, f.content, off);
+        if (n <= 0) throw new Error(`could not write ${f.path} past byte ${off}`);
+        off += n;
+      }
+    } finally { fs.closeSync(fd); }
     fs.chmodSync(dest, f.mode);
   }
 } catch (e) {

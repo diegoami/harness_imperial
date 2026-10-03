@@ -140,3 +140,27 @@ test('the review profile\'s environment guide is its own: its reviewers, no Clau
   assert.match(env, /there is no Claude reviewer here/);
   assert.doesNotMatch(env, /Jev|session-start|falls back to Claude/);
 });
+
+test('a write that fails part-way, in a directory that was already there, is removed too (Sol\'s R1 on PR 42, round 2)', { skip: process.platform === 'win32' }, () => {
+  const dir = project();
+  fs.mkdirSync(path.join(dir, 'tools/harness'), { recursive: true });
+  // A 1-block file size limit: the first large file fails after it was created.
+  const r = spawnSync('bash', ['-c', `ulimit -f 1; exec "${process.execPath}" "${path.join(repo, 'adopt.mjs')}" --profile review --target "${dir}"`], { encoding: 'utf8' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /What this run had written was removed/);
+  assert.deepEqual(files(dir), []);
+  assert.equal(adopt('--profile', 'review', '--target', dir).status, 0);          // a retry is not blocked
+});
+
+test('harness.lock says how to bump: set the lock and its files aside, and adopt again', () => {
+  const dir = project();
+  assert.equal(adopt('--profile', 'review', '--target', dir).status, 0);
+  const lock = fs.readFileSync(path.join(dir, 'harness.lock'), 'utf8');
+  assert.match(lock, /move this file and every file it lists aside, run adopt\.mjs at the new commit/);
+  const aside = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-aside-'));
+  for (const f of [...lock.matchAll(/^(?:[0-9a-f]{64} {2}|adapt )(.+)$/gm)].map((m) => m[1]).concat('harness.lock')) {
+    fs.mkdirSync(path.dirname(path.join(aside, f)), { recursive: true });
+    fs.renameSync(path.join(dir, f), path.join(aside, f));
+  }
+  assert.equal(adopt('--profile', 'review', '--target', dir).status, 0);
+});
