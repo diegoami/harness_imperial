@@ -21,7 +21,8 @@ propose it and the user says yes.
    Leave out a model of the other role's family (the reviewer is never the implementer's family),
    and models already ruled out in `docs/lessons.md` (L27: Go's own GPT-6 Luna returns
    `Bad Request` in long loops). `--show` lists the models on watch (L35): registered candidates,
-   each with a note on what to look for; their measured runs are the best reason to switch.
+   each with a `watch` note in `harness.json` on what to look for, which the runner prints when it
+   runs one; their measured runs are the best reason to switch.
 4. **Dry run with a probe:**
    `node tools/harness/switch-model.mjs --role implementer|reviewer --model PROVIDER/ID --probe --dry-run`.
    - It checks the id against OpenCode's list in the scripts' data directory. On exit 3, give
