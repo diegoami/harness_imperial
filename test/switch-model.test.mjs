@@ -62,7 +62,15 @@ test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
     'implementer: deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
     'reviewer: luna = openai/gpt-6-luna (high, family openai), then Claude opus',
+    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash',
   ].join('\n'));
+});
+
+test('a switch to a model on watch keeps its watch (L35)', () => {
+  const p = planSwitch(template(), { role: 'implementer', id: 'zai-coding-plan/glm-5.3' });
+  assert.equal(p.name, 'glm');
+  assert.equal(p.entry.watch, template().models.glm.watch);
+  assert.deepEqual(p.config.implementer.chain, ['glm']);
 });
 
 // End to end.
@@ -120,7 +128,7 @@ test('the other role\'s family is refused with exit 1, and written with --force 
   const forced = sw(p, {}, '--role', 'reviewer', '--model', 'opencode-go/deepseek-v4-pro', '--force');
   assert.equal(forced.status, 0, forced.stderr);
   assert.match(forced.stdout, /warning \(--force\)/);
-  assert.deepEqual(p.config().reviewer.chain, ['deepseek-v4-pro']);
+  assert.deepEqual(p.config().reviewer.chain, ['deepseek-pro']);
 });
 
 test('--probe asks for one word through the runner; a failed probe writes nothing, and no probe directory stays', posix, () => {

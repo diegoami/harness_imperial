@@ -34,6 +34,11 @@ export function loadConfig(top) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+// A model on watch (L35) says what to look for each time it runs: its `watch` text, else nothing.
+export function watchLine(name, model) {
+  return model.watch ? `watch: ${name} (${model.id}) is on watch: ${model.watch}` : null;
+}
+
 // --name value, --flag, and repeatable --env KEY=VALUE / --copy path.
 export function parseArgs(argv, { flags = [], repeatable = [] } = {}) {
   const out = {};

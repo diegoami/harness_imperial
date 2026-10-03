@@ -317,6 +317,14 @@ test('no review at all (tool chatter only, an early stop) is the one failure: no
   assert.equal(gh(p).comments.length, 0);
 });
 
+test('a reviewer on watch says what to look for before it runs (L35)', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_MODELS: '["zai-coding-plan/glm-5.3-flash"]' }, '--reviewer', 'glm-flash');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /watch: glm-flash \(zai-coding-plan\/glm-5\.3-flash\) is on watch: .*no DW evidence \(L32\)/);
+  assert.doesNotMatch(review(project(), { FAKE_OC_MODE: 'review-ok' }).stdout, /watch:/);
+});
+
 test('the implementer\'s family never reviews: dropped from the chain, or refused when named', posix, () => {
   const p = project({ chain: ['luna'] });
   const dropped = review(p, { FAKE_OC_MODE: 'review-ok' }, '--exclude', 'luna');

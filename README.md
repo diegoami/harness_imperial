@@ -146,8 +146,10 @@ There is one OpenCode model per role, then Claude, by the owner's decision of 20
   needs `opencode auth login`.
 
 Each runs at effort `high`, never `max`.
-- GLM-5.3 and GLM-5.3 Flash are out. They ended long implementer runs early, and GLM-5.3 Flash was
-  the weakest reviewer elsewhere.
+- Candidates are registered on watch, outside the chains (L35): GPT-6 Sol and GPT-6.1 Sol
+  (`openai/`), DeepSeek V4 Pro (`opencode-go/`), and GLM-5.3 and GLM-5.3 Flash on Z.AI's plan
+  (`zai-coding-plan/`). They run by an explicit `--model` or `--reviewer`, and each prints its
+  `watch` note: GLM ended long implementer runs early before (L27), so that is what to look for.
 - Go's own GPT-6 Luna is out too. A third-party proxy behind it returned `Bad Request` in long agent
   loops, which the direct route did not.
 
@@ -186,11 +188,14 @@ reproduce each failure above. The cases are:
 - a flagged review posted with no label and exit 4, a dry run, and a review requested from the
   implementer's family;
 - the scripts' own data directory, the copied `auth.json`, and a model OpenCode does not list;
+- a model on watch printing its note, on the console and in the run log, and keeping it through a
+  switch;
 - a tool call OpenCode rejected (in the runner, the implementer and the review), a large export, and
   the Windows shim under WSL.
 
 Every guard was also checked by breaking it and watching its test fail: stdin, the process tree,
-left work, family, rejection, export, the shim, the reader, the data directory and the model check.
+left work, family, rejection, export, the shim, the reader, the data directory, the model check and
+the watch note.
 
 **Against a real OpenCode** (1.18.33, and 1.18.34 under WSL, with no model key, so each run fails
 at the provider), the following were checked:

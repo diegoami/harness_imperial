@@ -42,7 +42,7 @@ import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets 
 import { planPost, publish } from './lib/post.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
 import {
-  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ocArgs, prepareOpenCode,
+  sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ocArgs, prepareOpenCode, watchLine,
 } from './lib/common.mjs';
 
 const say = (s) => console.log(s);
@@ -154,6 +154,8 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
   there without -C, and never type that path: a mistyped path ends the run.
 `;
       newTree();
+      const watch = watchLine(m, model);
+      if (watch) say(watch);
       let run;
       try {
         run = await runOpenCodeWatched({

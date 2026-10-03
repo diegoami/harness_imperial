@@ -85,6 +85,19 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
   assert.equal(git(p.main, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');       // main checkout untouched
 });
 
+test('a model on watch says what to look for, on the console and in the run log; others say nothing (L35)', posix, async () => {
+  const p = project();
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["zai-coding-plan/glm-5.3"]' }, '--model', 'glm');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const line = /watch: glm \(zai-coding-plan\/glm-5\.3\) is on watch: .*exit 0 with no commit/;
+  assert.match(r.stdout, line);
+  assert.match(fs.readFileSync(path.join(p.base, 'proj-work', 'T07.implementer.log'), 'utf8'), line);
+  const q = project();
+  const plain = implement(q, { FAKE_OC_MODE: 'implement' });
+  assert.equal(plain.status, 0, plain.stderr + plain.stdout);
+  assert.doesNotMatch(plain.stdout, /watch:/);
+});
+
 test('an implementer that stops and reports is not retried, and exits 1', posix, async () => {
   const p = project({ chain: ['deepseek-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'stop-report' });

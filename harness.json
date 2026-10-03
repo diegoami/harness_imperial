@@ -10,6 +10,36 @@
       "id": "openai/gpt-6-luna",
       "variant": "high",
       "family": "openai"
+    },
+    "sol": {
+      "id": "openai/gpt-6-sol",
+      "variant": "high",
+      "family": "openai",
+      "watch": "A candidate, probed only (2026-10-03, L35): compare with luna on the same kind of review, or with deepseek-flash on the same kind of task."
+    },
+    "sol-6.1": {
+      "id": "openai/gpt-6.1-sol",
+      "variant": "high",
+      "family": "openai",
+      "watch": "A candidate, probed only (2026-10-03, L35): compare with luna on the same kind of review, or with deepseek-flash on the same kind of task."
+    },
+    "deepseek-pro": {
+      "id": "opencode-go/deepseek-v4-pro",
+      "variant": "high",
+      "family": "deepseek",
+      "watch": "A candidate, probed only (2026-10-03, L35): compare with deepseek-flash on the same kind of task; as a reviewer it ran a read-only brief without a rejection (L31)."
+    },
+    "glm": {
+      "id": "zai-coding-plan/glm-5.3",
+      "variant": "high",
+      "family": "glm",
+      "watch": "Back on Z.AI's plan (L35) after ending long implementer runs early (L27): look for reading then exit 0 with no commit, and for cd chains rejected as external_directory (L31)."
+    },
+    "glm-flash": {
+      "id": "zai-coding-plan/glm-5.3-flash",
+      "variant": "high",
+      "family": "glm",
+      "watch": "Back on Z.AI's plan (L35) after going 900 s without a step and ending runs early (L27), and missing a must-fix as a reviewer: look for an idle timeout, exit 0 with no commit, and an approve with no DW evidence (L32)."
     }
   },
   "implementer": {

@@ -52,6 +52,14 @@ OpenAI (a ChatGPT login or an API key), and check with `opencode models openai`.
 missing or older. If OpenAI later asks for a new login, log in again in your usual OpenCode; the
 next run copies it.
 
+## Z.AI, for the GLM models on watch
+
+GLM-5.3 and GLM-5.3 Flash run on Z.AI's coding plan (`zai-coding-plan/…`), registered on watch
+(L35), not in a chain. Log in once with `opencode auth login` and choose Z.AI Coding Plan (an API
+key; OpenCode also reads `ZHIPU_API_KEY`), then check with `opencode models zai-coding-plan`. The
+key is kept in `auth.json`, which the scripts copy like OpenAI's. GLM-5.3-highspeed is refused by
+the plan.
+
 ## The scripts' own data directory
 
 `implement.mjs` and `review.mjs` run OpenCode with a data directory of their own, so OpenCode's
@@ -109,6 +117,7 @@ A cloud environment's network policy must allow:
 | --- | --- |
 | `opencode.ai` | OpenCode's own providers (Zen, Go) |
 | `openrouter.ai` | Jev, OpenRouter models, image generation |
+| `api.z.ai` | the GLM models on watch, only if a run names one |
 | `api.elevenlabs.io` | ElevenLabs |
 | `registry.npmjs.org` | installing OpenCode |
 | `api.github.com`, `github.com` | `gh` and git |
