@@ -91,7 +91,10 @@ Exit codes, for both scripts:
 - 0: done;
 - 1: the main session decides;
 - 3: OpenCode unavailable, a login missing, or no review, so the caller runs Claude (Sonnet
-  implements, Opus reviews);
+  implements, Opus reviews). Except for `review.mjs` when Claude implemented the PR or
+  `claudeFallback` is null: then the caller escalates to the owner, as the message says. With
+  `--second-opinion`, exit 3 also means the first review was posted but no second one came back: no
+  label, and the owner decides;
 - 4 (`review.mjs` and `post-review.mjs`): a review was posted under a note; read it and decide.
 
 The Claude agents' guard blocks a refused command with exit 2, which Claude Code shows the agent as

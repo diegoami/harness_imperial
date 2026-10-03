@@ -229,7 +229,7 @@ const outcome = second.ok ? combinePlans(plans)
 for (const p of plans) for (const r of p.rewrites) say(`rewrote a closing keyword: ${r}`);
 if (a['dry-run']) {
   for (const p of plans) say(p.body);
-  say(`dry run: would post ${plans.length} review(s), ${outcome.label ? `label ${outcome.label}` : 'no label'}, and exit ${outcome.code}${outcome.why ? ` (${outcome.why})` : ''}.`);
+  say(`dry run: would post ${plans.length} review(s), ${a['apply-label'] && outcome.label ? `label ${outcome.label}` : 'no label'}, and exit ${outcome.code}${outcome.why ? ` (${outcome.why})` : ''}.`);
   process.exit(0);
 }
 for (const p of plans) {
