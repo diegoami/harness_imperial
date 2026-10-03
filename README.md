@@ -170,10 +170,11 @@ There is one OpenCode model per role, then Claude, by the owner's decision of 20
 Each runs at effort `high`, never `max`, except GPT-6.1 Sol: used sparingly, at `low` (`medium` at
 most). A hard task's review runs `review.mjs --hard`: Sol, then GLM-5.3, DeepSeek V4 Pro and Luna,
 so one provider's quota never blocks it (L39).
-- Candidates are registered on watch, outside the chains (L35): GPT-6 Sol and GPT-6.1 Sol
+- Candidates are registered on watch, outside the default chains (L35): GPT-6 Sol and GPT-6.1 Sol
   (`openai/`), DeepSeek V4 Pro (`opencode-go/`), and GLM-5.3 and GLM-5.3 Flash on Z.AI's plan
-  (`zai-coding-plan/`). They run by an explicit `--model` or `--reviewer`, and each prints its
-  `watch` note: GLM ended long implementer runs early before (L27), so that is what to look for.
+  (`zai-coding-plan/`). They run by an explicit `--model` or `--reviewer`, or, for GPT-6.1 Sol,
+  GLM-5.3 and DeepSeek V4 Pro, through `--hard`; each prints its `watch` note: GLM ended long
+  implementer runs early before (L27), so that is what to look for.
 - Go's own GPT-6 Luna is out too. A third-party proxy behind it returned `Bad Request` in long agent
   loops, which the direct route did not.
 
