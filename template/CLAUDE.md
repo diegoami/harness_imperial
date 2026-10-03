@@ -33,8 +33,8 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
     directories; keep terminal output quiet; show diffs, not files.
 
 ## Conditional (delete what does not apply)
-17. [evidence-driven] Every constant traces to evidence; a `[designed]` value says what was
-    searched and came up empty.
+17. [evidence-driven] Every constant traces to evidence; a `[designed]` value says what was searched.
 18. [seeded] No wall clock or unseeded random in rule code; a seeded test proves it.
 19. [files outside CI] Tests that need them skip explicitly; CI fetches a private fixtures repo.
-20. [research repo] Commit and push research-repo work without asking.
+20. [research repo, or a task that measures] Commit and push without asking. Measurements a finding
+    may cite go under a tracked path, pushed per batch and every 30 minutes, never deleted. (L40)

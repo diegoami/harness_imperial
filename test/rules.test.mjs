@@ -46,3 +46,12 @@ test('Sol runs at low or medium effort, never high, and the hard chain starts wi
   for (const m of ['sol', 'sol-6.1']) assert.ok(['low', 'medium'].includes(c.models[m].variant), `${m} at ${c.models[m].variant}`);
   assert.deepEqual(c.reviewer.hard, ['sol-6.1', 'glm', 'deepseek-pro', 'luna']);
 });
+
+test('measurements are committed and pushed as made, never deleted, in every brief that measures (L40)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  const line = /If you measure: every output a finding or the PR may cite goes under a tracked path the task owns, pushed after each batch and every 30 minutes; never delete or overwrite one\. \(L40\)/;
+  assert.match(flat('template/docs/process.md'), line);                     // §4, the brief every task gets
+  assert.match(flat('template/.claude/agents/implementer.md'), line);
+  assert.match(flat('template/CLAUDE.md'), /\[research repo, or a task that measures\] .* never deleted\. \(L40\)/);
+  assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A task that measures owns a tracked path for its outputs/);
+});

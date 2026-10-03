@@ -120,6 +120,9 @@ give only the decision, so the main session still writes the reason. Its key loa
     (a half-written install, then a half-written file) are the case.
   - Exit 3: no review came back. Escalate, because no Claude reviewer may review here.
   - Exit 4: the review is posted under a note. Read it on the PR.
+- **A run that measures** (a real run timing the runner, a probe of a model) commits and pushes
+  its outputs under a tracked path as it goes, and never deletes one; a re-run writes beside it
+  (L40).
 - **A model on watch** prints its note each time it runs. Its outcome goes in the measurement
   line (L35, `process.md` §9).
 

@@ -5,7 +5,8 @@
 - **Implementer**: opencode (the default, `deepseek-flash`; or `<model>` from harness.json) · **Claude fallback**: sonnet | opus
 - **Reviewer**: opencode (the default, `luna`: GPT-6 Luna on OpenAI), then claude opus | claude (opus | sonnet); never the implementer's family
 - **Evidence**: the reports, fixtures or investigations this task rests on, with links.
-- **Owns**: directories or files, e.g. `src/Calendar/**`, `tests/Calendar/**`.
+- **Owns**: directories or files, e.g. `src/Calendar/**`, `tests/Calendar/**`. A task that measures
+  owns a tracked path for its outputs, e.g. `runs/E<nnn>/**` or `spike/measurements/**` (L40).
 - **Scope**: what to build, in a few sentences. What is out of scope, if it is easy to confuse.
 - **Done when**:
   1. One check a command can run, with the expected result.

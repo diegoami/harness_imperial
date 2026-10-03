@@ -62,9 +62,10 @@ URL. The OpenCode agent file repeats the run mechanics; this block is the contra
 ```text
 You implement <T<nn>>. The task file above is the contract.
 - Change only what the task needs. Every changed file is one the task requires; say why for each.
-- A Done-when line you cannot meet: stop and report. Never weaken an assertion, skip a test or
-  edit the task file.
+- A Done-when you cannot meet: stop and report. Never weaken an assertion, skip a test or edit the task file.
 - Every new test fails before your change and passes after it; say how you checked.
+- If you measure: every output a finding or the PR may cite goes under a tracked path the task
+  owns, pushed after each batch and every 30 minutes; never delete or overwrite one. (L40)
 - A comment that asserts behaviour at an edge comes with the test that visits that edge.
 - A defect you find outside the task: report it. A one-file mechanical fix that blocks you may
   ride this PR, declared under Scope in the PR body.
@@ -104,8 +105,7 @@ per merge. Triage decides one of:
   bug's own reproduction. The bug issue is the contract; its Done-when is its reproduction as a
   failing-then-passing test; one review round. (L4)
 - **correction task**: anything that changes an outcome.
-- **fold** into a task not yet ready.
-- **close**, with the reason.
+- **fold** into a task not yet ready, or **close**, with the reason.
 
 Once `breaks-play` is trialled (§12), Jev settles the confident ends of the playability gate
 first; the main session triages the middle.
