@@ -105,6 +105,15 @@ test('a model quoting the fallback warning is not a fallback (IC2 #482)', async 
   assert.equal(r.sessionAgent, 'reviewer');
 });
 
+test('whether a tool call was rejected is read from the session record, not from text a tool printed (PR 35, PR 37)', async () => {
+  const quoted = await run('permission-quoted');                    // a quoted line, a clean record
+  assert.equal(quoted.permissionRejected, null);
+  const plain = await run('permission-plain');                      // an uncoloured line, a rejection in the record
+  assert.equal(plain.permissionRejected, 'external_directory (/tmp/*)');
+  const noRecord = await run('permission-quoted', {}, { FAKE_OC_EXPORT_FAIL: '1' });   // no record: the text decides
+  assert.equal(noRecord.permissionRejected, 'external_directory (<review-dir>/*)');
+});
+
 test('a run that exits 0 after OpenCode rejected a tool call reports it, and keeps its files (IC2 #501)', async () => {
   const r = await run('permission');
   assert.equal(r.exitCode, 0);
@@ -143,13 +152,11 @@ test('permissionRejection matches only OpenCode\'s own line, and returns the las
   assert.equal(permissionRejection(`${line('external_directory (/a/*)')}\nok\n${line('external_directory (/b/*)')}`), 'external_directory (/b/*)');
   assert.equal(permissionRejection(`R1: ${line('external_directory (/a/*)')}`), null);
   assert.equal(permissionRejection('done\n'), null);
-  // In coloured output, a plain copy of the line is a tool's output quoting it, not OpenCode (PR 35).
+  // OpenCode's coloured line is preferred over a plain copy a tool printed (PR 35), for what and why.
   const quoted = `\x1b[0m$ \x1b[0mgh issue view 14\n! permission requested: external_directory (<review-dir>/*); auto-rejecting\n✗ cd a && ls failed\n`;
-  assert.equal(permissionRejection(quoted), null);
-  assert.equal(rejectionHint(quoted), null);
   assert.equal(permissionRejection(`${quoted}${line('external_directory (/b/*)')}\n✗ cat /b/x failed`), 'external_directory (/b/*)');
   assert.equal(rejectionHint(`${quoted}${line('external_directory (/b/*)')}\n✗ cat /b/x failed`), null);   // the quoted cd is not the rejected command
-  // With no colour anywhere (NO_COLOR), OpenCode's line is read plain.
+  // With no colour (NO_COLOR), the line is read plain.
   assert.equal(permissionRejection('! permission requested: external_directory (/c/*); auto-rejecting\n'), 'external_directory (/c/*)');
 });
 

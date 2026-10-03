@@ -48,8 +48,10 @@ added. Each behaviour exists because a run failed without it:
   not from the output.
 - **UTF-8 output.**
 - **A rejected tool call is a failure.** OpenCode auto-rejects a path outside the worktree and exits
-  0, so the run looks clean (IC2 #501). The runner reads OpenCode's own rejection line. When OpenCode colours its output, only a
-  coloured line counts: a plain copy is a tool's output quoting one (PR 35's review printed issue #14).
+  0, so the run looks clean (IC2 #501). Whether a call was rejected is read from the
+  session record, where the tool ends in "The user rejected permission…": a tool's output can quote
+  OpenCode's rejection line (PR 35's review printed issue #14). The line says what was rejected, and
+  decides alone only when the record cannot be read.
   - A `cd` or `..` in an agent's command can trip the same check with nothing leaving the worktree,
     because OpenCode resolves the path against `--dir`, not the `cd` before it (#14). The agent
     files forbid both (L31), and when the rejected command used one, the failure says so.

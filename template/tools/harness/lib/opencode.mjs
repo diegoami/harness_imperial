@@ -66,14 +66,15 @@ export function agentWarning(stderr, agent) {
 
 // OpenCode's own line when a non-interactive run rejects a tool call (OpenCode 1.18):
 //   ESC[93mESC[1m! ESC[0mpermission requested: external_directory (/tmp/*); auto-rejecting
-// Anchored like agentWarning. When OpenCode colours its output, its own line is coloured too, so a
-// plain copy of it is text a tool printed, such as an issue quoting a rejection (PR 35, #14), and
-// does not count. Output with no colour at all is read plain. Returns the rejection lines' matches.
+// Anchored like agentWarning. Text alone cannot tell this line from a tool's output quoting it (an
+// issue printed by gh, PR 35), so whether a rejection happened is read from the session record
+// (sessionRecord); the text says what was rejected, and decides only when the record cannot be read.
+// OpenCode colours its own line, so a coloured match is preferred over a plain one.
 function rejectionLines(text) {
-  const s = String(text);
   const ansi = '(?:\\x1b\\[[0-9;]*m|[ \\t])*';
-  const lead = /\x1b\[[0-9;]*m/.test(s) ? `[ \\t]*\\x1b\\[[0-9;]*m${ansi}` : ansi;
-  return [...s.matchAll(new RegExp(`^${lead}!${ansi}permission requested: ([^\\r\\n]*?); auto-rejecting`, 'gm'))];
+  const all = [...String(text).matchAll(new RegExp(`^${ansi}!${ansi}permission requested: ([^\\r\\n]*?); auto-rejecting`, 'gm'))];
+  const coloured = all.filter((m) => /\x1b\[/.test(m[0]));
+  return coloured.length ? coloured : all;
 }
 
 // What was rejected (the last rejection), or null.
@@ -279,10 +280,18 @@ export async function findSession(cmd, { workDir, title, startedMs, timeoutMs, e
 }
 
 // The agent OpenCode recorded for the session (`opencode export <id>`: .info.agent), or null.
-export async function sessionAgent(cmd, { workDir, sessionId, outFile, timeoutMs = 30000, env }) {
+// What the session record says: the agent that ran (L11), and whether OpenCode rejected a tool
+// call, which it records as the tool's error "The user rejected permission to use this specific
+// tool call." (OpenCode 1.18.34). Null when the export cannot be read.
+export async function sessionRecord(cmd, { workDir, sessionId, outFile, timeoutMs = 30000, env }) {
   const res = await execBounded(cmd, ['export', sessionId], { cwd: workDir, timeoutMs, env, outFile });
   if (!res || res.code !== 0) return null;
-  try { return JSON.parse(res.stdout.slice(res.stdout.indexOf('{')))?.info?.agent ?? null; } catch { return null; }
+  try {
+    const j = JSON.parse(res.stdout.slice(res.stdout.indexOf('{')));
+    const parts = (j.messages ?? []).flatMap((m) => m.parts ?? []);
+    const rejected = parts.some((p) => p.type === 'tool' && p.state?.status === 'error' && /rejected permission/i.test(String(p.state.error ?? '')));
+    return { agent: j.info?.agent ?? null, rejected };
+  } catch { return null; }
 }
 
 function tail(file, lines = 30) {
@@ -399,12 +408,14 @@ export async function runOpenCodeWatched({
   const agentIdx = args.indexOf('--agent');
   const requestedAgent = agentIdx >= 0 ? args[agentIdx + 1] : null;
   const exportFile = path.join(logDir, `${title}.export.json`);
-  const recordedAgent = requestedAgent ? await sessionAgent(cmd, { workDir, sessionId: session.id, outFile: exportFile, env }) : null;
+  const record = await sessionRecord(cmd, { workDir, sessionId: session.id, outFile: exportFile, env });
+  const recordedAgent = requestedAgent ? record?.agent ?? null : null;
   fs.rmSync(exportFile, { force: true });
   const agentFallback = !requestedAgent ? false
     : recordedAgent ? recordedAgent !== requestedAgent
     : agentWarning(stderr, requestedAgent);
-  const permissionRejected = permissionRejection(`${stdout}\n${stderr}`);
+  const said = permissionRejection(`${stdout}\n${stderr}`);
+  const permissionRejected = !record ? said : record.rejected ? said ?? 'a tool call (in the session record)' : null;
   const permissionHint = permissionRejected ? rejectionHint(`${stdout}\n${stderr}`) : null;
   if (exitCode === 0 && !permissionRejected) for (const f of files) fs.rmSync(f, { force: true });
   else log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
