@@ -49,10 +49,10 @@ test('Sol runs at low or medium effort, never high, and the hard chain starts wi
 
 test('measurements are committed and pushed as made, never deleted, in every brief that measures (L40)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
-  const line = /If you measure: every output a finding or the PR may cite goes under a tracked path the task owns, pushed after each batch and every 30 minutes; never delete or overwrite one\. \(L40\)/;
+  const line = /If you measure: every output a finding or the PR may cite goes under a tracked path the task owns, pushed per batch and every 30 min, never deleted or overwritten; originals out, hashes recorded\. \(L40\)/;
   assert.match(flat('template/docs/process.md'), line);                     // §4, the brief every task gets
   assert.match(flat('template/.claude/agents/implementer.md'), line);
-  assert.match(flat('template/CLAUDE.md'), /\[research repo, or a task that measures\] .* tracked path the task owns, pushed per batch and every 30 min, never deleted or overwritten\. \(L40\)/);
+  assert.match(flat('template/CLAUDE.md'), /\[research repo, measuring task\] .* tracked path the task owns, pushed per batch and every 30 min, never deleted or overwritten; originals out, hashed\. \(L40\)/);
   assert.match(flat('template/CLAUDE.md'), /a `\[designed\]` value says what search came up empty/);
   assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A task that measures owns a tracked path for its outputs/);
 });

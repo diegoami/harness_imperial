@@ -36,5 +36,5 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
 17. [evidence-driven] Every constant traces to evidence; a `[designed]` value says what search came up empty.
 18. [seeded] No wall clock or unseeded random in rule code; a seeded test proves it.
 19. [files outside CI] Tests that need them skip explicitly; CI fetches a private fixtures repo.
-20. [research repo, or a task that measures] Commit and push without asking. Measurements go under a
-    tracked path the task owns, pushed per batch and every 30 min, never deleted or overwritten. (L40)
+20. [research repo, measuring task] Commit and push without asking. Measurements: a tracked path the
+    task owns, pushed per batch and every 30 min, never deleted or overwritten; originals out, hashed. (L40)
