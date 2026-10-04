@@ -3,6 +3,8 @@ description: Read-only reviewer for one pull request, run by tools/review.mjs on
 mode: all
 permission:
   edit: deny
+  external_directory:
+    "/tmp/opencode/*": deny
   task:
     "*": deny
   bash:

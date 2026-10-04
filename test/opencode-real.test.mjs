@@ -89,3 +89,32 @@ test('real OpenCode: --version gives a supported 1.x version (#26)', { skip }, a
   assert.match(v, /^1\.\d+\.\d+$/);
   assert.equal(versionProblem(v, opencode.exe), null);
 });
+
+// OpenCode 1.18 lets every agent write to /tmp/opencode/ unasked, and an implementer did (L43). The
+// agent files deny it; OpenCode's own tool-output folder stays allowed, since a long tool output is
+// saved there for the agent to read back.
+test('real OpenCode: neither agent may write to /tmp/opencode, by bash or by a patch (L43)', { skip: skip || (process.platform === 'win32' && 'a POSIX path') }, () => {
+  for (const role of ['implementer', 'reviewer']) {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'oc-deny-')));
+    execFileSync('git', ['init', '-q', dir]);
+    fs.mkdirSync(path.join(dir, '.opencode', 'agents'), { recursive: true });
+    fs.copyFileSync(path.join(here, `../template/.opencode/agents/${role}.md`), path.join(dir, `.opencode/agents/${role}.md`));
+    const target = `/tmp/opencode/harness-deny-${process.pid}-${role}`;
+    const tools = [
+      ['bash', { command: `mkdir -p /tmp/opencode && echo x > ${target}-bash.txt`, description: 'probe' }],
+      ['apply_patch', { patchText: `*** Begin Patch\n*** Add File: ${target}-patch.txt\n+x\n*** End Patch` }],
+    ];
+    for (const [tool, params] of tools) {
+      let out = '';
+      try {
+        out = execFileSync(opencode.exe, [...opencode.prefix, 'debug', 'agent', role, '--tool', tool, '--params', JSON.stringify(params)],
+          { cwd: dir, env: clean(process.env), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
+      } catch (e) { out = `${e.stdout ?? ''}${e.stderr ?? ''}`; }
+      const file = `${target}-${tool === 'bash' ? 'bash' : 'patch'}.txt`;
+      const written = fs.existsSync(file);
+      fs.rmSync(file, { force: true });
+      assert.equal(written, false, `${role} wrote ${file} by ${tool}: ${out.slice(-300)}`);
+      assert.match(out, /prevents you from using this specific tool call|Tool apply_patch is disabled for agent reviewer/, `${role} by ${tool}`);   // the reviewer has no edit at all
+    }
+  }
+});
