@@ -118,7 +118,7 @@ test('a failure that left a commit is not retried on the next model', posix, asy
 
 test('an infrastructure failure that left nothing falls back to the next model', posix, async () => {
   const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'openai/gpt-6-luna': 'implement' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'openai/gpt-5.6-luna': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: exited without a session/);
   assert.match(r.stdout, /implemented by: luna/);
@@ -126,7 +126,7 @@ test('an infrastructure failure that left nothing falls back to the next model',
 
 test('a rejected tool call is a failure, not a clean finish: the next model runs (IC2 #501)', posix, async () => {
   const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'openai/gpt-6-luna': 'implement' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'openai/gpt-5.6-luna': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
   assert.match(r.stdout, /implemented by: luna/);
@@ -158,7 +158,7 @@ test('a model OpenCode does not list exits 3 with the fallback, before any workt
 
 test('OpenCode Go not logged in: exit 3 with the login command for the scripts\' data directory', posix, async () => {
   const p = project();
-  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["openai/gpt-6-luna"]' });
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["openai/gpt-5.6-luna"]' });
   assert.equal(r.status, 3);
   const home = path.join(p.base, 'oc-home', 'data');
   assert.ok((r.stdout + r.stderr).includes(`OpenCode Go is not logged in for ${home}. Run \`opencode console login\` with XDG_DATA_HOME=${home}`));

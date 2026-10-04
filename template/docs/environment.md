@@ -43,8 +43,8 @@ directory, another machine, WSL beside Windows, or a new cloud session each need
 
 ## OpenAI, for the reviewer
 
-The reviewer is GPT-6 Luna on the direct OpenAI route (`openai/gpt-6-luna`), not Go's
-`opencode-go/gpt-6-luna`: a third-party proxy behind Go's returned `Bad Request` in long agent loops
+The reviewer is GPT-5.6 Luna on the direct OpenAI route (`openai/gpt-5.6-luna`, L51), never a Luna
+on Go (`opencode-go/…`): a third-party proxy behind Go's returned `Bad Request` in long agent loops
 (L27). OpenAI is an ordinary OpenCode provider: log in once with `opencode auth login`, choose
 OpenAI (a ChatGPT login or an API key), and check with `opencode models openai`. The login is kept in
 `auth.json`, which the scripts copy into their own data directory (next section) whenever theirs is
@@ -78,6 +78,20 @@ windows never reset, and `remaining_usd` is the balance. A model with a pool of 
 own window, named after it: today GPT-5.6 Luna (`gpt-5.6-luna:7d`), which can be usable while
 OpenAI's main `7d` window, the one GPT-6 Luna and Sol draw on, is exhausted. Read which pools exist
 from the windows the endpoint returns, not from this page.
+
+The models per provider, heavy and light:
+
+| Provider | Heavy | Light |
+| --- | --- | --- |
+| claude | `claude --model opus` | `claude --model sonnet` |
+| openai | `opencode -m openai/gpt-6.1-sol` | `opencode -m openai/gpt-5.6-luna` |
+| zai | `opencode -m zai-coding-plan/glm-5.3` | `opencode -m zai-coding-plan/glm-5.3-flash` |
+| opencode_go | `opencode -m opencode-go/deepseek-v4-pro` | `opencode -m opencode-go/deepseek-v4.1-flash` |
+| openrouter | `opencode -m openrouter/deepseek/deepseek-v4-pro` | `opencode -m openrouter/deepseek/deepseek-v4.1-flash` |
+
+GPT-5.6 Luna, the reviewer (L51), has its own weekly limit: for light work OpenAI is usable while
+the `gpt-5.6-luna:7d` window in `/quota/openai` is under 95%, even when OpenAI's main window is
+exhausted.
 
 If `curl -sf localhost:8765/health` fails where the service is installed:
 1. `systemctl --user restart quota-tracker`, wait a few seconds, and check `/health` again.

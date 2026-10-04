@@ -166,7 +166,7 @@ Each role runs its OpenCode models, then Claude, by the owner's decisions of 202
 - GLM-5.3 Flash on Z.AI's coding plan (`zai-coding-plan/glm-5.3-flash`) implements, then DeepSeek
   V4.1 Flash on OpenCode Go (`opencode-go/deepseek-v4.1-flash`), then Claude Sonnet. Z.AI needs
   `opencode auth login`; Go needs `opencode console login`.
-- GPT-6 Luna on the direct OpenAI route (`openai/gpt-6-luna`) reviews, then Claude Opus. OpenAI
+- GPT-5.6 Luna on the direct OpenAI route (`openai/gpt-5.6-luna`, its own weekly pool: L51) reviews, then Claude Opus. OpenAI
   needs `opencode auth login`.
 
 Each runs at effort `high`, never `max`, except GPT-6.1 Sol: used sparingly, at `low` (`medium` at
