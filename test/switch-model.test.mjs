@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSessions } from './fake-state.mjs';
 import { familyOf, nameOf, planSwitch, showRoles } from '../template/tools/harness/lib/switch.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -147,7 +148,7 @@ test('--probe asks for one word through the runner; a failed probe writes nothin
   const ok = sw(p, { FAKE_OC_OUTPUT: 'PONG\n' }, '--role', 'reviewer', '--model', 'opencode-go/kimi-k3', '--probe');
   assert.equal(ok.status, 0, ok.stderr);
   assert.match(ok.stdout, /probe: opencode-go\/kimi-k3 answered PONG in \d+ s/);
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.dataHome, path.join(p.base, 'oc-home', 'data'));           // the scripts' data directory
   const q = project();
   const bad = sw(q, { FAKE_OC_MODE: 'exit2' }, '--role', 'reviewer', '--model', 'opencode-go/kimi-k3', '--probe');

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSessions } from './fake-state.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../template');
@@ -81,7 +82,7 @@ test('the reviewer runs git in its worktree and is never asked to type its path 
   const p = project();
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.match(session.prompt, /it is already your working directory\. Run git\n {2}there without -C, and never type that path/);
   assert.doesNotMatch(session.prompt, /git -C/);
   const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').split(/^---$/m).slice(2).join('');
@@ -104,7 +105,7 @@ test('an approve without a DW line for every Done-when line is posted, not appli
   assert.match(s.comments[0].body, /^> Note from tools\/harness\/review\.mjs: approve not applied: no DW line for Done-when 3 \(L32\)\./);
   assert.match(s.comments[0].body, /\n\nT07 review \(luna\)\napprove\n\nDW1: ran node a\.js → 1/);
   assert.equal(s.issueLabels['12'], undefined);
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.match(session.prompt, /The task has 3 Done-when lines\. Right after the verdict line, account for each/);
 });
 
@@ -162,7 +163,7 @@ test('a brief naming another commit as the one to review exits 2 before anything
   assert.equal(r.status, 2, r.stderr + r.stdout);
   assert.match(r.stderr, new RegExp(`names ${other} as the commit to review, but PR 7's head is ${p.sha}`));
   assert.match(r.stderr, /git rev-parse <branch>/);
-  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);              // no OpenCode run
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);              // no OpenCode run
   const work = path.join(p.base, 'proj-work');
   assert.deepEqual(fs.existsSync(work) ? fs.readdirSync(work) : [], []);          // no worktree
   assert.equal(gh(p).comments.length, 0);
@@ -202,7 +203,7 @@ test('the reviewer\'s agent comes from the main checkout, never from the PR unde
   fs.writeFileSync(p.ghState, JSON.stringify(state));
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.agentFile, path.join(p.main, '.opencode', 'agents', 'reviewer.md'));
   assert.doesNotMatch(session.agentDescription, /THE PR'S OWN REVIEWER/);
   // and the PR's .opencode/ is not read at all: an opencode.json or a plugin there is ignored too.
@@ -215,7 +216,7 @@ test('a checkout without the reviewer agent exits 2 before anything runs (#10)',
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /reviewer agent is missing from this checkout/);
-  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
 });
 
 test('a 2.x OpenCode exits 3 before any worktree or run, and nothing is posted (#26)', posix, () => {
@@ -223,7 +224,7 @@ test('a 2.x OpenCode exits 3 before any worktree or run, and nothing is posted (
   const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_VERSION: '2.0.18' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported.*use a Claude reviewer \(opus\)/);
-  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   assert.equal(gh(p).comments.length, 0);
 });
 
@@ -284,7 +285,7 @@ test('the OpenAI login missing: exit 3 saying how to log in, before any worktree
   const home = path.join(p.base, 'oc-home', 'data');
   assert.ok((r.stdout + r.stderr).includes(`luna: openai lists no models for ${home}: it is not logged in there`));
   assert.match(r.stderr, /use a Claude reviewer \(opus\)/);
-  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   assert.equal(gh(p).comments.length, 0);
 });
 
@@ -294,7 +295,7 @@ test('the run uses the scripts\' own data directory, with auth.json copied in', 
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const data = path.join(p.base, 'oc-home', 'data');
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.dataHome, data);
   assert.equal(fs.readFileSync(path.join(data, 'opencode', 'auth.json'), 'utf8'), '{"secret":"never printed"}');
   assert.match(r.stdout, /data directory .* \(auth\.json copied\)/);
