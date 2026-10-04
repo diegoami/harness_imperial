@@ -88,6 +88,9 @@ test('every reviewer is told a proven bypass of what the task protects is blocki
   const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(instructions, /A proven bypass of the task's own guard is blocking even when it looks like an edge case/);
   assert.match(instructions, /when unsure, rate it blocking and say why \(L47\)/);
+  const claude = fs.readFileSync(path.join(root, '.claude/agents/reviewer.md'), 'utf8').replace(/\s+/g, ' ');   // the Claude fallback reviewer too
+  assert.match(claude, /A proven bypass of the task's own guard is blocking even when it looks like an edge case/);
+  assert.match(claude, /when unsure, rate it blocking and say why \(L47\)/);
   assert.match(instructions, /Scratch output goes to a file in the worktree root .* never `\/tmp`\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
 });
 
