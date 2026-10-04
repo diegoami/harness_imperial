@@ -20,12 +20,12 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | Name | Model and route | Family | Used for, here |
 | --- | --- | --- | --- |
 | `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer**, the `harness.json` default |
-| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **hard reviewer**, first in `--hard` (L39); used sparingly; still on watch (L35) |
+| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **guard reviewer**: `--hard --sol`, for a guard task and a hard task's last round (L41); still on watch (L35) |
 | `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project (`--model glm-flash`); on watch |
 | `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project; the `harness.json` default chain |
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
 | `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | on watch; not in a pair |
-| `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | on watch; not in a pair |
+| `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | **hard reviewer**, first in `--hard` (L41); on watch |
 | (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
 | (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
 
@@ -53,18 +53,23 @@ follows the work's difficulty. Claude writes every PR here, so here only the rev
 | Difficulty | Writes | Reviews | If the reviewer is unavailable |
 | --- | --- | --- | --- |
 | Easy, the default | Claude, the main session | GPT-6 Luna (`luna`) | escalate: no Claude reviewer may review here |
-| Hard | Claude, the main session | `--hard`: GPT-6.1 Sol | GLM-5.3, then DeepSeek V4 Pro, then Luna, by itself (L39) |
+| Hard | Claude, the main session | `--hard`: GLM-5.3; `--hard --sol`: GPT-6.1 Sol, for a guard task and the last round (L41) | the rest of `reviewer.hard`: DeepSeek V4 Pro, then Luna, by itself (L39) |
 
 The review always runs through `review.mjs` from the root, with `--exclude claude`.
 
 **Speedups: a hard review never waits for one provider (L39).** `--hard` runs `reviewer.hard`:
-GPT-6.1 Sol, then GLM-5.3 (Z.AI), then DeepSeek V4 Pro (Go), then Luna. The next model runs only
-when one produced no review, such as when the OpenAI quota is used up (Isle Wars T08 lost Sol and
-Luna together that way). The implementer's family is skipped; the posted header names each model
-that failed or could not run before the one that reviewed, so a light substitute on a hard review
-is visible; with no reviewer left, the script exits 3, and since Claude implements here, the
-owner decides. Sol runs at effort `low`, so a hard
-review costs a fraction of a `high` one.
+GLM-5.3 (Z.AI), then DeepSeek V4 Pro (Go), then Luna. `--hard --sol` puts GPT-6.1 Sol
+(`reviewer.sol`) before them. The next model runs only when one produced no review, such as when
+the OpenAI quota is used up (Isle Wars T08 lost Sol and Luna together that way). The implementer's
+family is skipped; the posted header names each model that failed or could not run before the one
+that reviewed, so a light substitute on a hard review is visible; with no reviewer left, the script
+exits 3, and since Claude implements here, the owner decides.
+
+**Sol is used sparingly (L41).** It reviews only a guard task (the first item of the list below)
+and a hard task's last round (`review-round:2`, `review-round:1` for a fix), at effort `low`.
+Every other hard review goes to GLM-5.3. The owner adopted this from games_revival_framework on
+2026-10-04, where GLM-5.3's first hard review (goal2 T04) re-ran every Done-when line, regenerated
+the listing, made five mutations and checked the data bytes.
 
 **When work is hard.** A PR is hard if any of these holds:
 - it is a guard, a gate or a check whose failure lets a wrong result through: the runner's
@@ -80,8 +85,9 @@ Wars, Sol found bypasses that the implementer's own tests missed.
 
 **Real runs in the scratch project** (`~/projects/harness-scratch`, never this repository) use
 Isle Wars' full pairs: easy, GLM-5.3 Flash implements (`--model glm-flash`) and Luna reviews; hard,
-DeepSeek V4.1 Flash implements and GPT-6.1 Sol reviews. GLM-5.3 Flash is on watch (L27, L35): a
-stall is diagnosed before any fallback.
+DeepSeek V4.1 Flash implements and GLM-5.3 reviews (`--hard`), GPT-6.1 Sol for a guard task and the
+last round (`--hard --sol`). GLM-5.3 Flash is on watch (L27, L35): a stall is diagnosed before any
+fallback.
 
 **Jev, for easy or hard (planned).** The owner cleared sending this text to OpenRouter for a Jev
 trial (2026-10-03). A trial needs about 60 labelled items, and labels that the main session makes
@@ -193,7 +199,8 @@ and the trials issue it names.
   the root (L31). It answered a probe on 2026-10-03.
 - **GLM-5.3**: in IC2 it ended long implementer runs early (L27). Here, as a read-only reviewer, it
   chained `cd` commands, and the run was rejected (L31, #14). At Isle Wars (T06) it finished every run, but
-  added scope nobody asked for, and the bypasses were there.
+  added scope nobody asked for, and the bypasses were there. At games_revival_framework (goal2 T04)
+  its first hard review re-ran every Done-when line and made five mutations (L41).
 - **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
   followed an amended contract, but missed stale counts in its own doc.

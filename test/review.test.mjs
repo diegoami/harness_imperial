@@ -455,17 +455,29 @@ test('OpenCode missing says the same as any other failure: the owner, or a Claud
   assert.match(c.stderr, /OpenCode unavailable: .*use a Claude reviewer \(opus\)/);
 });
 
-// --hard (L39): GPT-6.1 Sol, then GLM-5.3, DeepSeek V4 Pro and Luna.
+// --hard (L39, L41): GLM-5.3, then DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
 const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-6-luna']);
-const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0], 'zai-coding-plan/glm-5.3': m[1], 'opencode-go/deepseek-v4-pro': m[2] ?? 'review-ok', 'openai/gpt-6-luna': m[3] ?? 'review-ok' });
+const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[2] ?? 'review-ok', 'openai/gpt-6-luna': m[3] ?? 'review-ok' });
 
-test('--hard reviews with Sol, and with a third family when Sol cannot run, saying so (L39)', posix, () => {
+test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM cannot run, saying so (L39, L41)', posix, () => {
   const p = project();
-  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'review-ok']) }, '--exclude', 'claude', '--hard');
+  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'claude', '--hard');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(gh(p).comments[0].body, /^T07 review \(glm\)\napprove/);
+  assert.doesNotMatch(r.stdout, /attempt: sol/);
+  const q = project();                                                           // GLM out of quota: DeepSeek V4 Pro reviews
+  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2']) }, '--exclude', 'claude', '--hard');
+  assert.equal(s.status, 0, s.stderr + s.stdout);
+  assert.match(gh(q).comments[0].body, /^T07 review \(deepseek-pro; glm failed: exit 2\)\napprove/);
+});
+
+test('--hard --sol reviews with Sol, and with the hard chain when Sol cannot run, saying so (L41)', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(sol-6\.1\)\napprove/);
   const q = project();                                                           // Sol out of quota: GLM-5.3 reviews
-  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2', 'review-ok']) }, '--exclude', 'claude', '--hard');
+  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2']) }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(s.status, 0, s.stderr + s.stdout);
   assert.match(gh(q).comments[0].body, /^T07 review \(glm; sol-6\.1 failed: exit 2\)\napprove/);
 });
@@ -473,7 +485,7 @@ test('--hard reviews with Sol, and with a third family when Sol cannot run, sayi
 test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s R2 on PR 47)', posix, () => {
   const p = project();
   const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-6-luna']);
-  const r = review(p, { FAKE_OC_MODELS: notListed, FAKE_OC_MODE: 'review-ok' }, '--exclude', 'claude', '--hard');
+  const r = review(p, { FAKE_OC_MODELS: notListed, FAKE_OC_MODE: 'review-ok' }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(glm; sol-6\.1 not available\)\napprove/);
   const q = project();                                                           // unchanged without --hard
@@ -481,17 +493,22 @@ test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s 
   assert.match(gh(q).comments[0].body, /^T07 review \(luna\)\napprove/);
 });
 
-test('--hard skips the implementer\'s family: a GLM implementer gets DeepSeek V4 Pro after Sol (L39)', posix, () => {
+test('--hard skips the implementer\'s family: a GLM implementer gets DeepSeek V4 Pro, after Sol with --sol (L39, L41)', posix, () => {
   const p = project();
-  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2', 'review-ok', 'review-ok']) }, '--exclude', 'glm', '--hard');
+  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'glm', '--hard');
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(gh(p).comments[0].body, /^T07 review \(deepseek-pro; sol-6\.1 failed: exit 2\)/);
-  assert.doesNotMatch(r.stdout, /attempt: glm\b/);
+  assert.match(gh(p).comments[0].body, /^T07 review \(deepseek-pro\)/);
+  assert.doesNotMatch(r.stdout, /attempt: (glm|sol)/);
+  const q = project();
+  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2']) }, '--exclude', 'glm', '--hard', '--sol');
+  assert.equal(s.status, 0, s.stderr + s.stdout);
+  assert.match(gh(q).comments[0].body, /^T07 review \(deepseek-pro; sol-6\.1 failed: exit 2\)/);
+  assert.doesNotMatch(s.stdout, /attempt: glm\b/);
 });
 
-test('--hard with no reviewer left exits 3, to the owner when Claude implemented; --hard with --reviewer, or without reviewer.hard, is refused (L39)', posix, () => {
+test('--hard with no reviewer left exits 3, to the owner when Claude implemented; --hard with --reviewer, without reviewer.hard, or --sol without --hard or reviewer.sol, is refused (L39, L41)', posix, () => {
   const p = project();
-  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude', '--hard');
+  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(r.status, 3);
   assert.match(r.stderr, /escalate to the owner: Claude implemented this PR/);
   assert.equal(gh(p).comments.length, 0);
@@ -504,6 +521,15 @@ test('--hard with no reviewer left exits 3, to the owner when Claude implemented
   const none = review(project({ hard: undefined }), { FAKE_OC_MODELS: HARD }, '--hard');
   assert.equal(none.status, 2);
   assert.match(none.stderr, /--hard needs reviewer\.hard/);
+  const alone = review(project(), { FAKE_OC_MODELS: HARD }, '--sol');
+  assert.equal(alone.status, 2);
+  assert.match(alone.stderr, /--sol goes with --hard/);
+  const noSol = review(project({ sol: null }), { FAKE_OC_MODELS: HARD }, '--hard', '--sol');
+  assert.equal(noSol.status, 2);
+  assert.match(noSol.stderr, /--sol needs reviewer\.sol/);
+  const unknown = review(project({ sol: 'nobody' }), { FAKE_OC_MODELS: HARD }, '--hard', '--sol');
+  assert.equal(unknown.status, 2);
+  assert.match(unknown.stderr, /Unknown reviewer nobody in reviewer\.sol/);
 });
 
 test('the implementer\'s family never reviews: dropped from the chain, or refused when named', posix, () => {
