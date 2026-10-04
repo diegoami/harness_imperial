@@ -161,9 +161,11 @@ for l in task bug fix triage:needed post-playable review-round:1 review-round:2 
   status:blocked status:escalated status:merged; do gh label create "$l" --force; done
 ```
 
-There is one OpenCode model per role, then Claude, by the owner's decision of 2026-10-02 (L27):
-- DeepSeek V4.1 Flash on OpenCode Go (`opencode-go/deepseek-v4.1-flash`) implements, then Claude
-  Sonnet. Go needs `opencode console login`.
+Each role runs its OpenCode models, then Claude, by the owner's decisions of 2026-10-02 (L27) and
+2026-10-04 (L42):
+- GLM-5.3 Flash on Z.AI's coding plan (`zai-coding-plan/glm-5.3-flash`) implements, then DeepSeek
+  V4.1 Flash on OpenCode Go (`opencode-go/deepseek-v4.1-flash`), then Claude Sonnet. Z.AI needs
+  `opencode auth login`; Go needs `opencode console login`.
 - GPT-6 Luna on the direct OpenAI route (`openai/gpt-6-luna`) reviews, then Claude Opus. OpenAI
   needs `opencode auth login`.
 

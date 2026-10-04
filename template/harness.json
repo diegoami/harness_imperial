@@ -45,6 +45,7 @@
   "implementer": {
     "agent": "implementer",
     "chain": [
+      "glm-flash",
       "deepseek-flash"
     ],
     "claudeFallback": "sonnet",

@@ -57,3 +57,14 @@ test('measurements are committed and pushed as made, never deleted, in every bri
   assert.match(flat('template/CLAUDE.md'), /a `\[designed\]` value says what search came up empty/);
   assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A task that measures owns a tracked path for its outputs/);
 });
+
+test('the default implementer is GLM-5.3 Flash, then DeepSeek V4.1 Flash, then Sonnet; GLM-5.3 Flash stays on watch (L42)', () => {
+  const c = JSON.parse(read('template/harness.json'));
+  assert.deepEqual(c.implementer.chain, ['glm-flash', 'deepseek-flash']);
+  assert.equal(c.implementer.claudeFallback, 'sonnet');
+  assert.equal(c.models['glm-flash'].id, 'zai-coding-plan/glm-5.3-flash');
+  assert.ok(c.models['glm-flash'].watch, 'glm-flash keeps its watch note');
+  for (const f of ['template/docs/process.md', 'template/docs/tasks/TEMPLATE.md', 'README.md']) {
+    assert.match(read(f).replace(/\s+/g, ' '), /GLM-5\.3 Flash|`glm-flash`, then `deepseek-flash`/, f);
+  }
+});
