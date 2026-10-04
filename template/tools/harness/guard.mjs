@@ -23,7 +23,7 @@ if (typeof event?.tool_input?.command !== 'string') {
   console.error(`guard (${role}): the Bash call has no command string, so it is refused.`);
   process.exit(2);
 }
-const reason = refusal(event.tool_input.command, role);
+const reason = refusal(event.tool_input.command, role, { cwd: typeof event.cwd === 'string' ? event.cwd : process.cwd() });
 if (reason) {
   console.error(`guard: ${reason}. The harness forbids it for this agent (tools/harness/lib/guard.mjs).`);
   process.exit(2);
