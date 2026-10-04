@@ -21,10 +21,21 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
 1. **Brief.** Write it to a temp file: the task file **pasted in full**, then `docs/process.md` §4's
    block, then (on rework) the review comment's URL. Never a pointer to the task file.
 
+   **Watching background work (L48).** While any job runs in the background (an implement or
+   review run, an agent, a long command), arm a watch: Claude Code's Monitor (30 minutes,
+   re-armed until the work ends), or a background `until` loop where there is none. It reports
+   each job's start and end, and flags a job whose log or output file has not grown for 10
+   minutes as possibly stuck; check it is alive on its exact PID. The runner kills its own run at
+   the idle limit (L10), so for an implement or review run the flag is a warning to read the
+   output, not a reason to kill it; for an agent or a plain command it is the only watchdog.
+   Never wait with `while pgrep -f '<pattern>'`: the waiting shell's command line contains the
+   pattern, so it matches itself and waits forever. Chain jobs in one background command, or
+   wait on the PID with `while kill -0 <pid>`. Tell the user at each start, end and flag.
+
 2. **Implement.** Label `status:in-progress`. Use the task file's Implementer:
    - `opencode` (the default): run
      `node tools/harness/implement.mjs --task T<nn> --slug <slug> --issue <n> --brief <file>`
-     with `run_in_background`, then wait for its completion notice; never poll with sleep.
+     with `run_in_background`, and watch it (below); never poll with sleep.
      - Exit 0: a PR is open. Note the `implemented by:` line.
      - Exit 1: read the log it names. An implementer that stopped and reported goes to step 5,
        or to a task-file amendment on `main` and a re-run.

@@ -27,6 +27,7 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 
 `/delegate` picks the delegate; model ids come from `models.mjs` or `opencode models`, never memory
 (L25). The main session runs `implement.mjs` itself: a wrapper agent would spend tokens watching it.
+It watches each background job (start, end, no output for 10 min), never with `pgrep -f`. (L48)
 
 ## 2. Task files
 
@@ -107,8 +108,7 @@ per merge. Triage decides one of:
 - **correction task**: anything that changes an outcome.
 - **fold** into a task not yet ready, or **close**, with the reason.
 
-Once `breaks-play` is trialled (§12), Jev settles the confident ends of the playability gate
-first; the main session triages the middle.
+Once `breaks-play` is trialled (§12), Jev settles the gate's confident ends; the main session the middle.
 
 ## 7. Escalate to the user when
 
