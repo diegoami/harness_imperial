@@ -12,7 +12,9 @@ PR. How a review is run is `docs/review.md`; the L-numbers are harness_imperial'
 2. The PR body is the contract: Scope, Done when (each line one command a read-only reviewer can
    run), and `Critical: yes|no` with the reason. (L32, L37)
 3. Every PR is reviewed by `tools/harness/review.mjs --exclude claude`, never by a Claude agent:
-   Claude implements here, and the reviewer is never the implementer's family. (L3)
+   Claude implements here, and the reviewer is never the implementer's family. (L3) Check the
+   quota first (`docs/environment.md`): skip an exhausted reviewer with `--reviewer` on the next one
+   of the chain that has quota, and say so in the PR. (L50)
 4. A critical PR gets a second opinion: `--second-opinion`. Critical means a guard, a gate, or
    anything that handles secrets, credentials or access; a new mechanism across several files; or
    an earlier round that found blocking findings. (L37)

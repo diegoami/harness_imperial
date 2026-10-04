@@ -143,6 +143,12 @@ Pro)". A number measured for another game is a target to measure, not a promise.
 
 ## How a run is made
 
+- **Quota first** (L50). Before choosing an implementer or a reviewer, run
+  `curl -s localhost:8765/avoid` (quota-tracker, `template/docs/environment.md`): a provider that is
+  `exhausted` is skipped. Name the next model of the chain with quota (`--model`, `--reviewer`) and
+  say so in the report. On 2026-10-04 Z.AI's 5-hour window and Go's week were both used up, which
+  left OpenAI (Sol, Luna) as the only OpenCode route. GPT-5.6 Luna has a pool of its own, separate
+  from the one GPT-6 Luna and Sol share; the endpoint's windows show which pools exist.
 - **The review of a PR here.** Run it from the root, on `main`, in the background:
   `node template/tools/harness/review.mjs --pr <n> --brief <file> --exclude claude`.
   - The reviewer's agent and config come from the main checkout (L34). While a review runs, do
