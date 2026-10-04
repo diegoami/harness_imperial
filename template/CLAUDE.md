@@ -18,8 +18,7 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
 7. Merge only with an approving review and green CI. Two rework rounds, then escalate. After a heavy
    review, the next round's implementer moves one step up, never down (`/run-task`). (L38)
 8. Relay review findings in full, never a subset.
-9. A test proves behaviour only if it fails when the behaviour is removed; a claim that nothing
-   failed is re-taken before it is believed.
+9. A test proves behaviour only if it fails without that behaviour; re-take a claim that nothing failed.
 10. A comment asserting behaviour at an edge arrives with the test that visits that edge.
 11. Until the first playable build, schedule only bugs that break play; the rest are `post-playable`.
 12. A bug whose fix stays in the files it names and changes no outcome is a `fix`; a blocking
@@ -36,5 +35,6 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
 17. [evidence-driven] Every constant traces to evidence; a `[designed]` value says what search came up empty.
 18. [seeded] No wall clock or unseeded random in rule code; a seeded test proves it.
 19. [files outside CI] Tests that need them skip explicitly; CI fetches a private fixtures repo.
-20. [research repo, measuring task] Commit and push without asking. Measurements: a tracked path the
-    task owns, pushed per batch and every 30 min, never deleted or overwritten; originals out, hashed. (L40)
+20. [research repo, or any task that measures] Commit and push without asking. Measurements go to a
+    tracked path the task owns, per batch and every 30 min, never deleted or overwritten; originals out,
+    hashed. (L40)

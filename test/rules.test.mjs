@@ -52,7 +52,7 @@ test('measurements are committed and pushed as made, never deleted, in every bri
   const line = /If you measure: every output a finding or the PR may cite goes under a tracked path the task owns, pushed per batch and every 30 min, never deleted or overwritten; originals out, hashes recorded\. \(L40\)/;
   assert.match(flat('template/docs/process.md'), line);                     // §4, the brief every task gets
   assert.match(flat('template/.claude/agents/implementer.md'), line);
-  assert.match(flat('template/CLAUDE.md'), /\[research repo, measuring task\] .* tracked path the task owns, pushed per batch and every 30 min, never deleted or overwritten; originals out, hashed\. \(L40\)/);
+  assert.match(flat('template/CLAUDE.md'), /\[research repo, or any task that measures\] Commit and push without asking\. Measurements go to a tracked path the task owns, per batch and every 30 min, never deleted or overwritten; originals out, hashed\. \(L40\)/);
   assert.match(flat('template/CLAUDE.md'), /a `\[designed\]` value says what search came up empty/);
   assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A task that measures owns a tracked path for its outputs/);
 });
