@@ -14,10 +14,11 @@ rules; `docs/environment.md` holds the logins.
 | 3, on failure | DeepSeek V4.1 Flash (`deepseek-flash`) | OpenCode Go, `opencode-go/deepseek-v4.1-flash` |
 | then | the user | no Claude reviewer (`claudeFallback: null`) |
 
-There is no `--hard` chain here (`reviewer.hard` and `reviewer.sol` are null): a critical PR gets a second opinion
-instead. The next model runs only when one produced no review at all; the same failure twice stops the
-chain (L12). A critical PR's second opinion is Luna, or, when Luna wrote the first review, the
-chain's next model. Each reviewer works read-only in a detached worktree of the PR's head.
+There is no `--hard` chain here (`reviewer.hard` and `reviewer.sol` are null): a critical PR gets a
+second opinion instead. The next model runs only when one produced no review at all; the same
+failure twice stops the chain (L12). A critical PR's second opinion is Luna, or, when Luna wrote the
+first review, the chain's next model. Each reviewer works read-only in a detached worktree of the
+PR's head.
 
 ## Running a review
 
@@ -32,7 +33,11 @@ chain's next model. Each reviewer works read-only in a detached worktree of the 
      push, review again. With a second opinion, the stricter verdict counts. A heavy review (three
      or more blocking findings, or new ones of the last round's class) changes how the next round
      works, not who does it: fix the class, sweep the PR's own code for it, list the sweep in the
-     PR body, and change the approach when the class needs it (`CLAUDE.md` rule 5, L38).
+     PR body, and change the approach when the class needs it (`CLAUDE.md` rule 5, L38). A
+     reviewer that still reports one blocking finding per round: after the second such round,
+     stop, sweep the whole diff for that class yourself, fix it and record the pattern in the
+     model-trials record (create one if there is none) before the next review, which is the last
+     before escalation (`CLAUDE.md` rule 5, L49).
    - exit 3: no review, or no second opinion. Tell the user.
    - exit 4: a review posted but not acted on (cut off, unreadable, an approve that skipped a
      Done-when line). Read it on the PR and tell the user.
@@ -84,6 +89,7 @@ every item under "Blocking means", and report all blocking findings together.
 ```
 
 Both sections above the contract are pasted in full in every brief, "Blocking means" written for
-the PR (L47, L49). The head is named only above the `# T<n>` line, so the contract may cite other commits (#32).
+the PR (L47, L49). The head is named only above the `# T<n>` line, so the contract may cite other
+commits (#32).
 List only Done-when lines a read-only reviewer can run: it cannot commit, push or write outside
 its worktree. The main session runs any mutation check itself and says so above the contract.
