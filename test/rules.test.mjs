@@ -96,18 +96,52 @@ test('the main session watches background work, and never waits on pgrep -f (L48
   assert.match(s, /with `run_in_background`, and watch it \(below\); never poll with sleep/);
 });
 
-test('every review brief and reviewer is told to report every blocking finding in one review (L49)', () => {
-  const flat = (f) => read(f).replace(/\s+/g, ' ');
-  const section = /## Report every blocking finding in this one review This review is your only pass before the author fixes\. Do not stop at the first blocking finding: .* say "Final pass done" as the last line before the verdict\. .* A finding you held back because an earlier one was already blocking is a review defect: .* Do not rely on a later round\. .* Do not approve in that case\./;
+// The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
+const ONE_PASS = `## Report every blocking finding in this one review
+
+This review is your only pass before the author fixes. Do not stop at the first blocking
+finding: finish reading the whole diff and the task file, check every Done-when line and
+every item under "Blocking means", and report all blocking findings together.
+
+- Before you write the verdict, make one last pass over the full diff for anything you have
+  not yet rated, and say "Final pass done" as the last line before the verdict.
+- Number the findings R1, R2, … in order of severity. A finding you held back because an
+  earlier one was already blocking is a review defect: if two problems share a cause, list
+  both and say so.
+- Do not rely on a later round. The author fixes everything you list, and the next review
+  checks those fixes and new code only, not anything you saw but did not report.
+- If you ran out of time or context before covering the whole diff, say which files or
+  sections you did not cover. Do not approve in that case.`;
+const OPENCODE_BULLET = `- Report every blocking finding in this one review (L49). It is your only pass before the author
+  fixes: do not stop at the first blocking finding; read the whole diff and the task file, check
+  every Done-when line and every item under "Blocking means", and report all blocking findings
+  together, numbered R1, R2, … in order of severity. A finding held back because an earlier one
+  was already blocking is a review defect; if two share a cause, list both and say so. Do not rely
+  on a later round: it checks the fixes and new code only. Before the verdict, make one last pass
+  over the full diff and write "Final pass done" as the last line before it. If you did not cover
+  the whole diff, name what you left out, and do not approve.`;
+const OUTPUT_RULE = `- Report every blocking finding in this one review, not one per round: read the whole diff, then
+  make a final pass and write "Final pass done" as the line before the closing verdict. Name any
+  part you did not cover, and do not approve then (L49).`;
+const STOP_RULE = `A reviewer that reports one blocking finding per round despite the brief's one-pass
+        section (L49): after the second such round, stop. Request no further review until you
+        have gone through the whole diff yourself for that class and fixed what you found, and
+        recorded the pattern in the model-trials record. The review after that is the task's last
+        before escalation (step 5).`;
+const flatten = (s) => s.replace(/\s+/g, ' ');
+const holds = (f, text) => assert.ok(flatten(read(f)).includes(flatten(text)), `${f} lacks: ${flatten(text).slice(0, 80)}…`);
+
+test('every review brief and reviewer is told to report every blocking finding in one review, in full (L49)', () => {
   for (const f of ['template/docs/review-brief.md', 'profiles/review/docs/review.md']) {
-    assert.match(flat(f), section, f);
-    assert.match(flat(f), /## Blocking means Any one is enough; a blocking finding means rework, never approve\./, f);
+    holds(f, ONE_PASS);
+    holds(f, '## Blocking means\n\nAny one is enough; a blocking finding means rework, never approve.');
   }
-  assert.match(flat('template/docs/process.md'), /6\. <docs\/review-brief\.md in full: "Blocking means" for this task, then its one-pass section \(L47, L49\)>/);
-  for (const f of ['template/.opencode/agents/reviewer.md', 'template/.claude/agents/reviewer.md']) {
-    assert.match(flat(f), /Report every blocking finding in this one review\** \(L49\)/, f);
-    assert.match(flat(f), /"Final pass done"/, f);
+  holds('template/.claude/agents/reviewer.md', ONE_PASS.replace('## Report every blocking finding in this one review', '**Report every blocking finding in this one review** (L49).'));
+  holds('template/.opencode/agents/reviewer.md', OPENCODE_BULLET);
+  holds('template/tools/harness/review.mjs', OUTPUT_RULE);
+  holds('template/.claude/skills/run-task/SKILL.md', STOP_RULE);
+  for (const f of ['template/docs/process.md', 'template/.claude/agents/reviewer.md']) {
+    holds(f, '6. <docs/review-brief.md in full: "Blocking means" for this task, then its one-pass section (L47, L49)>');
+    holds(f, '2. [evidence-driven] Every constant traces to a fixture, report or investigation; a [designed] one says what was searched.');
   }
-  assert.match(flat('template/tools/harness/review.mjs'), /Report every blocking finding in this one review, not one per round: .* write "Final pass done" as the line before the closing verdict\. Name any part you did not cover, and do not approve then \(L49\)/);
-  assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /one blocking finding per round despite the brief's one-pass section \(L49\): after the second such round, go through the whole diff yourself for that class/);
 });

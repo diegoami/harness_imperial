@@ -90,8 +90,10 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
         does not reviewed the wrong tree: discard it, say so, and re-review.
      2. At `review-round:2` (at `review-round:1` for a fix), go to step 5.
         A reviewer that reports one blocking finding per round despite the brief's one-pass
-        section (L49): after the second such round, go through the whole diff yourself for that
-        class before the next review, and record the pattern in the model-trials record.
+        section (L49): after the second such round, stop. Request no further review until you
+        have gone through the whole diff yourself for that class and fixed what you found, and
+        recorded the pattern in the model-trials record. The review after that is the task's last
+        before escalation (step 5).
      3. **A heavy review moves the implementer up (L38)**, decided before the next round starts.
         The review just posted is heavy when it asks for rework with three or more blocking
         findings, or when it brings new blocking findings of a class the previous round raised:
