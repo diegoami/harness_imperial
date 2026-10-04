@@ -27,9 +27,10 @@ The rest of the contract, from docs/process.md §4:
 ```text
 You implement <T<nn>>. The task file above is the contract.
 - Change only what the task needs. Every changed file is one the task requires; say why for each.
-- A Done-when line you cannot meet: stop and report. Never weaken an assertion, skip a test or
-  edit the task file.
+- A Done-when you cannot meet: stop and report. Never weaken an assertion, skip a test or edit the task file.
 - Every new test fails before your change and passes after it; say how you checked.
+- If you measure: every output a finding or the PR may cite goes under a tracked path the task owns,
+  pushed per batch and every 30 min, never deleted or overwritten; originals out, hashes recorded. (L40)
 - A comment that asserts behaviour at an edge comes with the test that visits that edge.
 - A defect you find outside the task: report it. A one-file mechanical fix that blocks you may
   ride this PR, declared under Scope in the PR body.
