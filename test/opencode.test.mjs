@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  runOpenCodeWatched, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
+  runOpenCodeWatched, lookupSession, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
   openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem,
 } from '../template/tools/harness/lib/opencode.mjs';
 
@@ -79,6 +79,37 @@ test('steps that keep advancing updated survive an idle limit shorter than the w
 
 test('a run that exits without creating a session is an infrastructure failure', async () => {
   await assert.rejects(run('exit-no-session'), infra(/^exited without a session/));
+});
+
+test('a run with no session logs and says why the last lookup missed it (#45)', async () => {
+  const logs = [];
+  await assert.rejects(run('exit-no-session', { log: (l) => logs.push(l) }), (e) => infra(/^exited without a session/)(e)
+    && /\(last lookup: no session titled test-[0-9a-f]+ among the 0 listed\)/.test(e.message));
+  assert.ok(logs.some((l) => /^opencode: session lookup missed: no session titled test-/.test(l)), logs.join('\n'));
+  const slow = [];                                                               // the listing, not the match
+  await assert.rejects(run('no-session', { startupTimeoutMs: 400, log: (l) => slow.push(l) }, { FAKE_OC_SESSION_SLEEP_MS: '5000' }),
+    (e) => infra(/^no session in/)(e) && /last lookup: `session list` gave no result within \d+ ms/.test(e.message));
+  assert.ok(slow.some((l) => /session lookup missed: `session list` gave no result/.test(l)), slow.join('\n'));
+});
+
+test('a session lookup that misses says why: the listing, its output, or the match (#45)', async () => {
+  const { dir, env } = setup('ok');
+  const startedMs = Date.now();
+  const look = (extra = {}, opts = {}) => lookupSession(opencode, { workDir: dir, title: 't1', startedMs, timeoutMs: 5000, env: { ...env, ...extra }, ...opts });
+  const save = (s) => fs.writeFileSync(env.FAKE_OC_STATE, JSON.stringify(s));
+  assert.match((await look({}, { timeoutMs: 0 })).miss, /^no time left to list sessions$/);
+  assert.match((await look({ FAKE_OC_SESSION_SLEEP_MS: '3000' }, { timeoutMs: 200 })).miss, /^`session list` gave no result within 200 ms/);
+  assert.match((await look({ FAKE_OC_SESSION_OUTPUT: '', FAKE_OC_SESSION_STDERR: 'database is locked' })).miss,
+    /^`session list` printed nothing \(exit 1\); stderr: database is locked$/);
+  assert.match((await look({ FAKE_OC_SESSION_OUTPUT: 'Error: boom' })).miss, /^`session list` printed no JSON \(exit 1\): Error: boom$/);
+  save([{ id: 'ses_a', title: 'other', directory: dir, created: startedMs }]);
+  assert.match((await look()).miss, /^no session titled t1 among the 1 listed$/);
+  save([{ id: 'ses_b', title: 't1', directory: '/elsewhere', created: startedMs }]);
+  assert.match((await look()).miss, /^session ses_b titled t1 is in \/elsewhere, not /);
+  save([{ id: 'ses_c', title: 't1', directory: dir, created: startedMs - 5000 }]);
+  assert.match((await look()).miss, /^session ses_c titled t1 was created at \d+, before the run started at \d+$/);
+  save([{ id: 'ses_d', title: 't1', directory: dir, created: startedMs }]);
+  assert.deepEqual(await look(), { session: { id: 'ses_d', title: 't1', directory: dir, created: startedMs }, miss: null });
 });
 
 test('a non-zero exit is returned, not thrown, and its files are kept', async () => {

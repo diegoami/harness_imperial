@@ -12,6 +12,8 @@
 //   Each session records the XDG_DATA_HOME it ran with, the prompt it was given, and the agent file
 //   OpenCode 1.18.34 would load (checked by hand): OPENCODE_CONFIG_DIR's agents/ over the
 //   project's .opencode/agents/; with OPENCODE_DISABLE_PROJECT_CONFIG=1 never the project's.
+// FAKE_OC_SESSION_OUTPUT (for `session list`): what it prints instead of the state, with
+//   FAKE_OC_SESSION_STDERR on stderr; FAKE_OC_SESSION_SLEEP_MS: a delay before it answers.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -53,8 +55,10 @@ if (cmd === '--version') {
   process.exit(0);
 }
 if (cmd === 'session') {
-  process.stdout.write(JSON.stringify(load()));
-  process.exit(0);
+  if (process.env.FAKE_OC_SESSION_SLEEP_MS) await sleep(Number(process.env.FAKE_OC_SESSION_SLEEP_MS));
+  if (process.env.FAKE_OC_SESSION_STDERR) process.stderr.write(process.env.FAKE_OC_SESSION_STDERR);
+  process.stdout.write(process.env.FAKE_OC_SESSION_OUTPUT ?? JSON.stringify(load()));
+  process.exit(process.env.FAKE_OC_SESSION_OUTPUT === undefined ? 0 : 1);
 }
 if (cmd === 'models') {
   const ids = JSON.parse(process.env.FAKE_OC_MODELS
