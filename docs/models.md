@@ -21,8 +21,8 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | --- | --- | --- | --- |
 | `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer**, the `harness.json` default |
 | `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **guard reviewer**: `--hard --sol`, for a guard task and a hard task's last round (L41); still on watch (L35) |
-| `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project (`--model glm-flash`); on watch |
-| `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project; the `harness.json` default chain |
+| `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project; first in the `harness.json` default chain (L42); on watch |
+| `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project (`--model deepseek-flash`); second in the default chain |
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
 | `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | on watch; not in a pair |
 | `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | **hard reviewer**, first in `--hard` (L41); on watch |

@@ -12,7 +12,7 @@ yourself, check whether a delegate below does it better or cheaper.
 
 | Work | Delegate | How | Key |
 | --- | --- | --- | --- |
-| Code: implement a task or a fix | OpenCode DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | OpenCode Go's login (`opencode console login`) to implement; OpenAI's (`opencode auth login`) to review |
+| Code: implement a task or a fix | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | Z.AI's login (`opencode auth login`) and OpenCode Go's (`opencode console login`) to implement; OpenAI's (`opencode auth login`) to review |
 | Review a PR | GPT-6 Luna on OpenAI, through OpenCode (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
 | Repeated decisions with known answers (triage, routing, gating, labelling) | Jev | `/jev` → `tools/harness/jev.mjs` | `OPENROUTER_API_KEY` |
 | Images: sprites, icons, maps, mockups, illustrations | An image model on OpenRouter | pick one with `models.mjs openrouter --output image` | `OPENROUTER_API_KEY` |

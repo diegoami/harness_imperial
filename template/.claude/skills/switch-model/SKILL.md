@@ -5,9 +5,9 @@ description: Switch the OpenCode model that implements or reviews (harness.json)
 
 # /switch-model: change the implementer's or the reviewer's model
 
-Each role runs one OpenCode model, then Claude: today, DeepSeek V4.1 Flash on Go implements
-(then Sonnet), and GPT-6 Luna on the direct OpenAI route reviews (then Opus). The user decided
-this on 2026-10-02 (L27). A switch changes one role's model; it is the user's decision, so you
+Each role runs its OpenCode chain, then Claude: today, GLM-5.3 Flash on Z.AI implements, then
+DeepSeek V4.1 Flash on Go (then Sonnet), and GPT-6 Luna on the direct OpenAI route reviews (then
+Opus). The user decided this on 2026-10-02 (L27) and on 2026-10-04 (L42). A switch changes one role's model; it is the user's decision, so you
 propose it and the user says yes.
 
 1. **Why.** Name the reason: a measured failure (the run logs, the measurement comments), a

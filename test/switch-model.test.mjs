@@ -61,7 +61,7 @@ test('refused: max effort, the other role\'s family (unless forced), a taken nam
 
 test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
-    'implementer: deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
+    'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
     'reviewer: luna = openai/gpt-6-luna (high, family openai), then Claude opus',
     'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash',
   ].join('\n'));

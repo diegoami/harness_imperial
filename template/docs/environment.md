@@ -29,8 +29,7 @@ Then run `npm test` in the harness repository. The tests against the real OpenCo
 
 ## OpenCode Go
 
-The implementer and reviewer models in `harness.json` are OpenCode Go's (`opencode-go/…`), a
-subscription. They are not OpenCode Zen's pay-per-token `opencode/…` models. Go comes from a console
+The second implementer, DeepSeek V4.1 Flash, is OpenCode Go's (`opencode-go/…`), a subscription. They are not OpenCode Zen's pay-per-token `opencode/…` models. Go comes from a console
 (organisation) login, not from a key; `opencode auth login` and `OPENCODE_API_KEY` reach only Zen
 (IC2 #551):
 1. `opencode console login`, then approve the URL and code it prints in the browser;
@@ -52,10 +51,10 @@ OpenAI (a ChatGPT login or an API key), and check with `opencode models openai`.
 missing or older. If OpenAI later asks for a new login, log in again in your usual OpenCode; the
 next run copies it.
 
-## Z.AI, for the GLM models on watch
+## Z.AI, for the implementer and the GLM models
 
-GLM-5.3 and GLM-5.3 Flash run on Z.AI's coding plan (`zai-coding-plan/…`), registered on watch
-(L35), not in a chain. Log in once with `opencode auth login` and choose Z.AI Coding Plan (an API
+GLM-5.3 Flash, the default implementer (L42), and GLM-5.3, the first hard reviewer (L41), run on
+Z.AI's coding plan (`zai-coding-plan/…`); both stay on watch (L35). Log in once with `opencode auth login` and choose Z.AI Coding Plan (an API
 key; OpenCode also reads `ZHIPU_API_KEY`), then check with `opencode models zai-coding-plan`. The
 key is kept in `auth.json`, which the scripts copy like OpenAI's. GLM-5.3-highspeed is refused by
 the plan.
@@ -117,7 +116,7 @@ A cloud environment's network policy must allow:
 | --- | --- |
 | `opencode.ai` | OpenCode's own providers (Zen, Go) |
 | `openrouter.ai` | Jev, OpenRouter models, image generation |
-| `api.z.ai` | the GLM models on watch, only if a run names one |
+| `api.z.ai` | the implementer, GLM-5.3 Flash, and the hard reviewer, GLM-5.3 |
 | `api.elevenlabs.io` | ElevenLabs |
 | `registry.npmjs.org` | installing OpenCode |
 | `api.github.com`, `github.com` | `gh` and git |

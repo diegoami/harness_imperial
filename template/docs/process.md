@@ -21,7 +21,7 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 | Role | Who | Does |
 | --- | --- | --- |
 | Main session | Claude, the session the user talks to | Plans, writes task files, runs `/run-task`, triages, merges, reports |
-| Implementer | OpenCode DeepSeek V4.1 Flash via `tools/harness/implement.mjs`, then a Claude Sonnet agent (L27) | One task, one branch, one PR, in its own worktree |
+| Implementer | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, via `tools/harness/implement.mjs`, then a Claude Sonnet agent (L42) | One task, one branch, one PR, in its own worktree |
 | Reviewer | OpenCode GPT-6 Luna (direct OpenAI) via `tools/harness/review.mjs`, then a Claude Opus agent; never the implementer's family (L27). Exit 3: Opus reviews; exit 4: the main session reads the flagged review and decides (L28) | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
 | Decider | Jev via `tools/harness/jev.mjs` (the `/jev` skill) | Repeated yes/no decisions over many items, at the confident ends only (§12) |
 | Generator | Models on OpenRouter (images, other families) and ElevenLabs (speech, sound, music) | Assets, each committed with a sidecar naming provider, model, prompt, date and cost |
@@ -49,7 +49,7 @@ What the implementer script guarantees, and why:
 - OpenCode starts with stdin closed; without it a run hangs before it starts. (L10)
 - No session in 180 s, no progress in 900 s, or no exit in 3 h kills the run's process tree. (L10)
 - The agent is checked on OpenCode's session record (L11); a rejected tool call fails the run. (L26)
-- One OpenCode model, effort high, in the scripts' own data directory (L27, L29). A longer chain
+- Each OpenCode model runs at effort high, in the scripts' own data directory (L27, L29). The chain
   moves on only after an infrastructure failure that left no work. (L12)
 - Exit 0: a PR is open. 1: the main session reads the log (a stop and report, or an early end).
   3: OpenCode unavailable, its model not listed, or not logged in; Claude Sonnet takes the task.
