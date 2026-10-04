@@ -191,6 +191,12 @@ test('the hook refuses a reviewer\'s Read, Grep or Glob of what the jail hides, 
   assert.equal(hook('reviewer', tool('Read', { file_path: path.join(work, 'a.txt') }), env).status, 0);
   assert.equal(hook('reviewer', tool('Grep', { pattern: 'x' }), env).status, 0);                 // the working directory
   assert.equal(hook('implementer', tool('Read', { file_path: path.join(home, '.config/gh/hosts.yml') }), env).status, 0);
+  // Home outside what is kept is refused; harness.json's jail.keep brings a folder back.
+  fs.mkdirSync(path.join(home, 'sdk'));
+  const sdk = tool('Read', { file_path: path.join(home, 'sdk/x') });
+  assert.equal(hook('reviewer', sdk, env).status, 2);
+  fs.writeFileSync(path.join(work, 'harness.json'), JSON.stringify({ jail: { keep: ['~/sdk'] } }));
+  assert.equal(hook('reviewer', sdk, { ...env, CLAUDE_PROJECT_DIR: work }).status, 0);
 });
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and

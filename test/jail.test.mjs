@@ -1,5 +1,5 @@
-// The reviewer's credential jail (lib/jail.mjs, #68): what it hides, when it is off, and, where
-// bwrap runs, that a command inside it cannot reach the credentials however it asks.
+// The reviewer's credential jail (lib/jail.mjs, #68): what it keeps and hides, when it is off, and,
+// where bwrap runs, that a command inside it cannot reach a credential however it asks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -8,85 +8,105 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { jailArgs, credentialJail, jailCommand, hiddenTarget } from '../template/tools/harness/lib/jail.mjs';
+import { jailArgs, credentialJail, jailCommand, hiddenTarget, keptEnv } from '../template/tools/harness/lib/jail.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// Listed here, not taken from the module, so that deleting one there fails a test (Sol's R7 on PR 74).
-const TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'];
+// Listed here, not taken from the module, so that keeping one there fails a test (Sol's R7, round 1).
+const TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GITHUB_API_KEY'];
+const DROPPED = [...TOKENS, 'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0',
+  'GIT_CONFIG_VALUE_0', 'SSH_AUTH_SOCK', 'DBUS_SESSION_BUS_ADDRESS', 'VSCODE_GIT_IPC_HANDLE', 'FOO_TOKEN'];
 
-// A home and a repository with every kind of credential store, each holding SECRET.
+const tmp = (prefix) => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+const put = (file, text = 'SECRET\n', mode) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text, mode ? { mode } : undefined);
+};
+
+// A home (h) and a place outside it (o), with every kind of credential store, each holding SECRET:
+// the default ones in home, and round 2's (Sol, R1–R4): a custom store file, an askpass script, a
+// transport command, and includes deeper than any limit, outside home.
 function setup() {
-  const h = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jail-home-')));
-  const put = (rel, text = 'SECRET\n') => {
-    fs.mkdirSync(path.dirname(path.join(h, rel)), { recursive: true });
-    fs.writeFileSync(path.join(h, rel), text);
-  };
-  for (const rel of ['.ssh/id_ed25519', '.config/gh/hosts.yml', 'xdg/gh/hosts.yml', 'ghdir/hosts.yml',
-    '.git-credentials', '.config/git/credentials', '.netrc', '.cache/git/credential/socket', 'agent.sock',
-    'vscode.sock', 'bus', 'inc/secret.cfg']) put(rel);
-  put('.gitconfig', [
-    '[user]', '\tname = Probe', '[http "https://github.com/"]', '\textraheader = Authorization: Bearer SECRET',
-    '[credential]', '\thelper = !echo password=SECRET', '[url "https://x:SECRET@github.com/"]', '\tinsteadOf = https://github.com/',
-    '[includeIf "gitdir:/nowhere/"]', `\tpath = ${h}/inc/secret.cfg`, '[alias]', '\tlg = log --oneline', ''].join('\n'));
-  put('xdg/git/config', '[http]\n\textraheader = SECRET\n');
-  put('.config/git/config', '[http]\n\textraheader = SECRET\n');
+  const h = tmp('jail-home-');
+  const o = tmp('jail-out-');
+  for (const rel of ['.ssh/id_ed25519', '.config/gh/hosts.yml', '.git-credentials', '.netrc', 'custom/store',
+    '.cache/git/credential/socket']) put(path.join(h, rel));
+  put(path.join(h, '.gitconfig'), '[user]\n\tname = Probe\n[credential]\n\thelper = store --file=' + path.join(h, 'custom/store') + '\n');
+  put(path.join(h, 'askpass'), '#!/bin/sh\necho SECRET\n', 0o755);
+  put(path.join(h, 'tools/bin/hello'), '#!/bin/sh\necho hello-tool\n', 0o755);
+  put(path.join(h, 'keepme/file'), 'kept\n');
+  for (const rel of ['xdg/gh/hosts.yml', 'ghdir/hosts.yml', 'agent.sock', 'vscode.sock', 'bus']) put(path.join(o, rel));
+  // 120 includes, each including a leaf with an auth header.
+  for (let i = 0; i < 120; i++) {
+    put(path.join(o, `inc/mid${i}.cfg`), `[include]\n\tpath = ${path.join(o, `inc/leaf${i}.cfg`)}\n`);
+    put(path.join(o, `inc/leaf${i}.cfg`), '[http]\n\textraheader = Authorization: Bearer SECRET\n');
+  }
   const repo = path.join(h, 'repo');
   spawnSync('git', ['init', '-q', '-b', 'main', repo]);
   spawnSync('git', ['-C', repo, 'remote', 'add', 'origin', 'https://user:SECRET@github.com/o/r.git']);
   spawnSync('git', ['-C', repo, 'config', 'http.extraheader', 'AUTHORIZATION: basic SECRET']);
   spawnSync('git', ['-C', repo, 'config', 'core.note', 'ghp_SECRETSECRETSECRETSECRET1234']);
+  for (let i = 0; i < 120; i++) spawnSync('git', ['-C', repo, 'config', '--add', 'include.path', path.join(o, `inc/mid${i}.cfg`)]);
   const env = {
-    ...process.env, HOME: h, XDG_CONFIG_HOME: path.join(h, 'xdg'), GH_CONFIG_DIR: path.join(h, 'ghdir'),
-    SSH_AUTH_SOCK: path.join(h, 'agent.sock'), VSCODE_GIT_IPC_HANDLE: path.join(h, 'vscode.sock'),
-    DBUS_SESSION_BUS_ADDRESS: `unix:path=${path.join(h, 'bus')}`,
-    GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraheader', GIT_CONFIG_VALUE_0: 'SECRET',
+    ...process.env, HOME: h, PATH: `${path.join(h, 'tools/bin')}:${process.env.PATH}`, XDG_CONFIG_HOME: path.join(o, 'xdg'),
+    GH_CONFIG_DIR: path.join(o, 'ghdir'), SSH_AUTH_SOCK: path.join(o, 'agent.sock'), VSCODE_GIT_IPC_HANDLE: path.join(o, 'vscode.sock'),
+    DBUS_SESSION_BUS_ADDRESS: `unix:path=${path.join(o, 'bus')}`, GIT_ASKPASS: path.join(h, 'askpass'),
+    GIT_SSH_COMMAND: 'env GH_TOKEN=SECRET ssh', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraheader', GIT_CONFIG_VALUE_0: 'SECRET',
+    FOO_TOKEN: 'SECRET', HARNESS_PROBE: 'kept', ZHIPU_API_KEY: 'model-key', LC_ALL: 'C',
     ...Object.fromEntries(TOKENS.map((t) => [t, 'SECRET'])),
   };
-  return { h, repo, env };
+  return { h, o, repo, env };
 }
 
-test('jailArgs hides every credential store, replaces git config with copies that cannot authenticate, and unsets the variables', () => {
-  const { h, repo, env } = setup();
-  const args = jailArgs(env, repo);
-  const after = (flag) => args.flatMap((a, i) => (a === flag ? [args[i + 1]] : []));
-  assert.deepEqual(args.slice(0, 7), ['--dev-bind', '/', '/', '--unshare-pid', '--proc', '/proc', '--die-with-parent']);
-  for (const d of ['.ssh', '.config/gh', 'xdg/gh', 'ghdir', '.cache/git/credential']) assert.ok(after('--tmpfs').includes(path.join(h, d)), d);
-  const nulled = args.flatMap((a, i) => (a === '/dev/null' && args[i - 1] === '--ro-bind' ? [args[i + 1]] : []));
-  for (const f of ['.git-credentials', '.config/git/credentials', '.netrc', 'agent.sock', 'vscode.sock', 'bus', 'inc/secret.cfg']) {
-    assert.ok(nulled.includes(path.join(h, f)), f);
-  }
-  if (fs.existsSync('/run/user')) assert.ok(after('--tmpfs').includes(fs.realpathSync('/run/user')));
-  // Each git config file is bound to a clean copy.
-  const copies = new Map(args.flatMap((a, i) => (a === '--ro-bind' && args[i + 1] !== '/dev/null' ? [[args[i + 2], args[i + 1]]] : [])));
-  for (const f of ['.gitconfig', 'xdg/git/config', '.config/git/config', 'repo/.git/config']) {
-    const copy = copies.get(path.join(h, f));
-    assert.ok(copy, f);
-    assert.doesNotMatch(fs.readFileSync(copy, 'utf8'), /SECRET|extraheader|credential|insteadof|include/i, f);
-  }
-  const global = fs.readFileSync(copies.get(path.join(h, '.gitconfig')), 'utf8');
-  assert.match(global, /name = "Probe"/);
-  assert.match(global, /\[alias\]\n\tlg = "log --oneline"/);
-  assert.match(fs.readFileSync(copies.get(path.join(h, 'repo/.git/config')), 'utf8'), /url = "https:\/\/github.com\/o\/r.git"/);
-  const unset = after('--unsetenv');
-  for (const v of [...TOKENS, 'SSH_AUTH_SOCK', 'DBUS_SESSION_BUS_ADDRESS', 'GIT_ASKPASS', 'VSCODE_GIT_IPC_HANDLE',
-    'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']) assert.ok(unset.includes(v), v);
+test('only listed variables are kept: never a token, a git or ssh override, a socket, or anything unlisted', () => {
+  const { env } = setup();
+  const kept = keptEnv(env);
+  for (const v of ['PATH', 'HOME', 'HARNESS_PROBE', 'ZHIPU_API_KEY', 'LC_ALL', 'XDG_CONFIG_HOME']) assert.ok(kept.includes(v), v);
+  for (const v of DROPPED) assert.ok(!kept.includes(v), v);
 });
 
-test('a reviewer\'s Read, Grep or Glob of a hidden place, a folder holding one, or /proc is refused; the worktree is not', () => {
-  const { h, repo, env } = setup();
-  fs.symlinkSync(path.join(h, '.config/gh/hosts.yml'), path.join(repo, 'link'));
-  const no = (t) => hiddenTarget(t, { env, cwd: repo });
-  for (const t of [path.join(h, '.config/gh/hosts.yml'), path.join(h, 'xdg/gh'), path.join(h, '.ssh/missing'), h, '/',
-    'link', '.git/config', path.join(h, '.gitconfig'), '/proc/self/environ', '/dev/fd/0', path.join(h, 'inc/secret.cfg')]) {
-    assert.match(no(t) ?? 'allowed', /may not read/, t);
+test('jailArgs empties home, keeps the repository, the tools and jail.keep, masks the stores outside home, and cleans git config', () => {
+  const { h, o, repo, env } = setup();
+  const args = jailArgs(env, repo, { ro: ['~/keepme'] });
+  const after = (flag) => args.flatMap((a, i) => (a === flag ? [args[i + 1]] : []));
+  assert.deepEqual(args.slice(0, 9), ['--dev-bind', '/', '/', '--unshare-pid', '--proc', '/proc', '--die-with-parent', '--tmpfs', h]);
+  assert.equal(args.at(-1), '--clearenv');
+  assert.ok(after('--bind').includes(repo));
+  assert.ok(after('--ro-bind').includes(path.join(h, 'tools')));           // the bin directory's parent
+  assert.ok(after('--ro-bind').includes(path.join(h, 'keepme')));
+  for (const gone of ['.ssh', '.config', 'custom', 'askpass', '.gitconfig']) {
+    assert.ok(!args.some((a) => a.startsWith(path.join(h, gone))), `${gone} is gone with home, not bound`);
   }
-  // The reviewer works in a linked worktree, whose root holds no git config; a plain repository's root does.
-  assert.match(no('.'), /\.git\/config/);
+  for (const d of ['xdg/gh', 'ghdir']) assert.ok(after('--tmpfs').includes(path.join(o, d)), d);
+  const nulled = args.flatMap((a, i) => (a === '/dev/null' && args[i - 1] === '--ro-bind' ? [args[i + 1]] : []));
+  for (const f of ['agent.sock', 'vscode.sock', 'bus']) assert.ok(nulled.includes(path.join(o, f)), f);
+  for (let i = 0; i < 120; i++) for (const f of [`mid${i}`, `leaf${i}`]) assert.ok(nulled.includes(path.join(o, `inc/${f}.cfg`)), f);
+  if (fs.existsSync('/run/user')) assert.ok(after('--tmpfs').includes(fs.realpathSync('/run/user')));
+  // A store inside a kept folder comes back with it, so it is masked there.
+  put(path.join(h, 'keepme/gh/hosts.yml'));
+  const inKept = jailArgs({ ...env, GH_CONFIG_DIR: path.join(h, 'keepme/gh') }, repo, { ro: ['~/keepme'] });
+  assert.ok(inKept.some((a, i) => a === path.join(h, 'keepme/gh') && inKept[i - 1] === '--tmpfs'));
+  const copy = args[args.indexOf(path.join(repo, '.git/config')) - 1];
+  const text = fs.readFileSync(copy, 'utf8');
+  assert.doesNotMatch(text, /SECRET|extraheader|include|user:/i);
+  assert.match(text, /url = "https:\/\/github.com\/o\/r.git"/);
+});
+
+test('a reviewer\'s Read, Grep or Glob of home outside what is kept, a hidden place, or /proc is refused; the repository and tools are not', () => {
+  const { h, o, repo, env } = setup();
   spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-q', '--allow-empty', '-m', 'x']);
   const wt = path.join(h, 'wt');
   spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '--detach', wt]);
-  for (const t of ['.', 'src/a.js', path.join(wt, 'README.md')]) assert.equal(hiddenTarget(t, { env, cwd: wt }), null, t);
-  assert.match(hiddenTarget(path.join(repo, '.git/config'), { env, cwd: wt }), /may not read/);
+  fs.symlinkSync(path.join(h, '.config/gh/hosts.yml'), path.join(wt, 'link'));
+  const no = (t) => hiddenTarget(t, { env, cwd: wt, keep: { ro: ['~/keepme'] } });
+  for (const t of [path.join(h, '.config/gh/hosts.yml'), path.join(h, 'custom/store'), path.join(h, 'askpass'), h, '/',
+    path.dirname(h), 'link', path.join(o, 'xdg/gh/hosts.yml'), path.join(o, 'inc/leaf99.cfg'), path.join(repo, '.git/config'),
+    '/proc/self/environ', '/dev/fd/0']) {
+    assert.match(no(t) ?? 'allowed', /may not read/, t);
+  }
+  for (const t of ['.', 'src/a.js', path.join(repo, 'README.md'), path.join(h, 'tools/bin/hello'), path.join(h, 'keepme/file'),
+    path.join(o, 'agent')]) {
+    assert.equal(no(t), null, t);
+  }
 });
 
 test('the jail is off, saying why, off Linux, without bwrap, or where bwrap does not run; an abstract bus is named as a gap', () => {
@@ -103,29 +123,30 @@ test('the jail is off, saying why, off Linux, without bwrap, or where bwrap does
 const real = setup();
 const jail = process.platform === 'linux' ? credentialJail({ env: real.env, cwd: real.repo }) : { off: 'not Linux' };
 
-test('in the real jail, nothing reaches a credential: files, a script, HOME=, unset variables, /proc, sockets, git config', { skip: jail.off }, async () => {
-  const { h, repo, env } = real;
-  // A live agent socket that answers with the secret, as an ssh agent or a credential cache would.
-  const sock = path.join(h, 'live.sock');
+test('in the real jail, nothing reaches a credential: home, custom stores, askpass, transport commands, includes, sockets, /proc', { skip: jail.off }, async () => {
+  const { h, o, repo, env } = real;
+  // A live agent socket outside home that answers with the secret, as an ssh agent would.
+  const sock = path.join(o, 'live.sock');
   const server = net.createServer((c) => c.end('SECRET\n')).listen(sock);
   await new Promise((r) => server.once('listening', r));
   const liveEnv = { ...env, SSH_AUTH_SOCK: sock };
   const live = credentialJail({ env: liveEnv, cwd: repo });
+  assert.equal(live.off, undefined);
   fs.writeFileSync(path.join(repo, 'leak.sh'), [
-    `cat ${['.ssh/id_ed25519', '.config/gh/hosts.yml', 'xdg/gh/hosts.yml', 'ghdir/hosts.yml', '.git-credentials',
-      '.config/git/credentials', '.netrc', 'inc/secret.cfg'].map((f) => `${h}/${f}`).join(' ')}`,
-    `HOME=${h} cat "$HOME/.ssh/id_ed25519"`,
-    `unset XDG_CONFIG_HOME GH_CONFIG_DIR; cat ${h}/.config/gh/hosts.yml; git config --global --list`,
+    `cat ${['.ssh/id_ed25519', '.config/gh/hosts.yml', '.git-credentials', '.netrc', 'custom/store', 'askpass', '.gitconfig']
+      .map((f) => `${h}/${f}`).join(' ')}`,
+    `cat ${o}/xdg/gh/hosts.yml ${o}/ghdir/hosts.yml ${o}/inc/leaf119.cfg ${o}/inc/mid0.cfg`,
+    `HOME=${o} cat ${h}/.ssh/id_ed25519; unset XDG_CONFIG_HOME GH_CONFIG_DIR; gh auth token`,
+    `printf 'protocol=https\\nhost=github.com\\n\\n' | git -c credential.helper='store --file=${h}/custom/store' credential fill`,
+    'git config --list --show-origin; git config --file .git/config --list; git remote get-url origin',
     `cat /proc/${process.pid}/root${h}/.ssh/id_ed25519 /proc/${process.pid}/environ`,
     `node -e "require('net').connect('${sock}').on('data', (d) => process.stdout.write(d)).on('error', () => {})"`,
-    'git config --list; git config --file .git/config --list; git remote get-url origin',
-    `for v in ${TOKENS.join(' ')} GIT_CONFIG_COUNT; do eval echo "$v=\\$$v"; done`,
+    `for v in ${DROPPED.join(' ')}; do eval echo "$v=\\$$v"; done`,
+    'echo "keep=$HARNESS_PROBE $ZHIPU_API_KEY"; hello; ls -A "$HOME"',
     'git status --short >/dev/null && echo git-works',
     'echo written > out.txt',
     'exit 7',
   ].join('\n'));
-  // Outside the jail each secret is there, so the test tells hidden from missing.
-  assert.equal(fs.readFileSync(`/proc/${process.pid}/root${h}/.ssh/id_ed25519`, 'utf8'), 'SECRET\n');
   // Async, so that the socket server keeps answering while a command runs.
   const run = (cmd, args) => new Promise((resolve) => {
     const c = spawn(cmd, args, { cwd: repo, env: liveEnv });
@@ -134,12 +155,16 @@ test('in the real jail, nothing reaches a credential: files, a script, HOME=, un
     c.stderr.on('data', (d) => { out += d; });
     c.on('close', (status) => resolve({ status, out }));
   });
+  // Outside the jail the secrets are there, so the test tells hidden from missing.
   assert.equal((await run('node', ['-e', `require('net').connect('${sock}').on('data', (d) => process.stdout.write(d))`])).out, 'SECRET\n');
+  assert.match((await run('sh', ['-c', `cat ${h}/custom/store ${o}/inc/leaf119.cfg; echo $GIT_SSH_COMMAND`])).out, /SECRET[\s\S]*SECRET[\s\S]*SECRET/);
   const r = await run('bash', ['-c', jailCommand('sh ./leak.sh', live)]);
   server.close();
   assert.equal(r.status, 7, r.out);                                      // the exit code comes through
   assert.doesNotMatch(r.out, /SECRET/);
-  for (const t of TOKENS) assert.match(r.out, new RegExp(`^${t}=$`, 'm'));
+  for (const v of DROPPED) assert.match(r.out, new RegExp(`^${v}=$`, 'm'));
+  assert.match(r.out, /^keep=kept model-key$/m);
+  assert.match(r.out, /^hello-tool$/m);                                 // a tool under home still runs
   assert.match(r.out, /^git-works$/m);
-  assert.equal(fs.readFileSync(path.join(repo, 'out.txt'), 'utf8'), 'written\n');   // the worktree stays writable
+  assert.equal(fs.readFileSync(path.join(repo, 'out.txt'), 'utf8'), 'written\n');   // the repository stays writable
 });

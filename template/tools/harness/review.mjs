@@ -48,10 +48,11 @@
 // model.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
-import { credentialJail, OFF_WARNING } from './lib/jail.mjs';
+import { credentialJail, jailSpawn, OFF_WARNING } from './lib/jail.mjs';
 import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
 import { planPost, publish, postComment, applyLabel, withdrawApproval, combinePlans } from './lib/post.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
@@ -115,12 +116,6 @@ try { opencode = resolveOpenCode(); } catch (e) {
   if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} ${fallback}`);
   throw e;
 }
-// OpenCode, and every command it runs, in the credential jail (lib/jail.mjs, #68): the reviewer
-// reads and tests, and this script posts. Where the jail cannot run, the log says so first.
-const jail = credentialJail({ cwd: top });
-for (const g of jail.gaps ?? []) say(`WARNING: the reviewer's credential jail cannot hide everything here: ${g} (#68).`);
-if (jail.off) say(OFF_WARNING(jail.off));
-else opencode = { exe: jail.exe, prefix: [...jail.args, '--', opencode.exe, ...opencode.prefix] };
 if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);
 // A second opinion (--second-opinion, for a critical PR): reviewer.secondOpinion, else the chain's
 // other models, never the model that wrote the first review (#39).
@@ -140,6 +135,24 @@ if (!usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${
 const agentFile = path.join(top, '.opencode', 'agents', `${rev.agent}.md`);
 if (!fs.existsSync(agentFile)) die(2, `The reviewer agent is missing from this checkout: ${agentFile}. Nothing run.`);
 const reviewEnv = { ...pre.env, OPENCODE_CONFIG_DIR: path.join(top, '.opencode'), OPENCODE_DISABLE_PROJECT_CONFIG: '1' };
+
+// OpenCode, and every command it runs, in the credential jail (lib/jail.mjs, #68): the reviewer
+// reads and tests, and this script posts. Kept beside the repository: the review worktrees, the
+// scripts' OpenCode data and logs, OpenCode itself and its global config, and harness.json's
+// jail.keep. Where the jail cannot run, the log says so first.
+const logDir = path.join(os.tmpdir(), 'harness-opencode');
+for (const d of [workRoot, logDir]) fs.mkdirSync(d, { recursive: true });
+const exeDir = path.dirname(opencode.exe);
+const jail = credentialJail({
+  env: reviewEnv, cwd: top,
+  keep: {
+    rw: [top, workRoot, logDir, path.dirname(reviewEnv.XDG_DATA_HOME)],
+    ro: [path.basename(exeDir) === 'bin' ? path.dirname(exeDir) : exeDir, '~/.config/opencode', ...(config.jail?.keep ?? [])],
+  },
+});
+for (const g of jail.gaps ?? []) say(`WARNING: the reviewer's credential jail cannot hide everything here: ${g} (#68).`);
+if (jail.off) say(OFF_WARNING(jail.off));
+else opencode = { exe: jail.exe, prefix: [...jailSpawn(jail, reviewEnv, opencode.exe), ...opencode.prefix] };
 const headSha = sh('gh', ['pr', 'view', String(a.pr), '--json', 'headRefOid', '--jq', '.headRefOid'], { cwd: top });
 // A brief that names another commit as the one to review would make the reviewer's tree proof stop
 // it after a billed run (#23): refuse it before any worktree or model run.

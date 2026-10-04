@@ -49,6 +49,7 @@ test('the review profile installs only the reviewer, with its own reviewers and 
   assert.equal(config.reviewer.secondOpinion, 'luna');
   assert.equal(config.reviewer.claudeFallback, null);
   assert.equal(config.implementer, undefined);
+  assert.deepEqual(config.jail, { keep: [] });                       // the reviewer's jail.keep (#68)
   for (const [name, m] of Object.entries(config.models)) assert.deepEqual(m, template.models[name]);   // never drifts
   const lock = fs.readFileSync(path.join(dir, 'harness.lock'), 'utf8');
   assert.match(lock, /^profile review$/m);

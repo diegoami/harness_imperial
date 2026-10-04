@@ -7,31 +7,45 @@ import { createHash } from 'node:crypto';
 // The reviewer's credential jail (#68). The guard (lib/guard.mjs) reads a reviewer's commands and
 // refuses a push or a gh write, but no reading of shell text is complete (Sol's five rounds on PR 66).
 // So a reviewer's command also runs where the user's GitHub credentials do not exist: bubblewrap
-// (bwrap) puts an empty directory over each place they are kept, removes the variables that carry a
-// token, and gives the command its own process namespace, so that no /proc/<pid>/root of a process
-// outside it leads back to them. Whatever the command types, a script file or HOME=… included, a
-// push finds no SSH key and gh finds no login. A public repository is still fetched over HTTPS.
+// (bwrap), in its own process namespace, so that no /proc/<pid>/root of a process outside leads
+// back to them. Whatever the command types, a script file or HOME=… included, a push finds no SSH
+// key and gh finds no login. A public repository is still fetched over HTTPS.
 //
-// Hidden (masked: an empty directory, or /dev/null over a file or a socket): ~/.ssh; gh's config
-// directory wherever gh may look for it ($GH_CONFIG_DIR, $XDG_CONFIG_HOME/gh and ~/.config/gh,
-// all three, so unsetting a variable finds none: Sol's R5 on PR 74); /run/user (the session bus,
-// so a keyring, and agents' sockets); the session bus at any other path; the ssh agent's and VS
-// Code's git askpass sockets; git's credential cache sockets and stored credentials;
-// ~/.netrc. Unset: the variables that carry a token, an askpass or a socket, and every GIT_CONFIG_*
-// (git config given in the environment). Git's config files, global (~/.gitconfig and both XDG
-// places), system, this repository's, and any a GIT_CONFIG_* variable named, are replaced by copies without what can authenticate (http.*, credential.*, url.*, remote push
-// URLs, a URL's user:password@, anything shaped like a GitHub token), and the files they include
-// are masked. A reviewer's Read, Grep and Glob are refused on all of these and on /proc
-// (hiddenTarget, used by the guard hook: Sol's R1 on PR 74).
-// Not hidden: a token the user copied somewhere no tool reads from; another repository's
-// .git/config; a session bus on an abstract socket, which no mount can hide (the jail says so).
+// It keeps what is listed, not hides what is found (the owner's choice after Sol's R1–R4 of round
+// 2 on PR 74: each round found another credential that config or a variable points to):
+// - The home directory is an empty tmpfs. Bound back: the repository (its top level and main
+//   checkout, read-write), the folders of the tools on PATH under home (read-only), and what the
+//   caller or harness.json's `jail.keep` adds.
+// - The environment is cleared. Kept: KEEP_ENV, names starting with KEEP_PREFIX, and *_API_KEY
+//   (model providers), never a GH_ or GITHUB name.
+// Outside home, the standard places are still masked (an empty directory, or /dev/null over a file
+// or socket): /run/user (the session bus, so a keyring, and agents' sockets); the session bus, ssh
+// agent and VS Code askpass sockets; gh's store at $GH_CONFIG_DIR and $XDG_CONFIG_HOME/gh. Git's
+// config files (system, this repository's, any a GIT_CONFIG_* named) are bound to copies without
+// what can authenticate (http.*, credential.*, url.*, include*, push URLs, a URL's user:password@,
+// a GitHub-token-shaped value), and every file they include, followed to the end, is masked.
+// A reviewer's Read, Grep and Glob are refused wherever the jail hides something, and on /proc
+// (hiddenTarget, used by the guard hook: Sol's R1 of round 1).
+// Not hidden: a credential outside home in a place no standard tool keeps one, one inside a kept
+// folder or the repository's files, and a session bus on an abstract socket (reported as a gap).
+//
+// Linux only, and only where bwrap runs (a probe runs `true` in the jail). Elsewhere the reviewer
+// runs without it, and the hook and review.mjs say so loudly: the guard still applies.
+// HARNESS_BWRAP names the bwrap to use (tests use a fake one).
 
-const TOKEN_VARS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'];
-export const UNSET = [...TOKEN_VARS, 'SSH_AUTH_SOCK', 'DBUS_SESSION_BUS_ADDRESS', 'GIT_ASKPASS', 'SSH_ASKPASS',
-  'VSCODE_GIT_IPC_HANDLE', 'VSCODE_GIT_ASKPASS_NODE', 'VSCODE_GIT_ASKPASS_MAIN', 'VSCODE_GIT_ASKPASS_EXTRA_ARGS'];
+export const KEEP_ENV = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TERM', 'COLORTERM',
+  'TZ', 'TMPDIR', 'TMP', 'TEMP', 'NO_COLOR', 'FORCE_COLOR', 'CI', 'NODE_OPTIONS', 'NODE_PATH'];
+export const KEEP_PREFIX = ['LC_', 'XDG_', 'HARNESS_', 'OPENCODE_', 'NVM_'];
+
+// The names of `env` the jail keeps.
+export function keptEnv(env) {
+  return Object.keys(env).filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n) && !/^(GH_|GITHUB)/i.test(n)
+    && (KEEP_ENV.includes(n) || KEEP_PREFIX.some((p) => n.startsWith(p)) || /_API_KEY$/.test(n)));
+}
 
 const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
 const kind = (p) => { try { return fs.statSync(p); } catch { return null; } };
+const within = (p, dir) => p === dir || p.startsWith(dir === '/' ? '/' : `${dir}/`);
 
 // The session bus's socket paths; an abstract one cannot be masked.
 function busPaths(address = '') {
@@ -76,44 +90,84 @@ const git = (args, { cwd, env }) => {
   return r.status === 0 ? r.stdout : '';
 };
 
-// Each config file git may read here, by default or once a variable is unset, with its clean
-// entries; and the files they include, to mask.
-function gitConfigs(env, cwd) {
-  const home = env.HOME || os.homedir();
-  const plain = Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('GIT_CONFIG')));
+// The repository's top level and main checkout, and each config file git may read here, by
+// default or once a variable is unset, with its clean entries; and the files they include.
+function gitPlaces(env, cwd, home) {
+  const plain = Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('GIT_')));
   const at = (args) => git(args, { cwd, env: plain }).split('\0')[0].trim();
   const system = at(['config', '--system', '--list', '--show-origin', '--null']);
+  const top = at(['rev-parse', '--show-toplevel']);
   const common = at(['rev-parse', '--path-format=absolute', '--git-common-dir']);
   const gitDir = at(['rev-parse', '--path-format=absolute', '--git-dir']);
+  const repo = [top, common && path.basename(common) === '.git' ? path.dirname(common) : common].filter(Boolean);
   const candidates = [path.join(home, '.gitconfig'), path.join(home, '.config', 'git', 'config'),
     env.XDG_CONFIG_HOME && path.join(env.XDG_CONFIG_HOME, 'git', 'config'),
     system.startsWith('file:') ? system.slice(5) : '/etc/gitconfig',
     common && path.join(common, 'config'), gitDir && path.join(gitDir, 'config.worktree'),
     env.GIT_CONFIG_GLOBAL, env.GIT_CONFIG_SYSTEM, env.GIT_CONFIG];
-  const files = new Map();
+  const configs = new Map();
   for (const c of candidates.filter(Boolean)) {
     const f = real(path.resolve(cwd, c));
-    if (!f || files.has(f) || !kind(f)?.isFile()) continue;
+    if (!f || configs.has(f) || !kind(f)?.isFile()) continue;
     const entries = git(['config', '--file', f, '--no-includes', '--list', '--null'], { cwd, env: plain })
       .split('\0').filter(Boolean).map((kv) => {
         const nl = kv.indexOf('\n');
         return cleanEntry(nl < 0 ? kv : kv.slice(0, nl), nl < 0 ? null : kv.slice(nl + 1));
       });
-    files.set(f, entries.filter(Boolean));
+    configs.set(f, entries.filter(Boolean));
   }
-  // Includes, followed whether or not they apply here: the copies drop them, so mask them all.
+  // Includes, followed to the end whether or not they apply here (each file once, so a cycle ends):
+  // the copies drop them, so mask them all (Sol's R4 of round 2: a limit left the deeper ones).
   const included = new Set();
-  const work = [...files.keys()];
-  while (work.length && included.size < 100) {
+  const work = [...configs.keys()];
+  while (work.length) {
     const f = work.shift();
     const out = git(['config', '--file', f, '--no-includes', '--null', '--get-regexp', '^include(if\\..*)?\\.path$'], { cwd, env: plain });
     for (const kv of out.split('\0').filter(Boolean)) {
       const v = kv.slice(kv.indexOf('\n') + 1).replace(/^~(?=\/)/, home);
       const r = real(path.resolve(path.dirname(f), v));
-      if (r && !files.has(r) && !included.has(r)) { included.add(r); work.push(r); }
+      if (r && !configs.has(r) && !included.has(r)) { included.add(r); work.push(r); }
     }
   }
-  return { files, included: [...included] };
+  return { repo: repo.map(real).filter(Boolean), configs, included: [...included] };
+}
+
+// The folders of the tools on PATH under home: a bin directory's parent (node under nvm, OpenCode
+// in ~/.opencode), or, for one directly in home or ~/.local, the directory and each link's target.
+function toolDirs(env, home) {
+  const out = [];
+  for (const dir of (env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    const d = real(dir);
+    if (!d || !within(d, home) || d === home) continue;
+    const parent = path.dirname(d);
+    if (path.basename(d) === 'bin' && parent !== home && parent !== path.join(home, '.local')) { out.push(parent); continue; }
+    out.push(d);
+    for (const e of fs.readdirSync(d)) {
+      const t = real(path.join(d, e));
+      if (t && t !== path.join(d, e) && within(t, home)) out.push(kind(t)?.isDirectory() ? t : path.dirname(t));
+    }
+  }
+  return out;
+}
+
+const expand = (p, home) => p.replace(/^~(?=\/|$)/, home);
+
+// What the jail keeps and hides here. keep: { rw: [dirs], ro: [dirs] } from the caller.
+function plan(env, cwd, keep = {}) {
+  const home = real(env.HOME || os.homedir()) ?? (env.HOME || os.homedir());
+  const configHome = env.XDG_CONFIG_HOME;
+  const bus = busPaths(env.DBUS_SESSION_BUS_ADDRESS);
+  const { repo, configs, included } = gitPlaces(env, cwd, home);
+  const rw = [...new Set([...repo, ...(keep.rw ?? []).map((p) => real(expand(p, home)))].filter(Boolean))];
+  const ro = [...new Set([...toolDirs(env, home), ...(keep.ro ?? []).map((p) => real(expand(p, home)))].filter(Boolean))]
+    .filter((d) => !rw.some((r) => within(d, r)));
+  const kept = [...rw, ...ro];
+  const places = [env.GH_CONFIG_DIR, configHome && path.join(configHome, 'gh'), configHome && path.join(configHome, 'git', 'credentials'),
+    '/run/user', env.SSH_AUTH_SOCK, env.VSCODE_GIT_IPC_HANDLE, ...bus.paths, ...included];
+  // Under home only what a kept folder brings back needs a mask; the rest is gone with home.
+  const mask = [...new Set(places.filter(Boolean).map(real).filter(Boolean))]
+    .filter((p) => !within(p, home) || kept.some((k) => within(p, k)));
+  return { home, rw, ro, kept, mask, configs, gaps: bus.abstract ? ['the session bus is on an abstract socket, which no mount hides'] : [] };
 }
 
 function cleanCopy(text) {
@@ -124,44 +178,36 @@ function cleanCopy(text) {
   return file;
 }
 
-// What the jail hides here: { mask: [paths], configs: Map(file -> entries), gaps: [why] }.
-function hidden(env, cwd) {
-  const home = env.HOME || os.homedir();
-  const configHomes = [env.XDG_CONFIG_HOME, path.join(home, '.config')].filter(Boolean);
-  const cacheHomes = [env.XDG_CACHE_HOME, path.join(home, '.cache')].filter(Boolean);
-  const bus = busPaths(env.DBUS_SESSION_BUS_ADDRESS);
-  const places = [path.join(home, '.ssh'), env.GH_CONFIG_DIR, ...configHomes.map((c) => path.join(c, 'gh')),
-    '/run/user', env.SSH_AUTH_SOCK, env.VSCODE_GIT_IPC_HANDLE, ...bus.paths,
-    path.join(home, '.git-credentials'), ...configHomes.map((c) => path.join(c, 'git', 'credentials')),
-    ...cacheHomes.map((c) => path.join(c, 'git', 'credential')), path.join(home, '.git-credential-cache'),
-    path.join(home, '.netrc')];
-  const { files: configs, included } = gitConfigs(env, cwd);
-  const mask = [...new Set([...places, ...included].filter(Boolean).map(real).filter(Boolean))];
-  return { mask, configs, gaps: bus.abstract ? ['the session bus is on an abstract socket, which no mount hides'] : [] };
-}
-
-// bwrap's arguments, before `--` and the command, for this environment and working directory.
-export function jailArgs(env = process.env, cwd = process.cwd()) {
-  const { mask, configs } = hidden(env, cwd);
-  const args = ['--dev-bind', '/', '/', '--unshare-pid', '--proc', '/proc', '--die-with-parent'];
-  for (const [file, entries] of configs) args.push('--ro-bind', cleanCopy(configText(entries)), file);
-  for (const r of mask) args.push(...(kind(r)?.isDirectory() ? ['--tmpfs', r] : ['--ro-bind', '/dev/null', r]));
-  const unset = [...UNSET, ...Object.keys(env).filter((v) => v.startsWith('GIT_CONFIG'))];
-  for (const v of unset) args.push('--unsetenv', v);
+// bwrap's arguments, up to and including --clearenv: the caller sets the kept variables (keptEnv).
+export function jailArgs(env = process.env, cwd = process.cwd(), keep = {}) {
+  const p = plan(env, cwd, keep);
+  const args = ['--dev-bind', '/', '/', '--unshare-pid', '--proc', '/proc', '--die-with-parent', '--tmpfs', p.home];
+  // Outer folders first, so that a folder kept inside another keeps its own mode.
+  for (const d of p.kept.filter((k) => within(k, p.home)).sort((a, b) => a.length - b.length)) {
+    args.push(p.rw.includes(d) ? '--bind' : '--ro-bind', d, d);
+  }
+  for (const [file, entries] of p.configs) {
+    if (!within(file, p.home) || p.kept.some((k) => within(file, k))) args.push('--ro-bind', cleanCopy(configText(entries)), file);
+  }
+  for (const r of p.mask) args.push(...(kind(r)?.isDirectory() ? ['--tmpfs', r] : ['--ro-bind', '/dev/null', r]));
+  args.push('--clearenv');
   return args;
 }
 
 // Why a reviewer may not read `target` (a Read, Grep or Glob path), or null: it is, holds, or lies
-// under a place the jail hides, or /proc (another process's environment).
-export function hiddenTarget(target, { env = process.env, cwd = process.cwd() } = {}) {
+// in a place the jail hides, or /proc (another process's environment).
+export function hiddenTarget(target, { env = process.env, cwd = process.cwd(), keep = {} } = {}) {
   let t = path.resolve(cwd, target);
   // The nearest existing ancestor, resolved, then the rest: a link cannot lead around the check.
   let rest = '';
   while (!real(t) && path.dirname(t) !== t) { rest = path.join(path.basename(t), rest); t = path.dirname(t); }
   t = path.join(real(t) ?? t, rest);
-  const { mask, configs } = hidden(env, cwd);
-  for (const h of ['/proc', ...mask, ...configs.keys()]) {
-    if (t === h || t.startsWith(`${h}/`) || h.startsWith(t === '/' ? '/' : `${t}/`)) return `${target} is or holds ${h}, which the reviewer may not read (#68)`;
+  const p = plan(env, cwd, keep);
+  for (const h of ['/proc', ...p.mask, ...p.configs.keys()]) {
+    if (within(t, h) || within(h, t)) return `${target} is or holds ${h}, which the reviewer may not read (#68)`;
+  }
+  if (within(p.home, t) || (within(t, p.home) && !p.kept.some((k) => within(t, k)))) {
+    return `${target} is in or holds the home directory outside the repository and the tools, which the reviewer may not read (#68)`;
   }
   return null;
 }
@@ -175,22 +221,35 @@ function findBwrap(env) {
   return null;
 }
 
-// { exe, args, gaps } when the jail works here (gaps: what it cannot hide), else { off: why }.
-export function credentialJail({ env = process.env, platform = process.platform, cwd = process.cwd() } = {}) {
+// { exe, args, env: [kept names], gaps } when the jail works here (gaps: what it cannot hide), else
+// { off: why }.
+export function credentialJail({ env = process.env, platform = process.platform, cwd = process.cwd(), keep = {} } = {}) {
   if (platform !== 'linux') return { off: `bwrap runs on Linux only, and this is ${platform}` };
   const exe = findBwrap(env);
   if (!exe) return { off: env.HARNESS_BWRAP ? `HARNESS_BWRAP points at a missing file: ${env.HARNESS_BWRAP}` : 'bwrap is not installed (apt install bubblewrap)' };
-  const args = jailArgs(env, cwd);
-  const probe = spawnSync(exe, [...args, '--', 'true'], { env, encoding: 'utf8', timeout: 10_000 });
+  const args = jailArgs(env, cwd, keep);
+  const probe = spawnSync(exe, [...args, '--', '/bin/sh', '-c', 'true'], { env, encoding: 'utf8', timeout: 30_000 });
   if (probe.status !== 0) return { off: `bwrap does not run here: ${(probe.stderr || probe.error?.message || `exit ${probe.status}`).trim()}` };
-  return { exe, args, gaps: hidden(env, cwd).gaps };
+  return { exe, args, env: keptEnv(env), gaps: plan(env, cwd, keep).gaps };
 }
 
 const quote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
-// The command line that runs `command` in the jail, for the Bash tool.
+// The command line that runs `command` in the jail, for the Bash tool. Each kept variable is set
+// from the shell's own ("$NAME"), so no value is written into the command.
 export function jailCommand(command, jail) {
-  return [jail.exe, ...jail.args, '--', 'bash', '-c', command].map(quote).join(' ');
+  return [[jail.exe, ...jail.args].map(quote).join(' '), ...jail.env.map((n) => `--setenv ${n} "$${n}"`),
+    ['--', 'bash', '-c', command].map(quote).join(' ')].join(' ');
+}
+
+// The arguments that run `exe` in the jail with `env`'s kept variables, for a spawn.
+export function jailSpawn(jail, env, exe) {
+  return [...jail.args, ...keptEnv(env).flatMap((n) => ['--setenv', n, env[n]]), '--', exe];
+}
+
+// harness.json's jail.keep (read-only folders under home to bring back), from a checkout's top.
+export function keepFrom(top) {
+  try { return JSON.parse(fs.readFileSync(path.join(top, 'harness.json'), 'utf8')).jail?.keep ?? []; } catch { return []; }
 }
 
 export const OFF_WARNING = (why) => `WARNING: the reviewer's credential jail is off (${why}). It keeps the user's `

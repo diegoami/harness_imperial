@@ -12,7 +12,7 @@
 // refused on what the jail hides (Sol's R1 on PR 74: a token read outside the jail works inside it).
 
 import { refusal } from './lib/guard.mjs';
-import { credentialJail, jailCommand, hiddenTarget, OFF_WARNING } from './lib/jail.mjs';
+import { credentialJail, jailCommand, hiddenTarget, keepFrom, OFF_WARNING } from './lib/jail.mjs';
 
 const role = process.argv[2];
 let input = '';
@@ -23,10 +23,12 @@ try { event = JSON.parse(input); } catch {
   process.exit(2);
 }
 const cwd = typeof event?.cwd === 'string' ? event.cwd : process.cwd();
+// harness.json's jail.keep: tool folders under home the project's checks need (lib/jail.mjs).
+const keep = { ro: keepFrom(process.env.CLAUDE_PROJECT_DIR || cwd) };
 if (role === 'reviewer' && ['Read', 'Grep', 'Glob'].includes(event?.tool_name)) {
   const input = event.tool_input ?? {};
   const target = input.file_path ?? input.path ?? cwd;
-  const why = typeof target === 'string' ? hiddenTarget(target, { cwd }) : `the ${event.tool_name} call has no readable path`;
+  const why = typeof target === 'string' ? hiddenTarget(target, { cwd, keep }) : `the ${event.tool_name} call has no readable path`;
   if (why) {
     console.error(`guard: ${why}. The harness forbids it for this agent (tools/harness/lib/jail.mjs).`);
     process.exit(2);
@@ -45,7 +47,7 @@ if (reason) {
   process.exit(2);
 }
 if (role === 'reviewer') {
-  const jail = credentialJail({ cwd });
+  const jail = credentialJail({ cwd, keep });
   const out = jail.off ? { systemMessage: OFF_WARNING(jail.off) }
     : { hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...event.tool_input, command: jailCommand(event.tool_input.command, jail) } } };
   if (jail.gaps?.length) out.systemMessage = `WARNING: the reviewer's credential jail cannot hide everything here: ${jail.gaps.join('; ')} (#68).`;
