@@ -3,6 +3,8 @@ description: Implementer for one task or fix, run by tools/implement.mjs on the 
 mode: all
 permission:
   edit: allow
+  external_directory:
+    "/tmp/opencode/*": deny
   task:
     "*": deny
   bash:
