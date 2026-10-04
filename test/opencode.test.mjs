@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSessions } from './fake-state.mjs';
 import {
   runOpenCodeWatched, lookupSession, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
   openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem,
@@ -299,9 +300,11 @@ test('the OpenCode version is read from --version; any major but 1 is refused (#
   assert.equal(await openCodeVersion(opencode, { env: setup('ok', { FAKE_OC_VERSION: 'none' }).env, cwd: os.tmpdir() }), null);
 });
 
-test('fake opencode processes saving at once neither crash nor lose a session (#45)', { skip: process.platform === 'win32' }, async () => {
+test('fake opencode processes saving at once neither crash nor lose a session or its updates (#45)', { skip: process.platform === 'win32' }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-race-'));
-  const env = { ...process.env, FAKE_OC_STATE: path.join(dir, 'state.json'), FAKE_OC_MODE: 'ok' };
+  // Each run creates its session, then updates it five times while the others do the same: the
+  // store shares no file between runs, so no write can drop or roll back another's.
+  const env = { ...process.env, FAKE_OC_STATE: path.join(dir, 'state.json'), FAKE_OC_MODE: 'ok', FAKE_OC_STEPS: '5', FAKE_OC_STEP_MS: '5' };
   const runs = Array.from({ length: 32 }, (_, i) => new Promise((resolve) => {
     const c = spawn(process.execPath, [fake, 'run', '--title', `t${i}`, 'go'], { cwd: dir, env, stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
@@ -310,6 +313,7 @@ test('fake opencode processes saving at once neither crash nor lose a session (#
   }));
   for (const r of await Promise.all(runs)) assert.equal(r.code, 0, r.err);
   // And none lost another's session: a lost one is what the runner reports as "exited without a session".
-  const titles = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')).map((s) => s.title).sort();
-  assert.deepEqual(titles, Array.from({ length: 32 }, (_, i) => `t${i}`).sort());
+  const sessions = readSessions(path.join(dir, 'state.json'));
+  assert.deepEqual(sessions.map((s) => s.title).sort(), Array.from({ length: 32 }, (_, i) => `t${i}`).sort());
+  for (const s of sessions) assert.ok(s.updated >= s.created + 25, `${s.title}'s updates were lost`);
 });

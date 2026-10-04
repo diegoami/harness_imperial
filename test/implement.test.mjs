@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSessions } from './fake-state.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../template');
@@ -64,7 +65,7 @@ test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)',
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement', OPENCODE_DISABLE_PROJECT_CONFIG: '1', OPENCODE_CONFIG_DIR: path.join(p.base, 'elsewhere') });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.projectConfig, 'read');
   assert.equal(session.agentFile, path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md'));
 });
@@ -74,7 +75,7 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
   const r = implement(p, { FAKE_OC_MODE: 'implement' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /implemented by: deepseek-flash \(opencode-go\/deepseek-v4.1-flash\)/);
-  const [session] = JSON.parse(fs.readFileSync(path.join(p.base, 'oc.json'), 'utf8'));
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.dataHome, path.join(p.base, 'oc-home', 'data'));                // its own data directory
   assert.match(r.stdout, /PR: https:\/\/example.com\/pr\/100/);
   const wt = path.join(p.base, 'proj-work', 'T07');
@@ -162,7 +163,7 @@ test('OpenCode Go not logged in: exit 3 with the login command for the scripts\'
   const home = path.join(p.base, 'oc-home', 'data');
   assert.ok((r.stdout + r.stderr).includes(`OpenCode Go is not logged in for ${home}. Run \`opencode console login\` with XDG_DATA_HOME=${home}`));
   assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
-  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
 });
 
 test('a 2.x OpenCode (the desktop app\'s CLI) exits 3 with the fallback, before any worktree or run (#26)', posix, async () => {
@@ -170,7 +171,7 @@ test('a 2.x OpenCode (the desktop app\'s CLI) exits 3 with the fallback, before 
   const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_VERSION: '2.0.18' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported.*Fall back to a Claude implementer \(sonnet\)/);
-  assert.equal(fs.existsSync(path.join(p.base, 'oc.json')), false);
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
   const ok = implement(project(), { FAKE_OC_MODE: 'implement' });
   assert.match(ok.stdout, /^opencode: 1\.18\.34 \(/m);                             // the version is logged

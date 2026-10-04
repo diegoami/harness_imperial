@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A stand-in for `opencode` that reproduces the failures the runner guards against.
-// FAKE_OC_STATE: the JSON file that plays OpenCode's session store.
+// FAKE_OC_STATE: the file that names OpenCode's session store (fake-state.mjs).
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
 //   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission |
 //   permission-review | permission-quoted | permission-plain | review-ok | review-cut
@@ -17,34 +17,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { readSessions, writeSession } from './fake-state.mjs';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const stateFile = process.env.FAKE_OC_STATE;
 let mode = process.env.FAKE_OC_MODE || 'ok';
-const load = () => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return []; } };
-// Each process writes through its own temporary file: two fake processes saving at once must never
-// rename each other's half-written state into place (#45).
-const save = (s) => {
-  const tmp = `${stateFile}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(s));
-  fs.renameSync(tmp, stateFile);
-};
-// A read-modify-write of the state holds a lock, so two processes never both load it and the
-// second save drop the first's session (Luna's R1 on PR 46, #45). A lock older than 2 s is a
-// killed process's, and is taken over.
-const locked = (fn) => {
-  const lock = `${stateFile}.lock`;
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (let i = 0; ; i++) {
-    try { fs.closeSync(fs.openSync(lock, 'wx')); break; } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      try { if (Date.now() - fs.statSync(lock).mtimeMs > 2000) fs.rmSync(lock, { force: true }); } catch { /* gone */ }
-      if (i > 4000) throw new Error(`fake opencode: ${lock} held too long`);
-      Atomics.wait(pause, 0, 0, 5);
-    }
-  }
-  try { return fn(); } finally { fs.rmSync(lock, { force: true }); }
-};
+const load = () => readSessions(stateFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const forever = () => setInterval(() => {}, 1 << 30);
 
@@ -102,15 +80,15 @@ const agentFile = (() => {
   ];
   return dirs.map((d) => path.join(d, 'agents', `${agent}.md`)).filter((f) => fs.existsSync(f)).at(-1) ?? null;
 })();
-const createSession = (recordedAgent = agent, extra = {}) => locked(() => {
-  const s = load();
-  s.push({ ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
+let mine = null;
+const createSession = (recordedAgent = agent, extra = {}) => {
+  mine = { ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
     dataHome: process.env.XDG_DATA_HOME ?? null, prompt: rest.at(-1), agentFile,
     projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
-    agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null });
-  save(s);
-});
-const touch = () => locked(() => { const s = load(); const x = s.find((y) => y.id === id); if (x) { x.updated = Date.now(); save(s); } });
+    agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null };
+  writeSession(stateFile, mine);
+};
+const touch = () => { if (mine) { mine.updated = Date.now(); writeSession(stateFile, mine); } };
 if (process.env.FAKE_OC_PIDFILE) {
   // A grandchild, to prove the whole tree is killed.
   const g = spawn(process.execPath, ['-e', 'setInterval(()=>{},1<<30)'], { stdio: 'ignore' });
