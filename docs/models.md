@@ -33,8 +33,7 @@ Every model runs at effort `high`, never `max` (L27), except Sol: it runs sparin
 `medium` at most and never `high` (the owner, 2026-10-03, L39).
 - Light first: both Sol entries (`sol-6.1`, `sol`) are at `low` in `harness.json`. Going to
   `medium` is a switch through `/switch-model`, with the owner's reason in the commit message.
-- OpenAI credit being restored (2026-10-03) is not a reason to raise it. Sol is for hard reviews
-  only (L39), and it stays sparing.
+- OpenAI credit being restored (2026-10-03) is not a reason to raise it: Sol stays sparing (L39).
 
 **Not used:**
 - OpenCode Zen's `opencode/…` models;
