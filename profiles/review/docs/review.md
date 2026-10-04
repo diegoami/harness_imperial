@@ -35,8 +35,9 @@ PR's head.
      works, not who does it: fix the class, sweep the PR's own code for it, list the sweep in the
      PR body, and change the approach when the class needs it (`CLAUDE.md` rule 5, L38). A
      reviewer that still reports one blocking finding per round: after the second such round,
-     stop, sweep the whole diff for that class yourself, fix it and record the pattern before the
-     next review, which is the last before escalation (`CLAUDE.md` rule 5, L49).
+     stop, sweep the whole diff for that class yourself, fix it and record the pattern in the
+     model-trials record (create one if there is none) before the next review, which is the last
+     before escalation (`CLAUDE.md` rule 5, L49).
    - exit 3: no review, or no second opinion. Tell the user.
    - exit 4: a review posted but not acted on (cut off, unreadable, an approve that skipped a
      Done-when line). Read it on the PR and tell the user.

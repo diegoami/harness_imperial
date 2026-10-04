@@ -149,7 +149,7 @@ test('every review brief and reviewer is told to report every blocking finding i
 test('the review profile stops a review cycle after a second one-blocker round, and its prose lines fit the page (L49, #71)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   assert.match(flat('profiles/review/CLAUDE.md'), /A reviewer that reports one blocking finding per round despite the brief's one-pass section: after the second such round, stop\. No further review until you have swept the whole diff for that class, fixed what you found, and recorded the pattern in the model-trials record \(create one if there is none\); the review after that is the last before escalation\. \(L49\)/);
-  assert.match(flat('profiles/review/docs/review.md'), /reviewer that still reports one blocking finding per round: after the second such round, stop, sweep the whole diff for that class yourself, fix it and record the pattern before the next review, which is the last before escalation \(`CLAUDE\.md` rule 5, L49\)/);
+  assert.match(flat('profiles/review/docs/review.md'), /reviewer that still reports one blocking finding per round: after the second such round, stop, sweep the whole diff for that class yourself, fix it and record the pattern in the model-trials record \(create one if there is none\) before the next review, which is the last before escalation \(`CLAUDE\.md` rule 5, L49\)/);
   for (const f of ['profiles/review/CLAUDE.md', 'profiles/review/docs/review.md']) {
     const long = read(f).split('\n').filter((l) => l.length > 105 && !l.startsWith('|'));
     assert.deepEqual(long, [], `${f}: lines past 105 characters`);
