@@ -89,6 +89,9 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      1. Check that every finding names a file in `gh pr diff <pr> --name-only`. A review that
         does not reviewed the wrong tree: discard it, say so, and re-review.
      2. At `review-round:2` (at `review-round:1` for a fix), go to step 5.
+        A reviewer that reports one blocking finding per round despite the brief's one-pass
+        section (L49): after the second such round, go through the whole diff yourself for that
+        class before the next review, and record the pattern in the model-trials record.
      3. **A heavy review moves the implementer up (L38)**, decided before the next round starts.
         The review just posted is heavy when it asks for rework with three or more blocking
         findings, or when it brings new blocking findings of a class the previous round raised:

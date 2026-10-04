@@ -48,11 +48,42 @@ You review PR #<n> at <sha>. You did not write it. The contract follows.
 3. Sweep the diff: tests that pass with the behaviour deleted, branches no input reaches.
 Read files only by paths relative to your worktree root.
 
+## Blocking means
+
+Any one is enough; a blocking finding means rework, never approve.
+1. A Done-when line fails, or cannot be run as written.
+2. What this task protects can be got past: <name it: the guard, check, permission, invariant,
+   rule value or file this task exists to protect>. A bypass you proved is blocking, even when it
+   looks like an edge case. Never "follow-up hardening" or "outside the threat model" unless the
+   task says so; if it does, quote the line. (L47)
+3. Behaviour the task forbids, or behaviour nobody asked for, inside a file the task requires. (L44)
+4. <project-specific items: a constant with no evidence, a test that passes with the behaviour
+   deleted, a status written into a document>
+Not blocking: wording, style, and defects in code the PR did not change: file those as follow-ups.
+When unsure, rate it blocking and say why.
+
+## Report every blocking finding in this one review
+
+This review is your only pass before the author fixes. Do not stop at the first blocking
+finding: finish reading the whole diff and the task file, check every Done-when line and
+every item under "Blocking means", and report all blocking findings together.
+
+- Before you write the verdict, make one last pass over the full diff for anything you have
+  not yet rated, and say "Final pass done" as the last line before the verdict.
+- Number the findings R1, R2, … in order of severity. A finding you held back because an
+  earlier one was already blocking is a review defect: if two problems share a cause, list
+  both and say so.
+- Do not rely on a later round. The author fixes everything you list, and the next review
+  checks those fixes and new code only, not anything you saw but did not report.
+- If you ran out of time or context before covering the whole diff, say which files or
+  sections you did not cover. Do not approve in that case.
+
 # T<n> <the PR's title>
 
 <the PR body: Scope, Done when, Critical>
 ```
 
-The head is named only above the `# T<n>` line, so the contract may cite other commits (#32).
+Both sections above the contract are pasted in full in every brief, "Blocking means" written for
+the PR (L47, L49). The head is named only above the `# T<n>` line, so the contract may cite other commits (#32).
 List only Done-when lines a read-only reviewer can run: it cannot commit, push or write outside
 its worktree. The main session runs any mutation check itself and says so above the contract.

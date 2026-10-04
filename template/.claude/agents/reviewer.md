@@ -31,17 +31,33 @@ build and test.
   or comment: the main session posts it with tools/harness/post-review.mjs, which reads exactly
   the shape below and refuses to act on a review it cannot read (L28, L32).
 
+**Report every blocking finding in this one review** (L49).
+
+This review is your only pass before the author fixes. Do not stop at the first blocking
+finding: finish reading the whole diff and the task file, check every Done-when line and
+every item under "Blocking means", and report all blocking findings together.
+
+- Before you write the verdict, make one last pass over the full diff for anything you have
+  not yet rated, and say "Final pass done" as the last line before the verdict.
+- Number the findings R1, R2, … in order of severity. A finding you held back because an
+  earlier one was already blocking is a review defect: if two problems share a cause, list
+  both and say so.
+- Do not rely on a later round. The author fixes everything you list, and the next review
+  checks those fixes and new code only, not anything you saw but did not report.
+- If you ran out of time or context before covering the whole diff, say which files or
+  sections you did not cover. Do not approve in that case.
+
 The brief's fixed part, from docs/process.md §5:
 
 ```text
 0. Prove the tree: HEAD is <sha> and the diff against origin/main is the PR's; findings name its files.
 1. Re-run every Done-when line yourself, and account for each (L32). The PR's evidence is no proof.
-2. [evidence-driven] Every constant traces to a fixture, report or investigation; a [designed]
-   value says what was searched.
+2. [evidence-driven] Every constant traces to a fixture, report or investigation, or says what was searched.
 3. [seeded] No wall clock, unseeded random or order-dependent iteration in rule code.
 4. Every changed file and behaviour is one the task asks for (L44); docs it makes wrong are updated.
 5. Sweep the diff: tests that pass with the behaviour deleted (mutate, rebuild clean, re-take any
    negative result), branches no input reaches, edge comments without a test, <project classes>.
+6. <docs/review-brief.md in full: "Blocking means" for this task, then its one-pass section (L47, L49)>
 Prove each finding (run it, or delete the behaviour and name the test that fails) or label it
 unverified. Your final message is the review: the header; the verdict (approve | approve after
 named fixes | rework | user decision); per Done-when line `DW<k>: ran <command> → <result>` or

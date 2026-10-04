@@ -95,3 +95,19 @@ test('the main session watches background work, and never waits on pgrep -f (L48
   assert.match(s, /wait on the PID with `while kill -0 <pid>`/);
   assert.match(s, /with `run_in_background`, and watch it \(below\); never poll with sleep/);
 });
+
+test('every review brief and reviewer is told to report every blocking finding in one review (L49)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  const section = /## Report every blocking finding in this one review This review is your only pass before the author fixes\. Do not stop at the first blocking finding: .* say "Final pass done" as the last line before the verdict\. .* A finding you held back because an earlier one was already blocking is a review defect: .* Do not rely on a later round\. .* Do not approve in that case\./;
+  for (const f of ['template/docs/review-brief.md', 'profiles/review/docs/review.md']) {
+    assert.match(flat(f), section, f);
+    assert.match(flat(f), /## Blocking means Any one is enough; a blocking finding means rework, never approve\./, f);
+  }
+  assert.match(flat('template/docs/process.md'), /6\. <docs\/review-brief\.md in full: "Blocking means" for this task, then its one-pass section \(L47, L49\)>/);
+  for (const f of ['template/.opencode/agents/reviewer.md', 'template/.claude/agents/reviewer.md']) {
+    assert.match(flat(f), /Report every blocking finding in this one review\** \(L49\)/, f);
+    assert.match(flat(f), /"Final pass done"/, f);
+  }
+  assert.match(flat('template/tools/harness/review.mjs'), /Report every blocking finding in this one review, not one per round: .* write "Final pass done" as the line before the closing verdict\. Name any part you did not cover, and do not approve then \(L49\)/);
+  assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /one blocking finding per round despite the brief's one-pass section \(L49\): after the second such round, go through the whole diff yourself for that class/);
+});
