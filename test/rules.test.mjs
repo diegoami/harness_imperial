@@ -68,3 +68,20 @@ test('the default implementer is GLM-5.3 Flash, then DeepSeek V4.1 Flash, then S
     assert.match(read(f).replace(/\s+/g, ' '), /GLM-5\.3 Flash|`glm-flash`, then `deepseek-flash`/, f);
   }
 });
+
+test('Isle Wars\' process rules are in every copy that carries them (L44, L45, L46)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  const brief = /Build only what the task asks for, even inside a file it requires; say why for each changed file\. \(L44\)/;
+  for (const f of ['template/docs/process.md', 'template/.claude/agents/implementer.md']) assert.match(flat(f), brief, f);
+  const check = /Every changed file and behaviour is one the task asks for \(L44\)/;
+  for (const f of ['template/docs/process.md', 'template/.claude/agents/reviewer.md']) assert.match(flat(f), check, f);
+  const p = flat('template/docs/process.md');
+  assert.match(p, /The main session runs each line before dispatch: it fails on `main` and passes on a mock fix\. \(L45\)/);
+  assert.match(p, /Before a merge the main session re-runs the check the approval rests on most; a different result is rework\. \(L46\)/);
+  assert.match(p, /a heavier model only with the reason in the task file \(L46\)/);
+  assert.match(p, /a failure in a real run, or the owner's decision with its basis/);
+  const s = flat('template/.claude/skills/run-task/SKILL.md');
+  assert.match(s, /it must fail on `main` and pass on a mock fix .* \(L45\)/);
+  assert.match(s, /Re-run the check the approval rests on most .* A different result is rework, not a merge \(L46\)\. 3\. `gh pr merge/);
+  assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A model heavier than the default: the reason here \(L46\)/);
+});

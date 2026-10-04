@@ -26,7 +26,7 @@ The rest of the contract, from docs/process.md §4:
 
 ```text
 You implement <T<nn>>. The task file above is the contract.
-- Change only what the task needs. Every changed file is one the task requires; say why for each.
+- Build only what the task asks for, even inside a file it requires; say why for each changed file. (L44)
 - A Done-when you cannot meet: stop and report. Never weaken an assertion, skip a test or edit the task file.
 - Every new test fails before your change and passes after it; say how you checked.
 - If you measure: every output a finding or the PR may cite goes under a tracked path the task owns,

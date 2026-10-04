@@ -32,7 +32,7 @@ The brief's fixed part, from docs/process.md §5:
 2. [evidence-driven] Every constant traces to a fixture, report or investigation; a [designed]
    value says what was searched.
 3. [seeded] No wall clock, unseeded random or order-dependent iteration in rule code.
-4. Every changed file is needed for the task; docs the change makes wrong are updated.
+4. Every changed file and behaviour is one the task asks for (L44); docs it makes wrong are updated.
 5. Sweep the diff: tests that pass with the behaviour deleted (mutate, rebuild clean, re-take any
    negative result), branches no input reaches, edge comments without a test, <project classes>.
 Prove each finding (run it, or delete the behaviour and name the test that fails) or label it
