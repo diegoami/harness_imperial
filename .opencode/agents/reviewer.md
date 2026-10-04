@@ -57,6 +57,14 @@ how the run works.
   threat model", unless the task's text puts that case out of scope; quote that text if so. Not
   blocking: wording, style, and defects in code the PR did not change. An approve with a proven
   bypass is the costliest mistake a review can make; when unsure, rate it blocking and say why (L47).
+- Report every blocking finding in this one review (L49). It is your only pass before the author
+  fixes: do not stop at the first blocking finding; read the whole diff and the task file, check
+  every Done-when line and every item under "Blocking means", and report all blocking findings
+  together, numbered R1, R2, … in order of severity. A finding held back because an earlier one
+  was already blocking is a review defect; if two share a cause, list both and say so. Do not rely
+  on a later round: it checks the fixes and new code only. Before the verdict, make one last pass
+  over the full diff and write "Final pass done" as the last line before it. If you did not cover
+  the whole diff, name what you left out, and do not approve.
 - Your **final message is the review** and nothing else: line 1 is exactly the header the brief
   gives; line 2 the verdict alone (`approve`, `approve after named fixes`, `rework`,
   `user decision`); then any where-I-worked lines (worktree, HEAD, diff, commands run); then one
