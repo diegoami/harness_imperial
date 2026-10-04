@@ -182,7 +182,10 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
   Line 2 is the verdict, alone on its line: approve, approve after named fixes, rework, or user
   decision. Then any where-I-worked lines (worktree, HEAD, diff, the commands you ran), then the
   findings (R1, R2, ... with file and line, blocking or not), then the verdict again as the very
-  last line. Nothing comes after it.${doneWhen ? `
+  last line. Nothing comes after it.
+- A finding you proved that lets a forbidden action or a wrong result past what the task protects
+  is blocking, and blocks an approve: never "follow-up hardening" or "outside the threat model"
+  unless the task's text says so (L47).${doneWhen ? `
 - The task has ${doneWhen} Done-when line${doneWhen > 1 ? 's' : ''}. Right after the verdict line, account for each, one
   line per Done-when line, DW1 to DW${doneWhen}: "DW<k>: ran <command> → <result>", or
   "DW<k>: not run — <reason>". An approve with one missing, or one not run, is not applied.` : ''} A review that does not end with its verdict, or that has a
