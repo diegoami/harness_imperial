@@ -23,7 +23,8 @@ import path from 'node:path';
 //
 // Refused as unreadable: what the one pass cannot close (a quote, a substitution, a here-document);
 // a # straight after ) (a comment after a subshell, a character after a substitution); a here-document
-// or `case` inside $( … ); a substitution in an unquoted here-document; a control character; $'…'
+// or `case` inside $( … ); a substitution or a line ending in \ in an unquoted here-document, or a
+// delimiter only partly quoted (E"OF"); a control character; $'…'
 // with an escape; a shell with any other option, or with no script (it would read stdin); a script,
 // for a shell or `source`, that is not a regular file existing when the hook runs (links followed,
 // never under /dev or /proc); process
@@ -90,7 +91,7 @@ function scan(line) {
       if (i === 0 || /[\s;&|(<>]/.test(s[i - 1])) { const k = s.indexOf('\n', i); i = (k < 0 ? s.length : k) - 1; continue; }   // a comment
     }
     if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
-      const m = s.slice(i + 2).match(/^(-?)[ \t]*(?:'([^']*)'|"([^"\\$`]*)"|([^\s;&|()<>'"`$\\]+))/);
+      const m = s.slice(i + 2).match(/^(-?)[ \t]*(?:'([^']*)'|"([^"\\$`]*)"|([^\s;&|()<>'"`$\\]+))(?=[\s;&|<>]|$)/);
       if (!m) return null;
       heredocs.push({ word: m[2] ?? m[3] ?? m[4], strip: m[1] === '-', quoted: m[4] === undefined });
       cur += s.slice(i, i + 2 + m[0].length);
@@ -108,7 +109,7 @@ function scan(line) {
           const body = s.slice(j, e < 0 ? s.length : e);
           j = e < 0 ? s.length : e + 1;
           if ((h.strip ? body.replace(/^\t+/, '') : body) === h.word) break;
-          if (!h.quoted && /`|\$\(/.test(body)) return null;            // an unquoted body runs its substitutions
+          if (!h.quoted && /`|\$\(|\\$/.test(body)) return null;   // an unquoted body runs its substitutions and joins a line ending in \ (Sol's R1, round 5)
         }
       }
       heredocs.length = 0;

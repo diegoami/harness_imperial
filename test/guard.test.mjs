@@ -64,7 +64,9 @@ const REFUSED = {
     'echo $(true)#x; git push', "cat <<EOF\nhello it's me\nEOF\ngit push", 'cat <<EOF\n$(git push)\nEOF',
     'x=$(echo a b) && git push', "echo $(echo '(' ; git push)", 'echo $(case x in a) echo;; esac); git push',
     "echo 'unclosed", 'echo "unclosed', 'echo $(unclosed', 'cat <<EOF\nno end',
-    "(true)#'\ngit push\n#'", 'echo $(case x in a) echo ok;; esac)'],          // after a subshell, # is a comment
+    "(true)#'\ngit push\n#'", 'echo $(case x in a) echo ok;; esac)',   // after a subshell, # is a comment
+    // Sol's R1, round 5: an unquoted here-document joins a line ending in \ before it looks for the end.
+    'cat <<EOF\nEO\\\nF\ngit push\nEOF', 'cat <<E"OF"\nx\nEOF\ngit push\nE'],
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
     'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
     'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"',
@@ -91,7 +93,8 @@ const ALLOWED = {
     '# run the tests\nnpm test', 'npm test # quick', "echo 'a # b'", 'echo "#x"', 'echo a#b', 'git log --oneline # recent',
     "cat <<'EOF' > notes.md\nit's fine; git push is mentioned\nEOF", "cat <<EOF\nplain text, it's ok\nEOF",
     "cat <<'EOF'\n$(git push)\nEOF", "cat <<-EOF\n\tindented\n\tEOF", "grep -n '#' src/a.js",
-    'echo $(echo ")")', "echo $(echo ')')", 'echo "$(echo ")")"', "echo $(echo hi # it's a comment\n)"],
+    'echo $(echo ")")', "echo $(echo ')')", 'echo "$(echo ")")"', "echo $(echo hi # it's a comment\n)",
+    "cat <<'EOF'\nEO\\\nF\nEOF"],                                 // a quoted here-document joins no lines
   implementer: ['git commit -m "fix; then git stash nothing"', 'git push origin task/T07-x', 'git push -u origin task/T07-x',
     'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7',
     'gh pr create --title "Fix: git push docs" --body x', 'git commit -m "mention: gh pr merge"',
