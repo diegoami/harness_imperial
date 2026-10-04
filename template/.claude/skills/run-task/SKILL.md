@@ -49,7 +49,7 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
 
 3. **Review.** Label `status:in-review`. Use the task file's Reviewer, never the implementer's
    family:
-   - `opencode` (the default, GPT-6 Luna on the direct OpenAI route): `node tools/harness/review.mjs
+   - `opencode` (the default, GPT-5.6 Luna on the direct OpenAI route): `node tools/harness/review.mjs
      --pr <pr> --brief <file> --exclude <implemented by> --issue <n> --apply-label`, in the
      background; a hard task adds `--hard` (GLM-5.3, then another provider when it cannot run,
      L39), and a guard task or the last round (`review-round:2`, `:1` for a fix) also `--sol`

@@ -45,6 +45,20 @@ own window, named after it: today GPT-5.6 Luna (`gpt-5.6-luna:7d`), which can be
 OpenAI's main `7d` window, the one GPT-6 Luna and Sol draw on, is exhausted. Read which pools exist
 from the windows the endpoint returns, not from this page.
 
+The models per provider, heavy and light:
+
+| Provider | Heavy | Light |
+| --- | --- | --- |
+| claude | `claude --model opus` | `claude --model sonnet` |
+| openai | `opencode -m openai/gpt-6.1-sol` | `opencode -m openai/gpt-5.6-luna` |
+| zai | `opencode -m zai-coding-plan/glm-5.3` | `opencode -m zai-coding-plan/glm-5.3-flash` |
+| opencode_go | `opencode -m opencode-go/deepseek-v4-pro` | `opencode -m opencode-go/deepseek-v4.1-flash` |
+| openrouter | `opencode -m openrouter/deepseek/deepseek-v4-pro` | `opencode -m openrouter/deepseek/deepseek-v4.1-flash` |
+
+GPT-5.6 Luna, the reviewer (L51), has its own weekly limit: for light work OpenAI is usable while
+the `gpt-5.6-luna:7d` window in `/quota/openai` is under 95%, even when OpenAI's main window is
+exhausted.
+
 If `curl -sf localhost:8765/health` fails where the service is installed:
 1. `systemctl --user restart quota-tracker`, wait a few seconds, and check `/health` again.
 2. If systemctl says `Failed to connect to bus`, the user's systemd instance is not running: ask
@@ -63,7 +77,7 @@ login. Where the service is not installed, go on without it, and count a usage-l
 | Reviewer | Login | Check |
 | --- | --- | --- |
 | GLM-5.3 Flash, first | `opencode auth login`, then Z.AI Coding Plan (an API key; OpenCode also reads `ZHIPU_API_KEY`) | `opencode models zai-coding-plan` lists `zai-coding-plan/glm-5.3-flash` |
-| GPT-6 Luna, second and the second opinion | `opencode auth login`, then OpenAI (a ChatGPT login or an API key) | `opencode models openai` lists `openai/gpt-6-luna` |
+| GPT-5.6 Luna, second and the second opinion | `opencode auth login`, then OpenAI (a ChatGPT login or an API key) | `opencode models openai` lists `openai/gpt-5.6-luna` |
 | DeepSeek V4.1 Flash, third | `XDG_DATA_HOME="$HOME/.local/share/harness-opencode/data" opencode console login` (OpenCode Go) | `opencode models opencode-go` lists `opencode-go/deepseek-v4.1-flash` |
 
 Before any run the script checks that OpenCode lists each reviewer it may use; one that is not

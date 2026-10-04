@@ -10,7 +10,7 @@ rules; `docs/environment.md` holds the logins.
 | Order | Model | Route |
 | --- | --- | --- |
 | 1 | GLM-5.3 Flash (`glm-flash`) | Z.AI Coding Plan, `zai-coding-plan/glm-5.3-flash` |
-| 2, on failure | GPT-6 Luna (`luna`) | the direct OpenAI route, `openai/gpt-6-luna` |
+| 2, on failure | GPT-5.6 Luna (`luna`) | the direct OpenAI route, `openai/gpt-5.6-luna` (its own weekly pool, L51) |
 | 3, on failure | DeepSeek V4.1 Flash (`deepseek-flash`) | OpenCode Go, `opencode-go/deepseek-v4.1-flash` |
 | then | the user | no Claude reviewer (`claudeFallback: null`) |
 
