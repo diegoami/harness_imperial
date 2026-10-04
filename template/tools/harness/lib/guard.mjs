@@ -2,18 +2,28 @@
 // file (.claude/agents/<role>.md, through tools/harness/guard.mjs). The agent's prompt says the same;
 // the hook makes it hold whatever the prompt says (#3).
 //
-// It reads a command line as the shell would: its simple commands at ;, &&, ||, |, newlines,
-// subshells and $( ), with every kind of quoting and escape respected ('…', "…", $'…', $"…", \),
-// and each simple command as the words the shell passes. A `git` or `gh` word is checked wherever
-// it stands, so no prefix hides it (`timeout 10 git push`, `sudo -u root git push`: #62); every
-// argument of a shell (`bash -o pipefail -c '…'`) or of `eval` is read as a command line in turn.
-// It fails closed (Sol's R1 and R2 on PR 66): what it cannot read before the shell runs it is
-// refused, namely a variable, substitution, glob or brace expansion where a command name or a
-// git/gh subcommand could stand, or as an argument of a command not known to leave its arguments
-// unrun (SAFE); a shell reading commands from stdin; a git alias set on the command line; and
-// nesting deeper than it reads. An unquoted mention (`echo git push`) is refused too. It is a
-// safeguard against an agent's mistakes, not a sandbox: a script file, or a program that makes
-// the call itself, is beyond it.
+// It does not model all of Bash: it reads a strict subset exactly and refuses everything outside it
+// (Sol's rework on PR 66, rounds 1 and 2; L38: each round of modelling found another corner).
+//
+// Read: simple commands split at ;, &&, ||, |, &, newlines and subshell parentheses; words in plain
+// text, '…', "…" (with \" \\ \$ \` escapes), $"…" read as "…", $'…' only without a backslash, and a
+// backslash before a printable character or a newline; redirections as operators with a target.
+// A `git` or `gh` command is checked against the rules wherever it stands (#62). A shell is read
+// only as `sh -c '<string>'`, its string checked in turn, or as `sh <script file>`; `eval` has its
+// arguments checked; an assignment before a command has its value checked (GIT_PAGER='…' git log).
+// A command in SAFE never runs its arguments, so they are not read (`echo git push` is allowed). Any
+// other program may run its arguments, so each one with a space is checked as a command line
+// (`watch 'git push'`, `trap '…' EXIT`), and a git, gh or shell among them is checked as a command.
+//
+// Refused as unreadable: a control character; $'…' with an escape; a shell with any other option,
+// or with no script (it would read stdin), or reading a script from /dev or /proc; process
+// substitution; git's -c, --config-env and --exec-path (they can make git run a program); git or
+// gh run by another program (it may add to their arguments: `xargs -I{} git {}`); a word only known
+// at run time (a variable, substitution, glob or brace expansion) anywhere but as an argument of
+// git or gh after the subcommand, or of a SAFE command; and nesting past five levels.
+//
+// It is a safeguard against an agent's mistakes, not a sandbox: a script file, or a program that
+// makes the call itself (node -e, awk's system()), is beyond it.
 
 // A git command, after any of git's own options: -C <dir>, -c <key=value>, --git-dir <dir> and the
 // like with their argument, and flags such as --no-pager or --git-dir=<dir> (Luna's R1, round 2).
@@ -38,6 +48,7 @@ export const RULES = {
     [git('stash\\b'), 'git stash (shared by every worktree, L19)'], [git('worktree\\b'), 'git worktree'],
     [git('push\\b.*(?:\\s--force\\b|\\s--force-with-lease\\b|\\s-(?!-)[a-zA-Z]*f[a-zA-Z]*\\b|\\s\\+\\S)'), 'a force-push'],
     [/^gh\s+pr\s+merge\b/, 'gh pr merge'], [/^gh\s+api\b.*\/pulls\/\d+\/merge\b/, 'a merge through gh api'],
+    [/^gh\s+api\s+graphql\b.*merge/i, 'a merge through the GraphQL API'], [/^gh\s+alias\b/, 'gh alias (an alias can run gh pr merge)'],
   ],
 };
 
@@ -106,6 +117,21 @@ function inDouble(s, i) {
   return d;
 }
 
+// The line with its quoted parts and escaped characters blanked, for a check of what is unquoted.
+function unquoted(line) {
+  let out = '';
+  let quote = null;
+  const s = String(line);
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\' && quote !== "'") { out += '  '; i++; continue; }
+    if (quote) { out += ' '; if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") { quote = c; out += ' '; continue; }
+    out += c;
+  }
+  return out;
+}
+
 // Where a substitution that starts at i ($( … ) or `…`) ends: the index of its last character.
 function substitutionEnd(s, i) {
   if (s[i] === '`') { const j = s.indexOf('`', i + 1); return j < 0 ? s.length - 1 : j; }
@@ -122,35 +148,17 @@ function ansiEnd(s, i) {
   return Math.min(j, s.length);
 }
 
-// The text of an ANSI-C string $'…' that starts at i, as bash decodes it, and where it ends.
-const ANSI = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', '\\': '\\', "'": "'", '"': '"', '?': '?' };
-function ansiC(s, i) {
-  const end = ansiEnd(s, i);
-  let v = '';
-  for (let j = i + 2; j < end; j++) {
-    if (s[j] !== '\\') { v += s[j]; continue; }
-    const e = s[++j];
-    const hex = (n) => s.slice(j + 1, j + 1 + n).match(/^[0-9a-fA-F]+/)?.[0];
-    if (e in ANSI) v += ANSI[e];
-    else if (/[0-7]/.test(e)) { const m = s.slice(j, j + 3).match(/^[0-7]+/)[0]; v += String.fromCharCode(parseInt(m, 8) & 255); j += m.length - 1; }
-    else if (e === 'x' && hex(2)) { const m = hex(2); v += String.fromCharCode(parseInt(m, 16)); j += m.length; }
-    else if ((e === 'u' || e === 'U') && hex(e === 'u' ? 4 : 8) && parseInt(hex(e === 'u' ? 4 : 8), 16) <= 0x10ffff) {
-      const m = hex(e === 'u' ? 4 : 8); v += String.fromCodePoint(parseInt(m, 16)); j += m.length;
-    } else if (e === 'c' && j + 1 < end) { v += String.fromCharCode(s[j + 1].toUpperCase().charCodeAt(0) & 31); j++; }
-    else v += `\\${e ?? ''}`;
-  }
-  return [v, end];
-}
-
 // A `$` that starts an expansion: $name, ${…}, $(…), $((…)), or a special parameter.
 const expands = (s, i) => s[i] === '$' && /[\w{(@*#?!$-]/.test(s[i + 1] ?? '');
 
 // The words of a simple command as the shell passes them, each with whether the shell only knows
 // it at run time (`dynamic`: a variable, substitution, glob or brace expansion in it). Quotes are
-// removed, escapes resolved, $'…' decoded, adjacent quoted parts joined (`pu''sh` is `push`), and a
-// backslash-newline dropped (#62).
+// removed, escapes resolved, adjacent quoted parts joined (`pu''sh` is `push`), and a
+// backslash-newline dropped (#62). `out.unreadable` is set for $'…' with an escape, which the guard
+// does not decode (Sol's R1, round 2).
 function parseWords(cmd) {
   const out = [];
+  out.unreadable = false;
   let w = null;
   let dyn = false;
   const s = String(cmd);
@@ -162,7 +170,9 @@ function parseWords(cmd) {
       if (s[i + 1] !== '\n') add(s[i + 1] ?? '');
       i++;
     } else if (c === '$' && s[i + 1] === "'") {
-      const [v, j] = ansiC(s, i);
+      const j = ansiEnd(s, i);
+      const v = s.slice(i + 2, j);
+      if (v.includes('\\')) out.unreadable = true;
       add(v);
       i = j;
     } else if (c === '$' && s[i + 1] === '"') {
@@ -182,7 +192,13 @@ function parseWords(cmd) {
       add(v);
       i = j;
     } else if (/\s/.test(c)) end();
-    else {
+    else if (c === '<' || c === '>') {
+      const fd = w !== null && /^\d+$/.test(w) && !dyn ? w : '';
+      if (!fd) end(); else { w = null; dyn = false; }
+      const op = s.slice(i).match(/^[<>&]+/)[0];
+      out.push({ text: fd + op, dynamic: false, op: true });
+      i += op.length - 1;
+    } else {
       const rest = s.slice(i).match(/^\S*/)[0];
       if (expands(s, i) || c === '`' || c === '*' || c === '?' || (c === '[' && rest.indexOf(']') > 1)
         || (c === '{' && /^\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/.test(rest))) dyn = true;
@@ -198,68 +214,105 @@ export const words = (cmd) => parseWords(cmd).map((w) => w.text);
 const GIT_ARG_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
 const SHELL = /^(?:ba|z|da|k)?sh$/;
 const base = (w) => w.replace(/^.*\//, '');
-// Words that come before a command without being one: shell keywords and VAR=value assignments.
+// Words that come before a command without being one: shell keywords (VAR=value assignments too).
 const LEADING = new Set(['if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', '!', '{', '}', 'time']);
-// Commands known to leave their arguments unrun, so a dynamic argument cannot become a command.
-// Anything else (timeout, sudo, env, xargs, find, sed, awk, an unknown program) may run its
-// arguments, so a dynamic argument there is refused.
-const SAFE = new Set(['echo', 'printf', 'cat', 'ls', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'wc', 'sort', 'uniq',
-  'diff', 'cmp', 'test', '[', '[[', 'stat', 'file', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'readlink', 'jq',
-  'node', 'npm', 'pwd', 'true', 'false', 'mkdir', 'touch', 'rm', 'cp', 'mv', 'cd', 'export', 'read', 'tee', 'date', 'sleep',
-  'du', 'df', 'tree', 'which', 'type', 'wait']);
+// Commands that never run a program named in their arguments, so neither a dynamic argument nor a
+// `git` word among them can become a command. Anything else (timeout, sudo, env, xargs, find, sed,
+// awk, watch, npm exec, rg --pre, sort --compress-program, node, an unknown program) may run one,
+// so its arguments are read as commands and command lines, and a dynamic one is refused.
+const SAFE = new Set(['echo', 'printf', 'cat', 'ls', 'grep', 'egrep', 'fgrep', 'head', 'tail', 'wc', 'uniq', 'diff', 'cmp',
+  'test', '[', '[[', 'stat', 'file', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'readlink', 'jq', 'pwd', 'true',
+  'false', 'mkdir', 'touch', 'rm', 'cp', 'mv', 'cd', 'export', 'read', 'tee', 'date', 'sleep', 'du', 'df', 'tree', 'which',
+  'type', 'wait']);
 // Markers for what the guard refuses because it cannot read it.
 const UNREAD = '\0unread';
 const DEEP = '\0deep';
+// A script file a shell or `source` may read: a plain path, never a device or a process's file.
+const scriptFile = (w) => w && !w.dynamic && !w.op && /^[\w./][\w./-]*$/.test(w.text) && !/^\/(?:dev|proc)\//.test(w.text);
 
-// What a simple command runs, as the rules read it (each starts with git or gh): from each `git`
-// word, `git <sub> …` with git's own options dropped; from each `gh` word, `gh …` without
-// -R/--repo; for each shell or `eval` word, the commands in its arguments, recursively; and a
-// marker for what cannot be read before it runs.
+// What a simple command runs, as the rules read it (each starts with git or gh), with a marker for
+// what cannot be read before it runs.
 function effective(cmd, depth) {
   const ws = parseWords(cmd);
-  const out = [];
+  if (ws.unreadable) return [`${UNREAD} ${cmd}`];
+  // Redirections: an operator and its target are not arguments (a shell left with no script reads
+  // its stdin, and is refused).
+  const plain = [];
+  for (let k = 0; k < ws.length; k++) { if (ws[k].op) k++; else plain.push(ws[k]); }
   let first = 0;
-  while (first < ws.length && (LEADING.has(ws[first].text) && !ws[first].dynamic || /^[A-Za-z_]\w*=/.test(ws[first].text))) first++;
-  if (first < ws.length && !ws[first].dynamic && ['for', 'select', 'case'].includes(ws[first].text)) return out;
-  // Dynamic words read as arguments of a git or gh command, after its subcommand. Any other dynamic
-  // word (a command name, a subcommand, an option's value, an argument of an unknown command) is
-  // refused below.
-  const read = new Set();
-  ws.forEach(({ text, dynamic }, k) => {
-    if (dynamic) return;
-    const b = base(text);
-    if (b === 'git') {
-      let n = k + 1;
-      for (; n < ws.length && ws[n].text.startsWith('-') && !ws[n].dynamic; n += GIT_ARG_OPTS.has(ws[n].text) ? 2 : 1) {
-        if (ws[n].text === '-c' && /^alias\./.test(ws[n + 1]?.text ?? '')) out.push(`${UNREAD} ${cmd}`);
-      }
-      for (let m = n + 1; m < ws.length; m++) read.add(m);
-      out.push(['git', ...ws.slice(n).map((x) => x.text)].join(' '));
-    } else if (b === 'gh') {
-      const rest = [];
-      for (let n = k + 1; n < ws.length; n++) {
-        if (ws[n].text === '-R' || ws[n].text === '--repo') n++;
-        else if (!/^(?:--repo=|-R\S)/.test(ws[n].text)) rest.push(n);
-      }
-      const path = rest.filter((n) => !ws[n].text.startsWith('-')).slice(0, ws[rest[0]]?.text === 'api' ? 1 : 2);
-      for (const n of rest) if (n > (path.at(-1) ?? k)) read.add(n);
-      out.push(['gh', ...rest.map((n) => ws[n].text)].join(' '));
-    } else if (SHELL.test(b) || b === 'eval') {
-      const args = ws.slice(k + 1).map((x) => x.text);
-      if (depth >= 5) out.push(`${DEEP} ${cmd}`);
-      else if (b === 'eval') out.push(...commandsOf(args.join(' '), depth + 1));
-      else if (!args.some((a) => !a.startsWith('-')) || args.includes('-s')) out.push(`${UNREAD} ${cmd}`);   // reads stdin
-      else for (const x of args) out.push(...commandsOf(x, depth + 1));
+  while (first < plain.length && (!plain[first].dynamic && LEADING.has(plain[first].text) || /^[A-Za-z_]\w*=/.test(plain[first].text))) first++;
+  if (first === plain.length) return [];                          // assignments alone run nothing
+  // An assignment before a command can set what a program runs (GIT_PAGER='git push' git log):
+  // its value is read as a command line, and a dynamic one is refused.
+  const out = plain.slice(0, first).filter((w) => /^[A-Za-z_]\w*=/.test(w.text))
+    .flatMap((w) => (w.dynamic ? [`${UNREAD} ${cmd}`] : commandsOf(w.text.replace(/^[^=]*=/, ''), depth + 1)));
+  return [...out, ...run(plain.slice(first), depth, cmd)];
+}
+
+// What running ws[0] with the rest as its arguments may run.
+function run(ws, depth, cmd) {
+  const unread = `${UNREAD} ${cmd}`;
+  const [head, ...args] = ws;
+  if (head.dynamic) return [unread];
+  const name = base(head.text);
+  if (['for', 'select', 'case'].includes(head.text) || SAFE.has(name)) return [];
+  if (name === 'git') return gitParts(args, unread);
+  if (name === 'gh') return ghParts(args, unread);
+  if (depth >= 5 && (SHELL.test(name) || name === 'eval')) return [`${DEEP} ${cmd}`];
+  if (SHELL.test(name)) {
+    // Only `sh -c '<string>'` (the string read in turn) and `sh <script file>`; any other option,
+    // or commands from stdin, is refused (Sol's R2, round 2).
+    if (args[0] && !args[0].dynamic && args[0].text === '-c' && args[1] && !args[1].dynamic) return commandsOf(args[1].text, depth + 1);
+    return scriptFile(args[0]) ? [] : [unread];
+  }
+  if (name === 'eval') return commandsOf(args.map((a) => a.text).join(' '), depth + 1);
+  if (name === '.' || name === 'source') return scriptFile(args[0]) ? [] : [unread];
+  // Any other program may run its arguments: as a program (`xargs git`, `timeout 5 git push`) or as a
+  // command line (`watch 'git push'`, `trap 'git push' EXIT`). A git or gh run that way is refused,
+  // since the program may add to its arguments (`xargs -I{} git {}`).
+  const out = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (a.dynamic) { out.push(unread); continue; }
+    const b = base(a.text);
+    if (b === 'git' || b === 'gh' || SHELL.test(b) || ['eval', '.', 'source'].includes(b)) {
+      out.push(...run(args.slice(k), depth, cmd));
+      if (b === 'git' || b === 'gh') out.push(unread);
+      break;
     }
-  });
-  const unread = ws.some((w, m) => m >= first && w.dynamic && !read.has(m));
-  if (unread && (ws[first]?.dynamic || !SAFE.has(base(ws[first].text)))) out.push(`${UNREAD} ${cmd}`);
+    if (/\s/.test(a.text)) out.push(...(depth >= 5 ? [`${DEEP} ${cmd}`] : commandsOf(a.text, depth + 1)));
+  }
   return out;
+}
+
+// A git command as the rules read it: `git <sub> …`, git's own options dropped. A config override or
+// exec path (-c, --config-env, --exec-path) can make git run a program (an alias, core.pager,
+// core.sshCommand) and is refused, as is a dynamic option, option value or subcommand.
+function gitParts(args, unread) {
+  const out = [];
+  let n = 0;
+  for (; n < args.length && args[n].text.startsWith('-') && !args[n].dynamic; n += GIT_ARG_OPTS.has(args[n].text) ? 2 : 1) {
+    if (/^(?:-c|--config-env|--exec-path)(?:=|$)/.test(args[n].text)) out.push(unread);
+  }
+  if (args.slice(0, n + 1).some((a) => a.dynamic)) out.push(unread);
+  out.push(['git', ...args.slice(n).map((a) => a.text)].join(' '));
+  return out;
+}
+
+// A gh command as the rules read it, without -R/--repo; a dynamic word before its arguments is refused.
+function ghParts(args, unread) {
+  const rest = args.filter((a, k) => !(a.text === '-R' || a.text === '--repo' || /^(?:--repo=|-R\S)/.test(a.text)
+    || (k > 0 && (args[k - 1].text === '-R' || args[k - 1].text === '--repo'))));
+  const path = rest.filter((a) => !a.text.startsWith('-')).slice(0, rest[0]?.text === 'api' ? 1 : 2);
+  const last = rest.indexOf(path.at(-1));
+  const out = rest.slice(0, last + 1).some((a) => a.dynamic) || !path.length && rest.some((a) => a.dynamic) ? [unread] : [];
+  return [...out, ['gh', ...rest.map((a) => a.text)].join(' ')];
 }
 
 // Every command a command line runs: its simple commands, what they wrap, and what its command
 // substitutions run, recursively; nesting deeper than that is refused, never skipped.
 function commandsOf(line, depth = 0) {
+  if (/[<>]\(/.test(unquoted(line))) return [`${UNREAD} ${line}`];         // process substitution
   const own = simpleCommands(line).flatMap((x) => effective(x, depth));
   const subs = substitutions(line);
   if (!subs.length) return own;
@@ -271,8 +324,9 @@ function commandsOf(line, depth = 0) {
 export function refusal(command, role) {
   const rules = RULES[role];
   if (!rules) return `unknown role ${role}`;
+  if (/[\x00-\x08\x0b-\x1f\x7f]/.test(String(command))) return `the ${role} may not run a command line with a control character in it`;
   for (const part of commandsOf(command)) {
-    if (part.startsWith(UNREAD)) return `the ${role} may not run what the guard cannot read before it runs (a variable, substitution, glob or brace where a command could stand, a shell reading stdin, or a git alias): refused \`${part.slice(UNREAD.length + 1)}\``;
+    if (part.startsWith(UNREAD)) return `the ${role} may not run what the guard cannot read before it runs (a variable, substitution, glob or brace where a command could stand, $'…' with an escape, a shell with options or reading stdin, or a git alias): refused \`${part.slice(UNREAD.length + 1)}\``;
     if (part.startsWith(DEEP)) return `the ${role} may not run commands nested deeper than the guard reads: refused \`${part.slice(DEEP.length + 1)}\``;
     const hit = rules.find(([test]) => (typeof test === 'function' ? test(part) : test.test(part)));
     if (hit) return `the ${role} may not run ${hit[1]}: refused \`${part}\``;

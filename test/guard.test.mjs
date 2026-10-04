@@ -40,12 +40,26 @@ const REFUSED = {
     'echo "$(echo "$(echo "$(echo "$(echo "$(echo "$(git push)")")")")")")"',
     'g=git; $g push', 'timeout 1 $g push', 'git $s', 'git ${s}', 'git -C $d push', 'gi* push', 'g?t push', '{git,push}',
     '$(echo git) push', '`echo git` push', '"$(echo git)" push', 'sudo $cmd', 'xargs $x < f',
-    "echo 'git push' | sh", "printf 'git push' | bash -s", 'git -c alias.p=push p'],
+    "echo 'git push' | sh", "printf 'git push' | bash -s", 'git -c alias.p=push p',
+    // Sol's R1 and R2, round 2: a NUL escape in $'…', a shell option's value taken for a script. The
+    // strict subset refuses every $'…' with an escape and every shell form but -c and a script.
+    "git$'\\0x' push", "echo 'git push' | bash -o pipefail", "bash -lc 'git push'", "bash -e -c 'git push'",
+    "sh -x -c 'git push'", 'timeout 5 bash', "echo 'git push' | bash -", 'git\u0000 push', 'git\x01 push',
+    'npm exec -- git push', 'npm exec $x', "bash -oc pipefail 'git push'",
+    // The sweep after round 2 (L38): a program that runs a command string, a variable that sets
+    // what git runs, a git config override, git through xargs, stdin from a here-string, a here-doc
+    // or a process substitution, a script read from a device.
+    "watch 'git push'", "flock /tmp/l -c 'git push'", "trap 'git push' EXIT", "GIT_PAGER='git push' git log",
+    "PAGER=$p git log", "git -c core.pager='git push' log", 'git --config-env=core.pager=P log', 'echo push | xargs git',
+    'xargs -I{} git {} < cmds', "bash <<< 'git push'", "bash <<'EOF'", ". <(echo git push)", 'bash <(echo git push)',
+    "echo 'git push' | bash /dev/stdin", "echo 'git push' | source /dev/stdin", 'npm test -- --grep "git push"',
+    "bash<<<'git push'", `awk -f <(echo 'BEGIN{system("git push")}') /dev/null`],
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
     'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
     'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"',
     'gh --repo o/r pr merge 7', 'gh pr -R o/r merge 7', 'git push -fq origin main', 'git push -qf origin main', 'timeout 5 git stash',
-    'nice git worktree add x', 'sudo -u me gh pr merge 7'],
+    'nice git worktree add x', 'sudo -u me gh pr merge 7', "gh alias set m 'pr merge'",
+    "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'"],
 };
 const ALLOWED = {
   reviewer: ['git log --oneline | head', 'git diff --name-only origin/main...HEAD', 'gh pr view 7 --json body',
@@ -53,15 +67,18 @@ const ALLOWED = {
     'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls',
     'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
     "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3',
-    'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'npm test -- --grep "git push"', 'cat .git/HEAD',
+    'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'cat .git/HEAD',
     'git show HEAD:git/push.txt', 'gh -R o/r pr view 7', 'gh pr view 7 -R o/r', 'timeout 60 npm test', 'sh scripts/check.sh',
     // What the guard reads although the shell expands it: arguments of a command that runs none.
-    'echo $HOME', 'ls test/*.mjs', 'for f in test/*.mjs; do node --test "$f"; done', '[ -f "$f" ] && echo y',
+    'echo $HOME', 'ls test/*.mjs', 'for f in test/*.mjs; do echo "$f"; done', '[ -f "$f" ] && echo y',
     'cd "$dir" && npm test', 'git log --format="%H $x"', 'gh pr view $n --json body', 'gh api "repos/o/r/pulls?per_page=5"',
     'cat $(ls docs/*.md)', 'export X=$(pwd)', 'git diff $base...HEAD', 'if [ -n "$x" ]; then echo y; fi',
-    'while read l; do echo "$l"; done < f.txt', "printf '%s\\n' $'a\\tb'"],
+    'while read l; do echo "$l"; done < f.txt', "printf '%s' $'plain'",
+    // A SAFE command's arguments are never run: a mention of git or a shell there is allowed.
+    'echo git push', 'which bash', 'ls /bin/sh', 'grep -rn sh docs', 'echo "use bash -c"', 'cat git push.txt'],
   implementer: ['git commit -m "fix; then git stash nothing"', 'git push origin task/T07-x', 'git push -u origin task/T07-x',
     'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7',
+    'gh pr create --title "Fix: git push docs" --body x', 'git commit -m "mention: gh pr merge"',
     'git push --set-upstream origin x'],
 };
 
@@ -78,7 +95,7 @@ test('words reads a simple command as the shell passes it: quotes off, escapes r
   assert.deepEqual(words(`git pu''sh "a b" 'c d' e\\ f \\g`), ['git', 'push', 'a b', 'c d', 'e f', 'g']);
   assert.deepEqual(words('git \\\npush'), ['git', 'push']);                        // a backslash-newline joins the line
   assert.deepEqual(words(`echo "x \\"y\\" $z" ''`), ['echo', 'x "y" $z', '']);
-  assert.deepEqual(words(`git $'\\x70u\\163h' $"a b" $'\\u0041\\cA'`), ['git', 'push', 'a b', 'A\u0001']);   // as bash decodes them
+  assert.deepEqual(words(`git $'push' $"a b"`), ['git', 'push', 'a b']);         // $'…' without an escape reads as '…'
 });
 
 test('simpleCommands splits at ; && || | ( ) and newlines, but not inside quotes or a substitution', () => {
