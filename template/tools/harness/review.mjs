@@ -117,7 +117,8 @@ try { opencode = resolveOpenCode(); } catch (e) {
 }
 // OpenCode, and every command it runs, in the credential jail (lib/jail.mjs, #68): the reviewer
 // reads and tests, and this script posts. Where the jail cannot run, the log says so first.
-const jail = credentialJail();
+const jail = credentialJail({ cwd: top });
+for (const g of jail.gaps ?? []) say(`WARNING: the reviewer's credential jail cannot hide everything here: ${g} (#68).`);
 if (jail.off) say(OFF_WARNING(jail.off));
 else opencode = { exe: jail.exe, prefix: [...jail.args, '--', opencode.exe, ...opencode.prefix] };
 if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);

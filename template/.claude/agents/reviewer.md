@@ -9,6 +9,10 @@ hooks:
       hooks:
         - type: command
           command: 'node "$CLAUDE_PROJECT_DIR/tools/harness/guard.mjs" reviewer'
+    - matcher: "Read|Grep|Glob"
+      hooks:
+        - type: command
+          command: 'node "$CLAUDE_PROJECT_DIR/tools/harness/guard.mjs" reviewer'
 ---
 
 You review one pull request. You did not write it. The brief gives its header, the PR, the commit

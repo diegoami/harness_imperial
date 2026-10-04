@@ -156,6 +156,10 @@ test('the hook runs a reviewer\'s allowed command in the credential jail, and wa
     assert.match(out(off).systemMessage, /^WARNING: the reviewer's credential jail is off/);
     assert.equal(out(off).hookSpecificOutput, undefined);
   }
+  // A bus on an abstract socket cannot be hidden: the command is still jailed, and the user told.
+  const gap = out(hook('reviewer', bash(command), { DBUS_SESSION_BUS_ADDRESS: 'unix:abstract=/tmp/dbus-x' }));
+  assert.ok(gap.hookSpecificOutput.updatedInput.command.includes('--unshare-pid'));
+  assert.match(gap.systemMessage, /cannot hide everything here: the session bus is on an abstract socket/);
 });
 
 test('the hook refuses what it cannot read, rather than fail open', () => {
@@ -168,6 +172,25 @@ test('the hook refuses what it cannot read, rather than fail open', () => {
     assert.equal(b.status, 2, JSON.stringify(tool_input));
     assert.match(b.stderr, /no command string/);
   }
+});
+
+test('the hook refuses a reviewer\'s Read, Grep or Glob of what the jail hides, and nothing else (Sol\'s R1 on PR 74)', () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-home-')));
+  fs.mkdirSync(path.join(home, '.config/gh'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config/gh/hosts.yml'), 'oauth_token: x\n');
+  const env = { HOME: home, XDG_CONFIG_HOME: '' };
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-work-')));
+  const tool = (tool_name, tool_input) => ({ tool_name, tool_input, cwd: work });
+  for (const [name, input] of [['Read', { file_path: path.join(home, '.config/gh/hosts.yml') }],
+    ['Grep', { pattern: 'token', path: home }], ['Glob', { pattern: '**', path: path.join(home, '.config') }],
+    ['Read', { file_path: '/proc/self/environ' }], ['Read', { file_path: 42 }]]) {
+    const r = hook('reviewer', tool(name, input), env);
+    assert.equal(r.status, 2, `${name} ${JSON.stringify(input)}`);
+    assert.match(r.stderr, /may not read|no readable path/);
+  }
+  assert.equal(hook('reviewer', tool('Read', { file_path: path.join(work, 'a.txt') }), env).status, 0);
+  assert.equal(hook('reviewer', tool('Grep', { pattern: 'x' }), env).status, 0);                 // the working directory
+  assert.equal(hook('implementer', tool('Read', { file_path: path.join(home, '.config/gh/hosts.yml') }), env).status, 0);
 });
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and
@@ -186,6 +209,8 @@ test('each agent file declares the guard for its own role on Bash', () => {
     assert.match(f, new RegExp(`^name: ${role}$`, 'm'));
     assert.match(f, /PreToolUse:\s*\n\s*- matcher: "Bash"\s*\n\s*hooks:\s*\n\s*- type: command\s*\n\s*command: '.*tools\/harness\/guard\.mjs" (\w+)'/);
     assert.equal(f.match(/guard\.mjs" (\w+)'/)[1], role);
+    // The reviewer's reading tools pass the guard too (#68).
+    if (role === 'reviewer') assert.match(f, /- matcher: "Read\|Grep\|Glob"\s*\n\s*hooks:\s*\n\s*- type: command\s*\n\s*command: '.*tools\/harness\/guard\.mjs" reviewer'/);
   }
   assert.match(front(agent('reviewer')), /^tools: Read, Grep, Glob, Bash$/m);
   assert.match(front(agent('reviewer')), /^model: opus$/m);
