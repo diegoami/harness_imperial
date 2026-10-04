@@ -63,13 +63,15 @@ test('every model a profile\'s reviewer names is one it has: no hard chain inher
     const dir = project();
     assert.equal(adopt('--profile', p, '--target', dir).status, 0);
     const c = JSON.parse(fs.readFileSync(path.join(dir, 'harness.json'), 'utf8'));
-    const named = [...(c.reviewer.chain ?? []), ...(c.reviewer.hard ?? []), ...(c.reviewer.secondOpinion ? [c.reviewer.secondOpinion] : []),
+    const named = [...(c.reviewer.chain ?? []), ...(c.reviewer.hard ?? []), ...(c.reviewer.sol ? [c.reviewer.sol] : []), ...(c.reviewer.secondOpinion ? [c.reviewer.secondOpinion] : []),
       ...(c.implementer?.chain ?? [])];
     for (const m of named) assert.ok(c.models[m], `${p}: ${m} is named but not defined`);
   }
   const review = project();
   adopt('--profile', 'review', '--target', review);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(review, 'harness.json'), 'utf8')).reviewer.hard, null);
+  const r = JSON.parse(fs.readFileSync(path.join(review, 'harness.json'), 'utf8')).reviewer;
+  assert.equal(r.hard, null);
+  assert.equal(r.sol, null);
 });
 
 test('a file the project already has with other content stops everything; an identical one is left alone', () => {

@@ -2,7 +2,7 @@
 // Hands one pull request to OpenCode for a review, and posts the result as one PR comment.
 //
 //   node tools/harness/review.mjs --pr 42 --brief brief.md [--reviewer NAME] [--exclude NAME,...]
-//     [--issue 12 --apply-label] [--done-when K] [--hard] [--second-opinion] [--dry-run] [--env KEY=VALUE]...
+//     [--issue 12 --apply-label] [--done-when K] [--hard [--sol]] [--second-opinion] [--dry-run] [--env KEY=VALUE]...
 //   node tools/harness/review.mjs --self-test   (the reader's samples; no model is called)
 //
 // The brief's first line is the review header the model prints, e.g. "T07 review (Luna)"; with the
@@ -27,9 +27,10 @@
 // A brief naming a commit other than the PR's head as the one to review is refused, exit 2, before
 // anything runs (#23). Only the lines before the pasted task file's title (`# T<nn>`) are read (#32).
 //
-// --hard (a hard task, L39) runs reviewer.hard instead of reviewer.chain: GPT-6.1 Sol, then GLM-5.3
-// (Z.AI), DeepSeek V4 Pro (Go) and Luna, so that one OpenAI quota cannot block a hard review. The
-// review's header names each model that failed before it, so a light substitute is visible.
+// --hard (a hard task, L39) runs reviewer.hard instead of reviewer.chain: GLM-5.3 (Z.AI), then
+// DeepSeek V4 Pro (Go) and Luna, so that one provider's quota cannot block a hard review. --sol adds
+// reviewer.sol (GPT-6.1 Sol) before them, for a guard task and a hard task's last round only (L41).
+// The review's header names each model that failed before it, so a light substitute is visible.
 // --second-opinion (for a critical PR, #39): after the first review, reviewer.secondOpinion reviews the
 // same head (else the chain's other models), never the model that wrote the first review or one that
 // failed in this run. Both are posted; the stricter verdict decides the label. Without a second
@@ -60,7 +61,7 @@ import {
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
 
-const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test', 'second-opinion', 'hard'], repeatable: ['env'] });
+const a = parseArgs(process.argv.slice(2), { flags: ['apply-label', 'dry-run', 'self-test', 'second-opinion', 'hard', 'sol'], repeatable: ['env'] });
 if (a['self-test']) {
   const failures = selfTest();
   for (const f of failures) console.error(`FAIL ${f}`);
@@ -90,11 +91,14 @@ const implementedBy = a.exclude ? a.exclude.split(',').map((s) => s.trim()).filt
 if (a.reviewer && !config.models[a.reviewer]) die(2, `Unknown reviewer ${a.reviewer}.`);
 // --hard (L39): reviewer.hard, a heavy reviewer first, then reviewers on other providers and
 // families, so that one account's quota cannot block a hard review; the implementer's family is
-// skipped as in any chain.
+// skipped as in any chain. --sol (L41) puts reviewer.sol first, Sol being used sparingly.
 if (a.hard && a.reviewer) die(2, '--hard runs reviewer.hard; it does not take --reviewer.');
 if (a.hard && !rev.hard?.length) die(2, '--hard needs reviewer.hard in harness.json.');
+if (a.sol && !a.hard) die(2, '--sol goes with --hard: it puts reviewer.sol before reviewer.hard.');
+if (a.sol && !rev.sol) die(2, '--sol needs reviewer.sol in harness.json.');
+if (a.sol && !config.models[rev.sol]) die(2, `Unknown reviewer ${rev.sol} in reviewer.sol.`);
 for (const m of a.hard ? rev.hard : []) if (!config.models[m]) die(2, `Unknown reviewer ${m} in reviewer.hard.`);
-const base = a.hard ? rev.hard : rev.chain;
+const base = !a.hard ? rev.chain : a.sol ? [...new Set([rev.sol, ...rev.hard])] : rev.hard;
 const wanted = a.reviewer ? [a.reviewer] : base;
 const chain = excludeImplementers(wanted, config.models, implementedBy);
 if (implementedBy.length) say(`implemented by: ${implementedBy.join(', ')}`);
