@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { refusal, simpleCommands } from '../template/tools/harness/lib/guard.mjs';
+import { refusal, simpleCommands, words } from '../template/tools/harness/lib/guard.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../template');
@@ -22,19 +22,31 @@ const REFUSED = {
     'gh pr ready 7', 'gh label create x', 'gh repo delete o/r',
     // Luna's R1, round 2: a substitution inside double quotes, git options before the subcommand.
     'echo "$(git push origin HEAD)"', 'echo "x `git push` y"', 'echo "$(echo "$(git commit -m x)")"',
-    'git --no-pager push origin HEAD', 'git --git-dir=.git push', 'git --git-dir .git -p commit -m x'],
+    'git --no-pager push origin HEAD', 'git --git-dir=.git push', 'git --git-dir .git -p commit -m x',
+    // #62 (GLM-5.3 on PR 29's final head): a prefix the guard did not know, shell options, quoting.
+    "bash -o pipefail -c 'git push origin HEAD'", "bash -euo pipefail -c 'git commit -m x'", 'sh -o errexit -c "git push"',
+    'sudo -u root git push', 'env -u X git push', 'timeout 10 git push origin HEAD', 'nice git push', 'stdbuf -o0 git push',
+    'git "push"', "'git' push", `bash -c "git 'push'"`, "git pu''sh", 'git \\push', 'git \\\npush origin HEAD', 'eval "git push"',
+    'git -C "a b" push', 'find . -exec git push \\;', 'xargs -I{} git commit -m x', 'time git push', '/usr/bin/git push',
+    'gh issue delete 3', 'gh pr reopen 7', 'gh --repo o/r pr comment 7 -b x', 'gh pr -R o/r comment 7 -b x',
+    'sudo -u root -- git commit -m x', 'nice -n 5 git commit -am x', 'timeout --signal=KILL 5 git push', 'bash -lc "git push"'],
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
     'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
-    'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"'],
+    'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"',
+    'gh --repo o/r pr merge 7', 'gh pr -R o/r merge 7', 'git push -fq origin main', 'git push -qf origin main', 'timeout 5 git stash',
+    'nice git worktree add x', 'sudo -u me gh pr merge 7'],
 };
 const ALLOWED = {
   reviewer: ['git log --oneline | head', 'git diff --name-only origin/main...HEAD', 'gh pr view 7 --json body',
     'git checkout -- src/a.js', 'git fetch origin pull/7/head', 'npm test', 'grep -rn "git push" docs', 'echo "gh pr merge is not for you"',
     'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls',
     'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
-    "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3'],
+    "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3',
+    'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'npm test -- --grep "git push"', 'cat .git/HEAD',
+    'git show HEAD:git/push.txt', 'gh -R o/r pr view 7', 'gh pr view 7 -R o/r', 'timeout 60 npm test', 'sh scripts/check.sh'],
   implementer: ['git commit -m "fix; then git stash nothing"', 'git push origin task/T07-x', 'git push -u origin task/T07-x',
-    'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7'],
+    'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7',
+    'git push --set-upstream origin x'],
 };
 
 for (const role of ['reviewer', 'implementer']) {
@@ -45,6 +57,12 @@ for (const role of ['reviewer', 'implementer']) {
     for (const c of ALLOWED[role]) assert.equal(refusal(c, role), null, c);
   });
 }
+
+test('words reads a simple command as the shell passes it: quotes off, escapes resolved, quoted parts joined (#62)', () => {
+  assert.deepEqual(words(`git pu''sh "a b" 'c d' e\\ f \\g`), ['git', 'push', 'a b', 'c d', 'e f', 'g']);
+  assert.deepEqual(words('git \\\npush'), ['git', 'push']);                        // a backslash-newline joins the line
+  assert.deepEqual(words(`echo "x \\"y\\" $z" ''`), ['echo', 'x "y" $z', '']);
+});
 
 test('simpleCommands splits at ; && || | ( ) $( ) and newlines, but not inside quotes', () => {
   assert.deepEqual(simpleCommands('a && b || c; d | e\nf $(g) "h; i" (j)'), ['a', 'b', 'c', 'd', 'e', 'f', 'g', '"h; i"', 'j']);

@@ -3,10 +3,13 @@
 // the hook makes it hold whatever the prompt says (#3).
 //
 // It reads a command line as the shell would: its simple commands at ;, &&, ||, |, newlines,
-// subshells and $( ), with quotes and backslash escapes respected; it looks inside `bash -c '…'`,
-// `sh -c`, `eval` and `xargs`, and past `env VAR=…`, `command`, `sudo` and the like. It is a
-// safeguard against an agent's mistakes, not a sandbox: a program that makes the call itself (a
-// Python script, say) is beyond it.
+// subshells and $( ), with quotes and backslash escapes respected, and each simple command as the
+// words the shell passes. A `git` or `gh` word is checked wherever it stands, so no prefix hides it
+// (`timeout 10 git push`, `sudo -u root git push`, `VAR=x nice git push`: #62); every argument of a
+// shell (`bash -o pipefail -c '…'`) or of `eval` is read as a command line in turn. It fails closed:
+// an unquoted mention (`echo git push`) is refused too. It is a safeguard against an agent's
+// mistakes, not a sandbox: a program that makes the call itself (a Python script, a git alias) is
+// beyond it.
 
 // A git command, after any of git's own options: -C <dir>, -c <key=value>, --git-dir <dir> and the
 // like with their argument, and flags such as --no-pager or --git-dir=<dir> (Luna's R1, round 2).
@@ -29,7 +32,7 @@ export const RULES = {
   // The Claude fallback implementer: one branch, one PR, never shared state.
   implementer: [
     [git('stash\\b'), 'git stash (shared by every worktree, L19)'], [git('worktree\\b'), 'git worktree'],
-    [git('push\\b.*(?:\\s--force\\b|\\s--force-with-lease\\b|\\s-f\\b|\\s\\+\\S)'), 'a force-push'],
+    [git('push\\b.*(?:\\s--force\\b|\\s--force-with-lease\\b|\\s-(?!-)[a-zA-Z]*f[a-zA-Z]*\\b|\\s\\+\\S)'), 'a force-push'],
     [/^gh\s+pr\s+merge\b/, 'gh pr merge'], [/^gh\s+api\b.*\/pulls\/\d+\/merge\b/, 'a merge through gh api'],
   ],
 };
@@ -95,30 +98,74 @@ function inDouble(s, i) {
   return d;
 }
 
-// One shell word with its quotes and escapes removed.
-const unquote = (w) => w.replace(/^'(.*)'$/s, '$1').replace(/^"(.*)"$/s, '$1').replace(/\\(.)/g, '$1');
-
-// The commands a simple command runs: itself, without wrappers (env VAR=…, command, sudo, xargs and
-// the like) and leading VAR=value assignments; and, for `sh -c '…'` or `eval …`, the commands inside,
-// recursively.
-function effective(cmd, depth = 0) {
-  let c = cmd;
-  for (let prev = null; prev !== c;) {
-    prev = c;
-    c = c.replace(/^\w+=(?:"[^"]*"|'[^']*'|\S)*\s+/, '')
-      .replace(/^(?:sudo|exec|time|nohup|command|builtin|xargs|env)(?:\s+-\S+)*\s+/, '');
+// The words of a simple command as the shell passes them: quotes removed, escapes resolved,
+// adjacent quoted parts joined (`pu''sh` is `push`), a backslash-newline dropped (#62).
+export function words(cmd) {
+  const out = [];
+  let w = null;
+  const s = String(cmd);
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') {
+      if (s[i + 1] !== '\n') w = (w ?? '') + (s[i + 1] ?? '');
+      i++;
+    } else if (c === "'") {
+      const j = s.indexOf("'", i + 1);
+      w = (w ?? '') + s.slice(i + 1, j < 0 ? s.length : j);
+      i = j < 0 ? s.length : j;
+    } else if (c === '"') {
+      let j = i + 1;
+      let v = '';
+      for (; j < s.length && s[j] !== '"'; j++) {
+        if (s[j] === '\\' && '"\\$`\n'.includes(s[j + 1])) { if (s[j + 1] !== '\n') v += s[j + 1]; j++; } else v += s[j];
+      }
+      w = (w ?? '') + v;
+      i = j;
+    } else if (/\s/.test(c)) {
+      if (w !== null) out.push(w);
+      w = null;
+    } else w = (w ?? '') + c;
   }
-  const inner = c.match(/^(?:\S*\/)?(?:ba|z|da|k)?sh\s+(?:-\w+\s+)*-\w*c\w*\s+([\s\S]+)$/) ?? c.match(/^eval\s+([\s\S]+)$/);
-  if (!inner || depth > 4) return [c];
-  const arg = inner[1].trim();
-  const first = arg.match(/^'[^']*'|^"(?:\\.|[^"\\])*"/)?.[0] ?? arg;
-  return [c, ...simpleCommands(unquote(first)).flatMap((x) => effective(x, depth + 1))];
+  if (w !== null) out.push(w);
+  return out;
+}
+
+// git's own options before its subcommand, those that take an argument (Luna's R1, round 2).
+const GIT_ARG_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+const SHELL = /^(?:ba|z|da|k)?sh$/;
+const base = (w) => w.replace(/^.*\//, '');
+
+// What a simple command runs, as the rules read it (each starts with git or gh): from each `git`
+// word, `git <sub> …` with git's own options dropped; from each `gh` word, `gh …` without
+// -R/--repo; and for each shell or `eval` word, the commands in its arguments, recursively.
+function effective(cmd, depth) {
+  const ws = words(cmd);
+  const out = [];
+  ws.forEach((w, k) => {
+    const b = base(w);
+    if (b === 'git') {
+      let n = k + 1;
+      while (n < ws.length && ws[n].startsWith('-')) n += GIT_ARG_OPTS.has(ws[n]) ? 2 : 1;
+      out.push(['git', ...ws.slice(n)].join(' '));
+    } else if (b === 'gh') {
+      const rest = [];
+      for (let n = k + 1; n < ws.length; n++) {
+        if (ws[n] === '-R' || ws[n] === '--repo') n++;
+        else if (!/^(?:--repo=|-R\S)/.test(ws[n])) rest.push(ws[n]);
+      }
+      out.push(['gh', ...rest].join(' '));
+    } else if ((SHELL.test(b) || b === 'eval') && depth < 5) {
+      const args = ws.slice(k + 1);
+      for (const x of b === 'eval' ? [args.join(' ')] : args) out.push(...commandsOf(x, depth + 1));
+    }
+  });
+  return out;
 }
 
 // Every command a command line runs: its simple commands, what they wrap, and what its command
 // substitutions run, recursively.
 function commandsOf(line, depth = 0) {
-  const own = simpleCommands(line).flatMap((x) => effective(x));
+  const own = simpleCommands(line).flatMap((x) => effective(x, depth));
   if (depth > 4) return own;
   return [...own, ...substitutions(line).flatMap((x) => commandsOf(x, depth + 1)),
     ...own.flatMap((x) => (x === line ? [] : substitutions(x).flatMap((y) => commandsOf(y, depth + 1))))];
