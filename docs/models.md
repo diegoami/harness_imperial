@@ -203,7 +203,8 @@ and the trials issue it names.
   added scope nobody asked for, and the bypasses were there. At games_revival_framework (goal2 T04)
   its first hard review re-ran every Done-when line and made five mutations (L41). In the PR 29
   replay (below) it found the most bypasses, each proven live, and still approved: it rated them
-  not blocking. In game-archaeologist's replay it approved every head.
+  not blocking. In game-archaeologist's replay it approved every head. With L47's prompt it asked
+  for rework on that head, and found real bypasses on the head Luna had approved (#62).
 - **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1, on
   OpenCode Go; its runs on Z.AI since have had no stall, L42), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
@@ -226,10 +227,17 @@ nothing was posted:
 | DeepSeek V4 Pro | no review | rejected `external_directory (/tmp/*)` (L31) |
 
 One head is one sample. With game-archaeologist's replay (GLM-5.3 approved every head there too), it
-says GLM-5.3 finds defects but under-rates them on a guard. L41 already gives a guard task to Sol
-first; when Sol cannot run, `reviewer.hard` puts GLM-5.3 next, so on a guard a light reviewer of
-another family (Luna) may be the safer substitute. The owner decides.
+said GLM-5.3 finds defects but under-rates them on a guard. The prompt never said what blocking
+meant, so L47 now says so to every reviewer. Re-run with it (same dry runs):
 
+| GLM-5.3 run | Head | Verdict |
+| --- | --- | --- |
+| 1, 2 | 36abb20 (known bad) | lost: a rejected `/tmp/err` redirect, and an `index.lock` deleted under `.git` (then the scratch rule) |
+| 3 | 36abb20 | rework (correct): wrapper and quoting bypasses, `gh` writes missing, both blocking |
+| 4 | 36abb20 | rework (correct): wrapper bypasses blocking; the `gh` writes rated not blocking |
+| 5 | b68e905 (Luna approved) | rework: 8 bypasses (`timeout`, `nice`, `sudo -u`, `bash -o pipefail -c` …), real on `main` (#62) |
+
+So the miss was the prompt's. With L47 GLM-5.3 caught what Luna's approval let through. 
 ## Keeping this page current
 
 The main session updates this page in the same commit as any of these:

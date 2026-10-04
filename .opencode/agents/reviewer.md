@@ -44,9 +44,19 @@ how the run works.
   Give the read tool a path relative to the worktree root too (`docs/models.md`), never an
   absolute path: OpenCode resolves a relative path there, although the tool's description asks
   for an absolute one, and a guessed absolute path is rejected and ends the run (L36).
+  Scratch output goes to a file in the worktree root (`2>review-err.txt`), deleted afterwards;
+  never `/tmp`. Run git commands one at a time, never in parallel, and never touch `.git`: a
+  leftover `index.lock` means wait and retry, not delete.
 - Re-run every Done-when line yourself; the PR's evidence is a convenience, never the proof. Prove
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or
   label it unverified. A claim that nothing failed is re-taken before it is believed.
+- Rate each finding. It is **blocking** when you proved it and it defeats what the task protects:
+  a guard, check or permission that lets a forbidden action or a wrong result through, a Done-when
+  line that fails, or behaviour the task forbids. A proven bypass of the task's own guard is
+  blocking even when it looks like an edge case: never rate it "follow-up hardening" or "outside the
+  threat model", unless the task's text puts that case out of scope; quote that text if so. Not
+  blocking: wording, style, and defects in code the PR did not change. An approve with a proven
+  bypass is the costliest mistake a review can make; when unsure, rate it blocking and say why (L47).
 - Your **final message is the review** and nothing else: line 1 is exactly the header the brief
   gives; line 2 the verdict alone (`approve`, `approve after named fixes`, `rework`,
   `user decision`); then any where-I-worked lines (worktree, HEAD, diff, commands run); then one

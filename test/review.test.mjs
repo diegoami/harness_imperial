@@ -78,6 +78,19 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.doesNotMatch(git(p.main, 'worktree', 'list'), /proj-work[\\/]7-review-/);
 });
 
+test('every reviewer is told a proven bypass of what the task protects is blocking, never follow-up hardening (L47)', posix, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const [session] = readSessions(path.join(p.base, 'oc.json'));
+  const prompt = session.prompt.replace(/\s+/g, ' ');
+  assert.match(prompt, /A finding you proved that lets a forbidden action or a wrong result past what the task protects is blocking, and blocks an approve: never "follow-up hardening" or "outside the threat model" unless the task's text says so \(L47\)\./);
+  const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(instructions, /A proven bypass of the task's own guard is blocking even when it looks like an edge case/);
+  assert.match(instructions, /when unsure, rate it blocking and say why \(L47\)/);
+  assert.match(instructions, /Scratch output goes to a file in the worktree root .* never `\/tmp`\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
+});
+
 test('the reviewer runs git in its worktree and is never asked to type its path (L30)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
