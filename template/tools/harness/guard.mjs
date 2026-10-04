@@ -6,8 +6,12 @@
 // Reads the hook's JSON on stdin. A Bash command that the role may not run (lib/guard.mjs) is
 // blocked: exit 2, with the reason on stderr, which the agent sees as the tool's error. Anything else
 // exits 0. Input it cannot read is blocked too: a guard that fails open guards nothing.
+// A reviewer's allowed command is rewritten to run in the credential jail (lib/jail.mjs, #68), so a
+// push or a gh write that the guard misses finds no credentials. Where the jail cannot run, the
+// command runs as typed and the hook says so to the user.
 
 import { refusal } from './lib/guard.mjs';
+import { credentialJail, jailCommand, OFF_WARNING } from './lib/jail.mjs';
 
 const role = process.argv[2];
 let input = '';
@@ -27,5 +31,11 @@ const reason = refusal(event.tool_input.command, role, { cwd: typeof event.cwd =
 if (reason) {
   console.error(`guard: ${reason}. The harness forbids it for this agent (tools/harness/lib/guard.mjs).`);
   process.exit(2);
+}
+if (role === 'reviewer') {
+  const jail = credentialJail();
+  const out = jail.off ? { systemMessage: OFF_WARNING(jail.off) }
+    : { hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...event.tool_input, command: jailCommand(event.tool_input.command, jail) } } };
+  process.stdout.write(JSON.stringify(out));
 }
 process.exit(0);

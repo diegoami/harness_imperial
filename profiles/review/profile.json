@@ -5,6 +5,7 @@
     "tools/harness/switch-model.mjs",
     "tools/harness/lib/opencode.mjs",
     "tools/harness/lib/chain.mjs",
+    "tools/harness/lib/jail.mjs",
     "tools/harness/lib/common.mjs",
     "tools/harness/lib/post.mjs",
     "tools/harness/lib/review-selftest.mjs",

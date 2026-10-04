@@ -66,7 +66,8 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
        missing `DW` line, run a supplementary review of those lines alone, or send it to rework. Read it on the PR
        and decide: apply the label it supports, or escalate. Never pay for a second review just
        because the first was flagged.
-   - `claude` (the fallback): `Agent(subagent_type: "reviewer", isolation: "worktree")` (Opus),
+   - `claude` (the fallback): first `git fetch origin pull/<pr>/head`, since the reviewer has no
+     GitHub credentials (#68); then `Agent(subagent_type: "reviewer", isolation: "worktree")` (Opus),
      with §5's brief filled in. The agent file carries the rest; its hook refuses every write. It
      **returns** its review: save its final message to a file, then post it with
      `node tools/harness/post-review.mjs --pr <pr> --brief <brief> --review <file>
