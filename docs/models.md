@@ -67,9 +67,12 @@ family is skipped; the posted header names each model that failed or could not r
 that reviewed, so a light substitute on a hard review is visible; with no reviewer left, the script
 exits 3, and since Claude implements here, the owner decides.
 
-**Sol is used sparingly (L41).** It reviews only a guard task (the first item of the list below)
-and a hard task's last round (`review-round:2`, `review-round:1` for a fix), at effort `low`.
-Every other hard review goes to GLM-5.3. The owner adopted this from games_revival_framework on
+**Sol in the `--hard` chain is used sparingly (L41).** Through `--hard`, Sol reviews only a guard
+task (the first item of the list below) and a hard task's last round (`review-round:2`,
+`review-round:1` for a fix), at effort `low`; every other `--hard` review goes to GLM-5.3. The
+owner's reviewer choice of 2026-10-04 (below) goes further: the main session also names Sol directly
+(`--reviewer sol-6.1`) for complex work. L41 governs the committed `--hard` order; the reviewer
+choice governs which reviewer the main session asks for. The owner adopted this from games_revival_framework on
 2026-10-04, where GLM-5.3's first hard review (goal2 T04) re-ran every Done-when line, regenerated
 the listing, made five mutations and checked the data bytes.
 
