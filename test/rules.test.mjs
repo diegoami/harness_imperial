@@ -85,3 +85,13 @@ test('Isle Wars\' process rules are in every copy that carries them (L44, L45, L
   assert.match(s, /Re-run the check the approval rests on most .* A different result is rework, not a merge \(L46\)\. 3\. `gh pr merge/);
   assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A model heavier than the default: the reason here \(L46\)/);
 });
+
+test('the main session watches background work, and never waits on pgrep -f (L48)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/docs/process.md'), /It watches each background job \(start, end, no output for 10 min\), never with `pgrep -f`\. \(L48\)/);
+  const s = flat('template/.claude/skills/run-task/SKILL.md');
+  assert.match(s, /\*\*Watching background work \(L48\)\.\*\* .* flags a job whose log or output file has not grown for 10 minutes/);
+  assert.match(s, /Never wait with `while pgrep -f '<pattern>'`: the waiting shell's command line contains the pattern, so it matches itself/);
+  assert.match(s, /wait on the PID with `while kill -0 <pid>`/);
+  assert.match(s, /with `run_in_background`, and watch it \(below\); never poll with sleep/);
+});
