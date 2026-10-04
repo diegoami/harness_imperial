@@ -15,6 +15,9 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
    If `harness.json` has cutoffs for `breaks-play`, route those issues through Jev first (`/jev`
    step 4). Act on its confident ends and triage the middle yourself; exit 3 means triage it all.
 
+   Run every Done-when line yourself: it must fail on `main` and pass on a mock fix (a scratch
+   change, then discarded). A line that cannot is amended on `main` before dispatch (L45).
+
 1. **Brief.** Write it to a temp file: the task file **pasted in full**, then `docs/process.md` §4's
    block, then (on rework) the review comment's URL. Never a pointer to the task file.
 
@@ -63,12 +66,14 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
 4. **Decide** on the label the reviewer applied.
    - `status:approved`:
      1. Wait for green CI.
-     2. `gh pr merge <pr> --squash --delete-branch`, then label `status:merged`.
-     3. File one `T<nn> follow-up` issue (`triage:needed`) for the non-blocking findings.
-     4. Unblock the tasks whose Merge-after are now all merged.
-     5. Remove the task's worktrees.
-     6. Post §9's measurement comment on the PR.
-     7. Report the merge, the findings, the follow-ups and what is ready next.
+     2. Re-run the check the approval rests on most (the Done-when line or the mutation that
+        proves the task) on the PR's head yourself. A different result is rework, not a merge (L46).
+     3. `gh pr merge <pr> --squash --delete-branch`, then label `status:merged`.
+     4. File one `T<nn> follow-up` issue (`triage:needed`) for the non-blocking findings.
+     5. Unblock the tasks whose Merge-after are now all merged.
+     6. Remove the task's worktrees.
+     7. Post §9's measurement comment on the PR.
+     8. Report the merge, the findings, the follow-ups and what is ready next.
    - `status:rework`:
      1. Check that every finding names a file in `gh pr diff <pr> --name-only`. A review that
         does not reviewed the wrong tree: discard it, say so, and re-review.

@@ -1,7 +1,6 @@
 # Process
 
-`CLAUDE.md` holds the rules; this file says how they run. `/run-task` is the procedure. Every rule
-here names the failure that produced it in the harness's `docs/lessons.md` (L-numbers).
+`CLAUDE.md` holds the rules, this file how they run, `/run-task` the procedure; each rule cites its lesson.
 
 ## 0. Order of work
 
@@ -21,7 +20,7 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 | Role | Who | Does |
 | --- | --- | --- |
 | Main session | Claude, the session the user talks to | Plans, writes task files, runs `/run-task`, triages, merges, reports |
-| Implementer | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, via `tools/harness/implement.mjs`, then a Claude Sonnet agent (L42) | One task, one branch, one PR, in its own worktree |
+| Implementer | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, via `tools/harness/implement.mjs`, then a Claude Sonnet agent (L42); a heavier model only with the reason in the task file (L46) | One task, one branch, one PR, in its own worktree |
 | Reviewer | OpenCode GPT-6 Luna (direct OpenAI) via `tools/harness/review.mjs`, then a Claude Opus agent; never the implementer's family (L27). Exit 3: Opus reviews; exit 4: the main session reads the flagged review and decides (L28) | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
 | Decider | Jev via `tools/harness/jev.mjs` (the `/jev` skill) | Repeated yes/no decisions over many items, at the confident ends only (§12) |
 | Generator | Models on OpenRouter (images, other families) and ElevenLabs (speech, sound, music) | Assets, each committed with a sidecar naming provider, model, prompt, date and cost |
@@ -35,15 +34,16 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 Scope, Done when, Hazards, Implementer, Reviewer, Merge after. Rules:
 - **Owns** names directories or files. Go finer only when two tasks run at once in one file:
   function-level Owns made one project open 27 PRs that only widened a list. (L5)
-- **Done when**: each line is one check a command can run.
-- The main session edits task files directly on `main`, with the reason in the commit message.
-  The task's reviewer sees the edit. (L6)
+- **Done when**: each line is one check a command can run. The main session runs each line before
+  dispatch: it fails on `main` and passes on a mock fix. (L45)
+- The main session edits task files directly on `main`, the reason in the commit; the reviewer sees it. (L6)
 
 ## 3. The loop
 
 `ready → implement → review → approved + green CI → squash merge → follow-up → unblock → report`.
 Rework sends the full review back to the same branch, at most two rounds (one for a fix), then
-escalates. The implementer script resumes a pushed branch; it never starts over.
+escalates. The implementer script resumes a pushed branch; it never starts over. Before a merge the
+main session re-runs the check the approval rests on most; a different result is rework. (L46)
 
 What the implementer script guarantees, and why:
 - OpenCode starts with stdin closed; without it a run hangs before it starts. (L10)
@@ -61,7 +61,7 @@ URL. The OpenCode agent file repeats the run mechanics; this block is the contra
 
 ```text
 You implement <T<nn>>. The task file above is the contract.
-- Change only what the task needs. Every changed file is one the task requires; say why for each.
+- Build only what the task asks for, even inside a file it requires; say why for each changed file. (L44)
 - A Done-when you cannot meet: stop and report. Never weaken an assertion, skip a test or edit the task file.
 - Every new test fails before your change and passes after it; say how you checked.
 - If you measure: every output a finding or the PR may cite goes under a tracked path the task owns,
@@ -84,7 +84,7 @@ You review PR #<n> at <sha>. You did not write it. The task file follows.
 2. [evidence-driven] Every constant traces to a fixture, report or investigation; a [designed]
    value says what was searched.
 3. [seeded] No wall clock, unseeded random or order-dependent iteration in rule code.
-4. Every changed file is needed for the task; docs the change makes wrong are updated.
+4. Every changed file and behaviour is one the task asks for (L44); docs it makes wrong are updated.
 5. Sweep the diff: tests that pass with the behaviour deleted (mutate, rebuild clean, re-take any
    negative result), branches no input reaches, edge comments without a test, <project classes>.
 Prove each finding (run it, or delete the behaviour and name the test that fails) or label it
@@ -129,8 +129,8 @@ the rework rate with the baseline in `docs/lessons.md` before changing models. (
 
 ## 10. Adding a rule
 
-A rule enters `CLAUDE.md` or this file only when it names a failure that happened in a real run,
-added to `docs/lessons.md`. Plausible rules without an incident stay out. (L14)
+A rule enters `CLAUDE.md` or this file only with a lesson in `docs/lessons.md`: a failure in a real
+run, or the owner's decision with its basis. Plausible rules without either stay out. (L14)
 
 ## 11. For a reverse-engineering project
 

@@ -196,17 +196,39 @@ and the trials issue it names.
   the first real run (harness_imperial#1). At Isle Wars it stops correctly on a Done-when it cannot
   meet.
 - **DeepSeek V4 Pro**: it ran a read-only review brief with no rejection, always giving paths from
-  the root (L31). It answered a probe on 2026-10-03.
+  the root (L31). It answered a probe on 2026-10-03. In the PR 29 replay (below) it gave no review:
+  OpenCode rejected its access to `/tmp` (`external_directory`), as in L31.
 - **GLM-5.3**: in IC2 it ended long implementer runs early (L27). Here, as a read-only reviewer, it
   chained `cd` commands, and the run was rejected (L31, #14). At Isle Wars (T06) it finished every run, but
   added scope nobody asked for, and the bypasses were there. At games_revival_framework (goal2 T04)
-  its first hard review re-ran every Done-when line and made five mutations (L41).
-- **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1), and
+  its first hard review re-ran every Done-when line and made five mutations (L41). In the PR 29
+  replay (below) it found the most bypasses, each proven live, and still approved: it rated them
+  not blocking. In game-archaeologist's replay it approved every head.
+- **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1, on
+  OpenCode Go; its runs on Z.AI since have had no stall, L42), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
   followed an amended contract, but missed stale counts in its own doc.
 - **GPT-6 Sol**: at Isle Wars it was the adversary, finding bypasses in T06 and
   in each round of malpaco T02.
-- **GPT-6.1 Sol**: it answered a one-word probe on 2026-10-03 (L35).
+- **GPT-6.1 Sol**: it answered a one-word probe on 2026-10-03 (L35). In the PR 29 replay (below) it
+  asked for rework with two blocking bypasses, the correct verdict.
+
+**The PR 29 replay (2026-10-04).** PR 29's first commit (36abb20, the PreToolUse guard) had blocking
+bypasses that Luna found in the real round 1: escaped quotes and nested shells let a `git push`
+through. It was recreated as a draft PR (55) and each reviewer ran on it with `--dry-run`, so
+nothing was posted:
+
+| Reviewer | Verdict | What it found |
+| --- | --- | --- |
+| GPT-6.1 Sol (`low`) | rework (correct) | 2 blocking: `$( )` inside double quotes; `gh pr`/`gh issue` writes missing from the deny list |
+| GPT-6 Luna | rework (correct) | 2 blocking: escaped quotes and `env git push`; hook JSON with no command fails open |
+| GLM-5.3 | approve (wrong) | 3 findings rated not blocking, though proven live: `$( )` in quotes, `env`/`nice` prefixes, `gh --repo` and `gh api` writes |
+| DeepSeek V4 Pro | no review | rejected `external_directory (/tmp/*)` (L31) |
+
+One head is one sample. With game-archaeologist's replay (GLM-5.3 approved every head there too), it
+says GLM-5.3 finds defects but under-rates them on a guard. L41 already gives a guard task to Sol
+first; when Sol cannot run, `reviewer.hard` puts GLM-5.3 next, so on a guard a light reviewer of
+another family (Luna) may be the safer substitute. The owner decides.
 
 ## Keeping this page current
 
