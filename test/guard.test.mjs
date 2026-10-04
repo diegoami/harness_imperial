@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refusal, simpleCommands, words } from '../template/tools/harness/lib/guard.mjs';
@@ -53,7 +54,10 @@ const REFUSED = {
     "PAGER=$p git log", "git -c core.pager='git push' log", 'git --config-env=core.pager=P log', 'echo push | xargs git',
     'xargs -I{} git {} < cmds', "bash <<< 'git push'", "bash <<'EOF'", ". <(echo git push)", 'bash <(echo git push)',
     "echo 'git push' | bash /dev/stdin", "echo 'git push' | source /dev/stdin", 'npm test -- --grep "git push"',
-    "bash<<<'git push'", `awk -f <(echo 'BEGIN{system("git push")}') /dev/null`],
+    "bash<<<'git push'", `awk -f <(echo 'BEGIN{system("git push")}') /dev/null`,
+    // Sol's R1, round 3: another spelling of a device; and a script that does not exist yet.
+    "echo 'git push' | bash //dev/stdin", "echo 'git push' | source //dev/stdin", "echo 'git push' | bash /./dev/stdin",
+    "echo 'git push' | bash /dev/fd/0", "printf 'git push' > s.sh; bash s.sh", 'sh scripts/no-such-script.sh'],
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
     'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
     'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"',
@@ -68,7 +72,7 @@ const ALLOWED = {
     'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
     "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3',
     'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'cat .git/HEAD',
-    'git show HEAD:git/push.txt', 'gh -R o/r pr view 7', 'gh pr view 7 -R o/r', 'timeout 60 npm test', 'sh scripts/check.sh',
+    'git show HEAD:git/push.txt', 'gh -R o/r pr view 7', 'gh pr view 7 -R o/r', 'timeout 60 npm test',
     // What the guard reads although the shell expands it: arguments of a command that runs none.
     'echo $HOME', 'ls test/*.mjs', 'for f in test/*.mjs; do echo "$f"; done', '[ -f "$f" ] && echo y',
     'cd "$dir" && npm test', 'git log --format="%H $x"', 'gh pr view $n --json body', 'gh api "repos/o/r/pulls?per_page=5"',
@@ -156,4 +160,20 @@ test('the agent files carry process.md\'s brief blocks word for word', () => {
   assert.ok(flat(agent('implementer')).includes(flat(processBlock(4))), 'implementer.md lacks process.md §4\'s block');
   const fixed5 = processBlock(5).split('\n').slice(2).join('\n');
   assert.ok(flat(agent('reviewer')).includes(flat(fixed5)), 'reviewer.md lacks process.md §5\'s block');
+});
+
+test('a script for sh or source is read only when it is a regular file that exists, links followed (Sol\'s R1, round 3)', { skip: process.platform === 'win32' }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-script-'));
+  fs.writeFileSync(path.join(dir, 'check.sh'), 'npm test\n');
+  fs.symlinkSync('/dev/stdin', path.join(dir, 'in'));
+  fs.symlinkSync('check.sh', path.join(dir, 'ok.sh'));
+  for (const c of ['bash check.sh', 'sh ./check.sh', '. check.sh', 'bash ok.sh']) assert.equal(refusal(c, 'reviewer', { cwd: dir }), null, c);
+  for (const c of ['bash in', 'source in', 'bash missing.sh', `bash ${dir}`]) assert.match(refusal(c, 'reviewer', { cwd: dir }) ?? 'allowed', /^the reviewer may not run/, c);
+  if (process.platform === 'linux') {                                             // a regular file under /proc, through a link
+    fs.symlinkSync('/proc/self/environ', path.join(dir, 'envf'));
+    assert.match(refusal('bash envf', 'reviewer', { cwd: dir }) ?? 'allowed', /^the reviewer may not run/);
+  }
+  // The hook looks the script up in the event's cwd, not its own.
+  assert.equal(hook('reviewer', { ...bash('bash check.sh'), cwd: dir }).status, 0);
+  assert.equal(hook('reviewer', { ...bash('bash in'), cwd: dir }).status, 2);
 });

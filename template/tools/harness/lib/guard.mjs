@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 // The commands a Claude agent of each role must never run, for the PreToolUse hook in its agent
 // file (.claude/agents/<role>.md, through tools/harness/guard.mjs). The agent's prompt says the same;
 // the hook makes it hold whatever the prompt says (#3).
@@ -16,7 +19,8 @@
 // (`watch 'git push'`, `trap '…' EXIT`), and a git, gh or shell among them is checked as a command.
 //
 // Refused as unreadable: a control character; $'…' with an escape; a shell with any other option,
-// or with no script (it would read stdin), or reading a script from /dev or /proc; process
+// or with no script (it would read stdin); a script, for a shell or `source`, that is not a regular
+// file existing when the hook runs (links followed, never under /dev or /proc); process
 // substitution; git's -c, --config-env and --exec-path (they can make git run a program); git or
 // gh run by another program (it may add to their arguments: `xargs -I{} git {}`); a word only known
 // at run time (a variable, substitution, glob or brace expansion) anywhere but as an argument of
@@ -227,8 +231,18 @@ const SAFE = new Set(['echo', 'printf', 'cat', 'ls', 'grep', 'egrep', 'fgrep', '
 // Markers for what the guard refuses because it cannot read it.
 const UNREAD = '\0unread';
 const DEEP = '\0deep';
-// A script file a shell or `source` may read: a plain path, never a device or a process's file.
-const scriptFile = (w) => w && !w.dynamic && !w.op && /^[\w./][\w./-]*$/.test(w.text) && !/^\/(?:dev|proc)\//.test(w.text);
+// A script file a shell or `source` may read: a plain path to a regular file that exists when the
+// hook runs, resolved from the command's directory with its links followed, and outside /dev and
+// /proc. A device, a pipe, a link to one (`ln -s /dev/stdin x`), another spelling of one
+// (`//dev/stdin`, Sol's R1, round 3) or a file the same command line would create is refused.
+let scriptDir = process.cwd();
+function scriptFile(w) {
+  if (!w || w.dynamic || w.op || !/^[\w./][\w./-]*$/.test(w.text)) return false;
+  try {
+    const real = fs.realpathSync(path.resolve(scriptDir, w.text));
+    return fs.statSync(real).isFile() && !/^\/(?:dev|proc)(?:\/|$)/.test(real);
+  } catch { return false; }
+}
 
 // What a simple command runs, as the rules read it (each starts with git or gh), with a marker for
 // what cannot be read before it runs.
@@ -320,8 +334,10 @@ function commandsOf(line, depth = 0) {
   return [...own, ...subs.flatMap((x) => commandsOf(x, depth + 1))];
 }
 
-// Why `command` is refused for `role`, or null when it is allowed.
-export function refusal(command, role) {
+// Why `command` is refused for `role`, or null when it is allowed. `cwd` is the directory the command
+// runs in, where a script file it names is looked up (the hook passes the event's cwd).
+export function refusal(command, role, { cwd = process.cwd() } = {}) {
+  scriptDir = cwd;
   const rules = RULES[role];
   if (!rules) return `unknown role ${role}`;
   if (/[\x00-\x08\x0b-\x1f\x7f]/.test(String(command))) return `the ${role} may not run a command line with a control character in it`;
