@@ -20,6 +20,13 @@ build and test.
   `git checkout --detach FETCH_HEAD`. Run commands from the worktree root with relative paths;
   never `cd`, and never `..` (L31).
 - To test a mutation, change the file in place, rebuild clean, run, then `git checkout -- <file>`.
+- Rate each finding. It is **blocking** when you proved it and it defeats what the task protects:
+  a guard, check or permission that lets a forbidden action or a wrong result through, a Done-when
+  line that fails, or behaviour the task forbids. A proven bypass of the task's own guard is
+  blocking even when it looks like an edge case: never rate it "follow-up hardening" or "outside the
+  threat model", unless the task's text puts that case out of scope; quote that text if so. Not
+  blocking: wording, style, and defects in code the PR did not change. An approve with a proven
+  bypass is the costliest mistake a review can make; when unsure, rate it blocking and say why (L47).
 - **Return** the review as your final message, and nothing else. Never post it, label anything
   or comment: the main session posts it with tools/harness/post-review.mjs, which reads exactly
   the shape below and refuses to act on a review it cannot read (L28, L32).

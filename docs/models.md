@@ -237,7 +237,8 @@ meant, so L47 now says so to every reviewer. Re-run with it (same dry runs):
 | 4 | 36abb20 | rework (correct): wrapper bypasses blocking; the `gh` writes rated not blocking |
 | 5 | b68e905 (Luna approved) | rework: 8 bypasses (`timeout`, `nice`, `sudo -u`, `bash -o pipefail -c` …), real on `main` (#62) |
 
-So the miss was the prompt's. With L47 GLM-5.3 caught what Luna's approval let through. 
+So the miss was the prompt's. With L47 GLM-5.3 caught what Luna's approval let through.
+
 ## Keeping this page current
 
 The main session updates this page in the same commit as any of these:
