@@ -8,9 +8,12 @@ import path from 'node:path';
 // It does not model all of Bash: it reads a strict subset exactly and refuses everything outside it
 // (Sol's rework on PR 66, rounds 1 and 2; L38: each round of modelling found another corner).
 //
-// Read: simple commands split at ;, &&, ||, |, &, newlines and subshell parentheses; words in plain
-// text, '…', "…" (with \" \\ \$ \` escapes), $"…" read as "…", $'…' only without a backslash, and a
-// backslash before a printable character or a newline; redirections as operators with a target.
+// Read, in one pass (scan) that every other part uses: simple commands split at ;, &&, ||, |, &,
+// newlines and subshell parentheses; comments (a # at a word's start, to the line's end) and
+// here-document bodies removed; $( … ) and `…` read whole, their insides as command lines of their
+// own; words in plain text, '…', "…" (with \" \\ \$ \` escapes), $"…" read as "…", $'…' only without
+// a backslash, and a backslash before a printable character or a newline; redirections as operators
+// with a target.
 // A `git` or `gh` command is checked against the rules wherever it stands (#62). A shell is read
 // only as `sh -c '<string>'`, its string checked in turn, or as `sh <script file>`; `eval` has its
 // arguments checked; an assignment before a command has its value checked (GIT_PAGER='…' git log).
@@ -18,9 +21,12 @@ import path from 'node:path';
 // other program may run its arguments, so each one with a space is checked as a command line
 // (`watch 'git push'`, `trap '…' EXIT`), and a git, gh or shell among them is checked as a command.
 //
-// Refused as unreadable: a control character; $'…' with an escape; a shell with any other option,
-// or with no script (it would read stdin); a script, for a shell or `source`, that is not a regular
-// file existing when the hook runs (links followed, never under /dev or /proc); process
+// Refused as unreadable: what the one pass cannot close (a quote, a substitution, a here-document);
+// a # straight after ) (a comment after a subshell, a character after a substitution); a here-document
+// or `case` inside $( … ); a substitution in an unquoted here-document; a control character; $'…'
+// with an escape; a shell with any other option, or with no script (it would read stdin); a script,
+// for a shell or `source`, that is not a regular file existing when the hook runs (links followed,
+// never under /dev or /proc); process
 // substitution; git's -c, --config-env and --exec-path (they can make git run a program); git or
 // gh run by another program (it may add to their arguments: `xargs -I{} git {}`); a word only known
 // at run time (a variable, substitution, glob or brace expansion) anywhere but as an argument of
@@ -56,93 +62,120 @@ export const RULES = {
   ],
 };
 
-// The simple commands in a shell command line, split at ;, &&, ||, |, & and newlines and at subshell
-// parentheses. Quotes and backslash escapes are respected, so `"fix; then push"` and `\"; git push`
-// are read as the shell reads them. A substitution, $( … ) or `…`, stays inside its word: its value
-// can become a command name (`$(echo git) push`), and substitutions() reads what it runs.
-export function simpleCommands(line) {
-  const out = [];
-  let cur = '';
-  let quote = null;
+// One pass over a command line as bash reads it, and the only one: every other part of the guard
+// uses its result, so no two readings of the line can disagree (Sol's R1, round 4: a quote inside a
+// comment). It returns the simple commands (split at ;, &&, ||, |, &, newlines and subshell
+// parentheses; comments and here-document bodies removed; a substitution kept inside its word), the
+// command lines its substitutions run, and whether it has a process substitution. It returns null
+// for what it cannot read as bash would: an unclosed quote, substitution or here-document, a `#`
+// straight after `)`, a substitution in an unquoted here-document's body.
+function scan(line) {
   const s = String(line);
+  const commands = [];
+  const subs = [];
+  const heredocs = [];                                             // delimiters awaiting the next newline
+  let cur = '';
+  let procsub = false;
+  const cut = () => { commands.push(cur); cur = ''; };
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
-    if (c === '\\' && quote !== "'" && i + 1 < s.length) { cur += c + s[i + 1]; i++; continue; }
-    if (quote) { cur += c; if (c === quote) quote = null; continue; }
-    if (c === '$' && s[i + 1] === "'") { const j = ansiEnd(s, i); cur += s.slice(i, j + 1); i = j; continue; }
-    if (c === '"' || c === "'") { quote = c; cur += c; continue; }
-    if (c === '$' && s[i + 1] === '(' || c === '`') { const j = substitutionEnd(s, i); cur += s.slice(i, j + 1); i = j; continue; }
+    if (c === '\\') { cur += s.slice(i, i + 2); i++; continue; }
+    if (c === "'") { const k = s.indexOf("'", i + 1); if (k < 0) return null; cur += s.slice(i, k + 1); i = k; continue; }
+    if (c === '$' && s[i + 1] === "'") { const k = ansiEnd(s, i); if (k >= s.length) return null; cur += s.slice(i, k + 1); i = k; continue; }
+    if (c === '"') { const k = closeDouble(s, i, subs); if (k < 0) return null; cur += s.slice(i, k + 1); i = k; continue; }
+    if (c === '`') { const k = closeBacktick(s, i); if (k < 0) return null; subs.push(s.slice(i + 1, k)); cur += s.slice(i, k + 1); i = k; continue; }
+    if (c === '$' && s[i + 1] === '(') { const k = closeParen(s, i); if (k < 0) return null; subs.push(s.slice(i + 2, k)); cur += s.slice(i, k + 1); i = k; continue; }
+    if (c === '#') {
+      if (s[i - 1] === ')') return null;
+      if (i === 0 || /[\s;&|(<>]/.test(s[i - 1])) { const k = s.indexOf('\n', i); i = (k < 0 ? s.length : k) - 1; continue; }   // a comment
+    }
+    if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
+      const m = s.slice(i + 2).match(/^(-?)[ \t]*(?:'([^']*)'|"([^"\\$`]*)"|([^\s;&|()<>'"`$\\]+))/);
+      if (!m) return null;
+      heredocs.push({ word: m[2] ?? m[3] ?? m[4], strip: m[1] === '-', quoted: m[4] === undefined });
+      cur += s.slice(i, i + 2 + m[0].length);
+      i += 1 + m[0].length;
+      continue;
+    }
+    if ((c === '<' || c === '>') && s[i + 1] === '(') procsub = true;
+    if (c === '\n' && heredocs.length) {
+      cut();
+      let j = i + 1;
+      for (const h of heredocs) {
+        for (;;) {
+          if (j >= s.length) return null;
+          const e = s.indexOf('\n', j);
+          const body = s.slice(j, e < 0 ? s.length : e);
+          j = e < 0 ? s.length : e + 1;
+          if ((h.strip ? body.replace(/^\t+/, '') : body) === h.word) break;
+          if (!h.quoted && /`|\$\(/.test(body)) return null;            // an unquoted body runs its substitutions
+        }
+      }
+      heredocs.length = 0;
+      i = j - 1;
+      continue;
+    }
     const two = s.slice(i, i + 2);
-    if (two === '&&' || two === '||') { out.push(cur); cur = ''; i++; continue; }
-    if (';|\n()&'.includes(c)) { out.push(cur); cur = ''; continue; }
+    if (two === '&&' || two === '||') { cut(); i++; continue; }
+    if (';|\n()&'.includes(c)) { cut(); continue; }
     cur += c;
   }
-  out.push(cur);
-  return out.map((x) => x.trim()).filter(Boolean);
+  if (heredocs.length) return null;
+  cut();
+  return { commands: commands.map((x) => x.trim()).filter(Boolean), subs, procsub };
 }
 
-// The command lines inside $( … ) and backquotes, wherever they are but in single quotes: the shell
-// runs them inside double quotes too (`echo "$(git push)"`, Luna's R1, round 2). Nested ones are
-// found when these are read in turn.
-export function substitutions(line) {
-  const s = String(line);
-  const out = [];
-  let single = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === '\\' && !single) { i++; continue; }
-    if (c === '$' && s[i + 1] === "'" && !single && !inDouble(s, i)) { i = ansiEnd(s, i); continue; }
-    if (c === "'" && !single && !inDouble(s, i)) { single = true; continue; }
-    if (c === "'" && single) { single = false; continue; }
-    if (single) continue;
-    if (c === '$' && s[i + 1] === '(') {
-      let depth = 1;
-      let j = i + 2;
-      for (; j < s.length && depth; j++) { if (s[j] === '(') depth++; else if (s[j] === ')') depth--; }
-      out.push(s.slice(i + 2, depth ? s.length : j - 1));
-      i = j - 1;
-    } else if (c === '`') {
-      const j = s.indexOf('`', i + 1);
-      out.push(s.slice(i + 1, j < 0 ? s.length : j));
-      i = j < 0 ? s.length : j;
+// The simple commands of a command line (scan's), or the line itself when it cannot be read.
+export function simpleCommands(line) {
+  return scan(line)?.commands ?? [String(line)];
+}
+
+// Where the "…" that starts at i closes, its substitutions added to `subs`; -1 if it never closes.
+function closeDouble(s, i, subs) {
+  for (let j = i + 1; j < s.length; j++) {
+    const c = s[j];
+    if (c === '\\') { j++; continue; }
+    if (c === '"') return j;
+    if (c === '`') { const k = closeBacktick(s, j); if (k < 0) return -1; subs?.push(s.slice(j + 1, k)); j = k; continue; }
+    if (c === '$' && s[j + 1] === '(') { const k = closeParen(s, j); if (k < 0) return -1; subs?.push(s.slice(j + 2, k)); j = k; }
+  }
+  return -1;
+}
+
+// Where the `…` that starts at i closes; -1 if it never closes.
+function closeBacktick(s, i) {
+  for (let j = i + 1; j < s.length; j++) {
+    if (s[j] === '\\') j++;
+    else if (s[j] === '`') return j;
+  }
+  return -1;
+}
+
+// Where the $( that starts at i closes, read as bash reads its inside (a command line of its own,
+// with its own quotes, comments and substitutions); -1 if it never closes. A here-document or a
+// `case` inside, whose bodies and patterns break the count of parentheses, is not read: -1.
+function closeParen(s, i) {
+  let depth = 0;
+  for (let j = i + 2; j < s.length; j++) {
+    const c = s[j];
+    if (c === '\\') { j++; continue; }
+    if (c === "'") { const k = s.indexOf("'", j + 1); if (k < 0) return -1; j = k; continue; }
+    if (c === '$' && s[j + 1] === "'") { const k = ansiEnd(s, j); if (k >= s.length) return -1; j = k; continue; }
+    if (c === '"') { const k = closeDouble(s, j); if (k < 0) return -1; j = k; continue; }
+    if (c === '`') { const k = closeBacktick(s, j); if (k < 0) return -1; j = k; continue; }
+    if (c === '$' && s[j + 1] === '(') { const k = closeParen(s, j); if (k < 0) return -1; j = k; continue; }
+    if (c === '#') {
+      if (s[j - 1] === ')') return -1;
+      if (/[\s;&|(<>]/.test(s[j - 1])) { const k = s.indexOf('\n', j); if (k < 0) return -1; j = k; continue; }
+    }
+    if (c === '<' && s[j + 1] === '<' && s[j + 2] !== '<') return -1;
+    if (c === '(') depth++;
+    else if (c === ')') {
+      if (depth === 0) return /\bcase\b/.test(s.slice(i + 2, j)) ? -1 : j;
+      depth--;
     }
   }
-  return out;
-}
-// Whether position i of s is inside double quotes (a single quote there is a plain character).
-function inDouble(s, i) {
-  let d = false;
-  let q = false;
-  for (let k = 0; k < i; k++) {
-    if (s[k] === '\\' && !q) { k++; continue; }
-    if (s[k] === "'" && !d) q = !q;
-    else if (s[k] === '"' && !q) d = !d;
-  }
-  return d;
-}
-
-// The line with its quoted parts and escaped characters blanked, for a check of what is unquoted.
-function unquoted(line) {
-  let out = '';
-  let quote = null;
-  const s = String(line);
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === '\\' && quote !== "'") { out += '  '; i++; continue; }
-    if (quote) { out += ' '; if (c === quote) quote = null; continue; }
-    if (c === '"' || c === "'") { quote = c; out += ' '; continue; }
-    out += c;
-  }
-  return out;
-}
-
-// Where a substitution that starts at i ($( … ) or `…`) ends: the index of its last character.
-function substitutionEnd(s, i) {
-  if (s[i] === '`') { const j = s.indexOf('`', i + 1); return j < 0 ? s.length - 1 : j; }
-  let depth = 1;
-  let j = i + 2;
-  for (; j < s.length && depth; j++) { if (s[j] === '(') depth++; else if (s[j] === ')') depth--; }
-  return j - 1;
+  return -1;
 }
 
 // Where an ANSI-C string $'…' that starts at i ends: the index of its closing quote.
@@ -190,7 +223,15 @@ function parseWords(cmd) {
       let v = '';
       for (; j < s.length && s[j] !== '"'; j++) {
         if (s[j] === '\\' && '"\\$`\n'.includes(s[j + 1])) { if (s[j + 1] !== '\n') v += s[j + 1]; j++; continue; }
-        if (expands(s, j) || s[j] === '`') dyn = true;
+        if (s[j] === '`' || s[j] === '$' && s[j + 1] === '(') {           // a substitution, read whole
+          const k = s[j] === '`' ? closeBacktick(s, j) : closeParen(s, j);
+          const e = k < 0 ? s.length - 1 : k;
+          v += s.slice(j, e + 1);
+          dyn = true;
+          j = e;
+          continue;
+        }
+        if (expands(s, j)) dyn = true;
         v += s[j];
       }
       add(v);
@@ -202,6 +243,12 @@ function parseWords(cmd) {
       const op = s.slice(i).match(/^[<>&]+/)[0];
       out.push({ text: fd + op, dynamic: false, op: true });
       i += op.length - 1;
+    } else if (c === '`' || c === '$' && s[i + 1] === '(') {               // a substitution, read whole
+      const k = c === '`' ? closeBacktick(s, i) : closeParen(s, i);
+      const e = k < 0 ? s.length - 1 : k;
+      add(s.slice(i, e + 1));
+      dyn = true;
+      i = e;
     } else {
       const rest = s.slice(i).match(/^\S*/)[0];
       if (expands(s, i) || c === '`' || c === '*' || c === '?' || (c === '[' && rest.indexOf(']') > 1)
@@ -326,12 +373,12 @@ function ghParts(args, unread) {
 // Every command a command line runs: its simple commands, what they wrap, and what its command
 // substitutions run, recursively; nesting deeper than that is refused, never skipped.
 function commandsOf(line, depth = 0) {
-  if (/[<>]\(/.test(unquoted(line))) return [`${UNREAD} ${line}`];         // process substitution
-  const own = simpleCommands(line).flatMap((x) => effective(x, depth));
-  const subs = substitutions(line);
-  if (!subs.length) return own;
+  const read = scan(line);
+  if (!read || read.procsub) return [`${UNREAD} ${line}`];
+  const own = read.commands.flatMap((x) => effective(x, depth));
+  if (!read.subs.length) return own;
   if (depth >= 5) return [...own, `${DEEP} ${line}`];
-  return [...own, ...subs.flatMap((x) => commandsOf(x, depth + 1))];
+  return [...own, ...read.subs.flatMap((x) => commandsOf(x, depth + 1))];
 }
 
 // Why `command` is refused for `role`, or null when it is allowed. `cwd` is the directory the command

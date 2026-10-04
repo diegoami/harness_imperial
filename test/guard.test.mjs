@@ -57,7 +57,14 @@ const REFUSED = {
     "bash<<<'git push'", `awk -f <(echo 'BEGIN{system("git push")}') /dev/null`,
     // Sol's R1, round 3: another spelling of a device; and a script that does not exist yet.
     "echo 'git push' | bash //dev/stdin", "echo 'git push' | source //dev/stdin", "echo 'git push' | bash /./dev/stdin",
-    "echo 'git push' | bash /dev/fd/0", "printf 'git push' > s.sh; bash s.sh", 'sh scripts/no-such-script.sh'],
+    "echo 'git push' | bash /dev/fd/0", "printf 'git push' > s.sh; bash s.sh", 'sh scripts/no-such-script.sh',
+    // Sol's R1, round 4: a quote inside a comment; then the class, places where separate scanners
+    // read a line differently from bash (each checked against bash with a mock git).
+    "echo # '\ngit push\n# '", 'echo $(echo ")"; git push)', 'echo "$(echo ")"; git push; echo "(")"', 'echo `echo #` ; git push',
+    'echo $(true)#x; git push', "cat <<EOF\nhello it's me\nEOF\ngit push", 'cat <<EOF\n$(git push)\nEOF',
+    'x=$(echo a b) && git push', "echo $(echo '(' ; git push)", 'echo $(case x in a) echo;; esac); git push',
+    "echo 'unclosed", 'echo "unclosed', 'echo $(unclosed', 'cat <<EOF\nno end',
+    "(true)#'\ngit push\n#'", 'echo $(case x in a) echo ok;; esac)'],          // after a subshell, # is a comment
   implementer: ['git stash', 'git stash list', 'echo $(git stash pop)', 'git worktree add ../x', 'git push --force',
     'git push -f origin b', 'git push --force-with-lease', 'git push origin +b', 'gh pr merge 7 --squash',
     'bash -c "git stash"', 'gh api -X PUT repos/o/r/pulls/7/merge', 'git --no-pager stash', 'echo "$(git worktree list)"',
@@ -79,7 +86,12 @@ const ALLOWED = {
     'cat $(ls docs/*.md)', 'export X=$(pwd)', 'git diff $base...HEAD', 'if [ -n "$x" ]; then echo y; fi',
     'while read l; do echo "$l"; done < f.txt', "printf '%s' $'plain'",
     // A SAFE command's arguments are never run: a mention of git or a shell there is allowed.
-    'echo git push', 'which bash', 'ls /bin/sh', 'grep -rn sh docs', 'echo "use bash -c"', 'cat git push.txt'],
+    'echo git push', 'which bash', 'ls /bin/sh', 'grep -rn sh docs', 'echo "use bash -c"', 'cat git push.txt',
+    // Comments and here-documents, read as bash reads them.
+    '# run the tests\nnpm test', 'npm test # quick', "echo 'a # b'", 'echo "#x"', 'echo a#b', 'git log --oneline # recent',
+    "cat <<'EOF' > notes.md\nit's fine; git push is mentioned\nEOF", "cat <<EOF\nplain text, it's ok\nEOF",
+    "cat <<'EOF'\n$(git push)\nEOF", "cat <<-EOF\n\tindented\n\tEOF", "grep -n '#' src/a.js",
+    'echo $(echo ")")', "echo $(echo ')')", 'echo "$(echo ")")"', "echo $(echo hi # it's a comment\n)"],
   implementer: ['git commit -m "fix; then git stash nothing"', 'git push origin task/T07-x', 'git push -u origin task/T07-x',
     'gh pr create --title t --body-file b.md', 'git checkout --detach', 'npm test', 'gh pr view 7',
     'gh pr create --title "Fix: git push docs" --body x', 'git commit -m "mention: gh pr merge"',
