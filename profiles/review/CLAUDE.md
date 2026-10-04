@@ -6,8 +6,9 @@ PR. How a review is run is `docs/review.md`; the L-numbers are harness_imperial'
 `template/docs/lessons.md`.
 
 ## Rules
-1. The main session, on Opus, plans and implements, on a branch, never on `main`. One PR per change, or per
-   group of related changes: a PR is as large as one review round can cover, and no larger. (L37)
+1. The main session, on Opus, plans and implements, on a branch, never on `main`. One PR per
+   change, or per group of related changes: a PR is as large as one review round can cover, and no
+   larger. (L37)
 2. The PR body is the contract: Scope, Done when (each line one command a read-only reviewer can
    run), and `Critical: yes|no` with the reason. (L32, L37)
 3. Every PR is reviewed by `tools/harness/review.mjs --exclude claude`, never by a Claude agent:
@@ -20,6 +21,10 @@ PR. How a review is run is `docs/review.md`; the L-numbers are harness_imperial'
    findings, or new ones of the last round's class) there is no stronger implementer than Opus:
    the next round fixes the class, not each instance, sweeps for it and lists the sweep in the PR,
    and changes the approach when the class needs it; the same class again goes to the user. (L38)
+   A reviewer that reports one blocking finding per round despite the brief's one-pass section:
+   after the second such round, stop. No further review until you have swept the whole diff for
+   that class, fixed what you found, and recorded the pattern in the model-trials record (create
+   one if there is none); the review after that is the last before escalation. (L49)
 6. Any failure escalates to the user: a review that did not run (exit 3), one posted but not acted
    on (exit 4), a reviewer that cannot run a Done-when line. Never fall back to a Claude reviewer.
 7. Relay review findings in full, never a subset.
