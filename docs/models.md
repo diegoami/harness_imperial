@@ -19,8 +19,8 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 
 | Name | Model and route | Family | Used for, here |
 | --- | --- | --- | --- |
-| `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer**, the `harness.json` default |
-| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **guard reviewer**: `--hard --sol`, for a guard task and a hard task's last round (L41); still on watch (L35) |
+| `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer** of small, simple PRs, the `harness.json` default |
+| `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **reviewer of complex work**: `--reviewer sol-6.1` (the owner, 2026-10-04, below), and `--hard --sol` for a guard task and a hard task's last round (L41); still on watch (L35) |
 | `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project; first in the `harness.json` default chain (L42); on watch |
 | `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project (`--model deepseek-flash`); second in the default chain |
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
@@ -38,7 +38,9 @@ Every model runs at effort `high`, never `max` (L27), except Sol: it runs sparin
 **Not used:**
 - OpenCode Zen's `opencode/…` models;
 - Go's own GPT-6 Luna, whose proxy returned `400 Bad Request` in long agent loops (L27);
-- GLM-5.3-highspeed, which the Z.AI plan refuses.
+- GLM-5.3-highspeed, which the Z.AI plan refuses;
+- GPT-6 Astra (`openai/gpt-6-astra…`), listed by OpenAI since 2026-10-04: the owner said to steer
+  clear of it.
 
 **Routes:**
 - GLM runs only on the Z.AI Coding Plan (`zai-coding-plan/…`).
@@ -65,11 +67,26 @@ family is skipped; the posted header names each model that failed or could not r
 that reviewed, so a light substitute on a hard review is visible; with no reviewer left, the script
 exits 3, and since Claude implements here, the owner decides.
 
-**Sol is used sparingly (L41).** It reviews only a guard task (the first item of the list below)
-and a hard task's last round (`review-round:2`, `review-round:1` for a fix), at effort `low`.
-Every other hard review goes to GLM-5.3. The owner adopted this from games_revival_framework on
+**Sol in the `--hard` chain is used sparingly (L41).** Through `--hard`, Sol reviews only a guard
+task (the first item of the list below) and a hard task's last round (`review-round:2`,
+`review-round:1` for a fix), at effort `low`; every other `--hard` review goes to GLM-5.3. The
+owner's reviewer choice of 2026-10-04 (below) goes further: the main session also names Sol directly
+(`--reviewer sol-6.1`) for complex work. L41 governs the committed `--hard` order; the reviewer
+choice governs which reviewer the main session asks for. The owner adopted this from games_revival_framework on
 2026-10-04, where GLM-5.3's first hard review (goal2 T04) re-ran every Done-when line, regenerated
 the listing, made five mutations and checked the data bytes.
+
+**Reviewer choice, by the owner (2026-10-04).** Complex work goes to GPT-6.1 Sol at effort `low`
+(`medium` if justified, never `high`): guards, harness or driver changes, measurement integrity,
+research deliverables, plans with many acceptance lines. GPT-6 Luna reviews only small, simple PRs.
+Here almost every PR is a harness change, so the main session names Sol (`--reviewer sol-6.1`).
+`reviewer.hard`'s committed order (L41) is unchanged until the owner decides otherwise.
+
+**When OpenCode Go runs low** (the owner, 2026-10-04): DeepSeek goes last in every chain, and
+OpenAI fills in (Sol at `low`, or Luna; never Astra). The main session makes it a local, uncommitted
+edit of the main checkout's `harness.json`, records it in its memory notes, and reverts it with
+`git checkout -- harness.json` when the owner says Go is back. While it stands, the root and template
+copies differ, so `npm test` runs in worktrees.
 
 **When work is hard.** A PR is hard if any of these holds:
 - it is a guard, a gate or a check whose failure lets a wrong result through: the runner's
@@ -190,6 +207,10 @@ and the trials issue it names.
   - Its misses: it approved game-archaeologist PR 2 with no evidence for one Done-when line
     (L32). It mistyped a long path (L30), and guessed a home directory for a file
     read (L36). Being read-only, it cannot run a mutation check.
+  - It approved PR 29's final head, where eight guard bypasses remained (`timeout 10 git push`,
+    `sudo -u root git push` …), found later by GLM-5.3 (#62).
+  - At ic2-conquest (PR #38, 2026-10-04) it asked for rework eight times, one blocking finding per
+    round, most of them visible in the first round (L49).
 - **Claude Opus, as an agent reviewer** (PRs 12 and 13, before PR 18 handed this repository's
   reviews to Luna): approved after named fixes both times.
 - **DeepSeek V4.1 Flash** (implementer): it created no session while WSL was short of memory, in
@@ -204,7 +225,9 @@ and the trials issue it names.
   its first hard review re-ran every Done-when line and made five mutations (L41). In the PR 29
   replay (below) it found the most bypasses, each proven live, and still approved: it rated them
   not blocking. In game-archaeologist's replay it approved every head. With L47's prompt it asked
-  for rework on that head, and found real bypasses on the head Luna had approved (#62).
+  for rework on that head, and found real bypasses on the head Luna had approved (#62). It approved
+  PR 63 (the L47 prompt) with two valid non-blocking findings, keeping its scratch output inside the
+  worktree as the new rule asks.
 - **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1, on
   OpenCode Go; its runs on Z.AI since have had no stall, L42), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
@@ -213,6 +236,14 @@ and the trials issue it names.
   in each round of malpaco T02.
 - **GPT-6.1 Sol**: it answered a one-word probe on 2026-10-03 (L35). In the PR 29 replay (below) it
   asked for rework with two blocking bypasses, the correct verdict.
+  - On PR 66 (the guard, #62; 2026-10-04, at `low`) it asked for rework five times, each with a
+    bypass it proved under real bash with a mock `git`: ANSI-C quoting and nesting depth; a NUL
+    escape and a shell option's value; `//dev/stdin`; a quote inside a comment; a here-document's
+    line join. One new finding per round led to a change of approach after round 2 (L38: a strict
+    subset of Bash) and to L49. Its findings named the class each time; none was a false positive.
+  - On PR 69, the first brief with L49's one-pass section, it reported all three blocking findings
+    in one review, ended with "Final pass done", and approved the fix in round 2.
+  - It approved PR 57 (the `/tmp/opencode` deny) with no findings, re-running the real-OpenCode test.
 
 **The PR 29 replay (2026-10-04).** PR 29's first commit (36abb20, the PreToolUse guard) had blocking
 bypasses that Luna found in the real round 1: escaped quotes and nested shells let a `git push`
