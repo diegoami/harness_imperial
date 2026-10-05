@@ -49,6 +49,23 @@ own window, named after it: today GPT-5.6 Luna (`gpt-5.6-luna:7d`), which can be
 OpenAI's main `7d` window, the one GPT-6 Luna and Sol draw on, is exhausted. Read which pools exist
 from the windows the endpoint returns, not from this page.
 
+Free models on OpenRouter are a supplement, for smaller tasks and additional reviews (a second
+opinion next to a regular model), never the main model for important work (the owner, 2026-10-06):
+
+| Model | Use |
+| --- | --- |
+| `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` | the stronger one |
+| `openrouter/cohere/north-mini-code:free` | coding-focused, faster |
+| `openrouter/thinkingmachines/inkling:free` | usable, through OpenCode only (not the raw API) |
+| `openrouter/poolside/laguna-s-2.1:free` | usable, often rate-limited |
+
+They share one allowance of 1,000 requests a day and about 20 a minute, and each agent step is one
+request: `free_model_daily_requests` in `/quota/openrouter` gives what remains, and the scripts skip
+a free model when none remain (`lib/quota.mjs`). Free providers may log and train on prompts: never
+send private or client code, secrets, or anything under NDA. They come and go and get rate-limited:
+on a 429, fall back to the next model instead of retrying. Check their output like any unreviewed
+contribution; they have been tried only on small tasks.
+
 The models per provider, heavy and light:
 
 | Provider | Heavy | Light |
