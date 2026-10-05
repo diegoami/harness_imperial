@@ -23,7 +23,8 @@ import { spawnSync } from 'node:child_process';
 // inherited descriptors, writable files that run later). That needs a separate OS user; the owner
 // chose mistakes-only (2026-10-05).
 //
-// Linux only, and only where bwrap runs (a probe runs `true` in the jail). Elsewhere the reviewer
+// Off unless harness.json says `"jail": { "enabled": true }` (the owner's decision of 2026-10-05: an
+// adopting project starts without it); off by choice says nothing. When enabled: Linux only, and only where bwrap runs (a probe runs `true` in the jail). Elsewhere the reviewer
 // runs without it, and the hook and review.mjs say so loudly: the guard still applies.
 // HARNESS_BWRAP names the bwrap to use (tests use a fake one).
 
@@ -99,3 +100,8 @@ export function jailCommand(command, jail) {
 
 export const OFF_WARNING = (why) => `WARNING: the reviewer's credential jail is off (${why}). It keeps the user's `
   + 'GitHub credentials, and only its agent rules stop a push or a gh write (#68).';
+
+// Whether the project turned the jail on (harness.json's jail.enabled), from a checkout's top.
+export function jailEnabled(top) {
+  try { return JSON.parse(fs.readFileSync(path.join(top, 'harness.json'), 'utf8')).jail?.enabled === true; } catch { return false; }
+}
