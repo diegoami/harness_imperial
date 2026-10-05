@@ -39,6 +39,16 @@ export class OpenCodeInfraError extends Error {
   }
 }
 
+// A failed run on Alibaba's Token Plan whose stderr (OpenCode's own, not the model's output) says the
+// key was refused: an auth.json entry in the data
+// directory overrides ALIBABA_TOKEN_PLAN_API_KEY, and a stale one breaks the provider there (the
+// owner, 2026-10-05). The reason names the directory so the owner can clear it; null otherwise.
+export function keyProblem(text, modelId, dataHome) {
+  if (!String(modelId).startsWith('alibaba-token-plan/') || !/invalid api[- ]?key/i.test(String(text))) return null;
+  return `invalid API key for alibaba-token-plan: the auth.json in ${dataHome} may hold a stale Alibaba entry, which `
+    + 'overrides ALIBABA_TOKEN_PLAN_API_KEY. Tell the owner which XDG_DATA_HOME this was; never print, copy or edit the key or auth.json';
+}
+
 // A failure reason without its numbers, so a chain can tell the same failure twice (two startup
 // hangs, two idle kills) from two different ones.
 export function failureClass(reason) {
@@ -233,9 +243,11 @@ export function loginHint(modelId, listed, dataHome, errors = new Map()) {
     return `OpenCode Go is not logged in for ${dataHome}. Run \`opencode console login\` with XDG_DATA_HOME=${dataHome} `
       + `(bash: XDG_DATA_HOME="${dataHome}" opencode console login; PowerShell: $env:XDG_DATA_HOME="${dataHome}"; opencode console login)`;
   }
+  // Its key comes only from ALIBABA_TOKEN_PLAN_API_KEY; an auth.json entry would override it (the owner, 2026-10-05).
   if (provider === 'alibaba-token-plan') {
-    return `Alibaba Token Plan is not logged in for OpenCode (\`Provider not found\`): ask the owner to run \`opencode auth login\` `
-      + `and choose Alibaba Token Plan; do not retry. The next run copies auth.json into ${dataHome}`;
+    return 'Alibaba Token Plan lists no models: ALIBABA_TOKEN_PLAN_API_KEY is not in this environment (in WSL it comes from '
+      + '~/.config/ai-keys.env, loaded by ~/.bashrc and ~/.profile). Restart the session or shell; if it is still missing, '
+      + `tell the owner. Do not retry; never add the key with \`opencode auth login\` (data directory ${dataHome})`;
   }
   return `${provider} lists no models for ${dataHome}: it is not logged in there. Log in once with `
     + `\`opencode auth login\` (or set its API key) in your usual OpenCode; the next run copies auth.json into ${dataHome}`;

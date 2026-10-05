@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
 import {
   runOpenCodeWatched, lookupSession, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
-  openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem,
+  openCodeHome, listedModels, loginHint, keyProblem, openCodeVersion, versionProblem,
 } from '../template/tools/harness/lib/opencode.mjs';
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-opencode.mjs');
@@ -264,7 +264,11 @@ test('listedModels and loginHint: Go not logged in, or an unknown id', async () 
   assert.equal(errors.size, 0);                              // "Provider not found" is a missing login
   assert.match(loginHint('opencode-go/nope', listed, '/d'), /is not in `opencode models opencode-go`: check the id/);
   assert.match(loginHint('opencode-go/deepseek-v4.1-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
-  assert.match(loginHint('alibaba-token-plan/qwen3.8-max', new Set(), '/d'), /Alibaba Token Plan is not logged in .*opencode auth login.*do not retry/);
+  // An Alibaba run refused for its key names the data directory whose auth.json may override the variable.
+  assert.match(keyProblem('Error: Invalid API-key provided.', 'alibaba-token-plan/qwen3.8-max', '/d'), /auth\.json in \/d may hold a stale Alibaba entry.*Tell the owner which XDG_DATA_HOME/);
+  assert.equal(keyProblem('Error: Invalid API-key provided.', 'openai/gpt-5.6-luna', '/d'), null);
+  assert.equal(keyProblem('all fine', 'alibaba-token-plan/qwen3.8-max', '/d'), null);
+  assert.match(loginHint('alibaba-token-plan/qwen3.8-max', new Set(), '/d'), /ALIBABA_TOKEN_PLAN_API_KEY is not in this environment.*tell the owner\. Do not retry; never add the key with `opencode auth login`/);
   assert.match(loginHint('openai/gpt-6-luna', new Set(), '/d'), /openai lists no models for \/d: it is not logged in there\. Log in once with `opencode auth login`.*copies auth\.json into \/d/);
 });
 

@@ -521,6 +521,24 @@ test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM c
   assert.match(gh(q).comments[0].body, /^T07 review \(deepseek-pro; glm failed: exit 2\)\napprove/);
 });
 
+test('an Alibaba reviewer refused for its key says which data directory\'s auth.json to check, and nothing is posted', posix, () => {
+  const p = project();
+  const file = path.join(p.main, 'harness.json');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  config.models.qwen = { id: 'alibaba-token-plan/qwen3.8-flash', variant: 'high', family: 'qwen' };
+  fs.writeFileSync(file, JSON.stringify(config));
+  const r = review(p, { FAKE_OC_MODE: 'invalid-key', FAKE_OC_MODELS: JSON.stringify(['alibaba-token-plan/qwen3.8-flash']) }, '--exclude', 'claude', '--reviewer', 'qwen');
+  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.match(r.stderr, /qwen failed: invalid API key for alibaba-token-plan: the auth\.json in \S+oc-home[\\/]data may hold a stale Alibaba entry/);
+  assert.equal(gh(p).comments.length, 0);
+  // A review that only quotes the phrase is a review (Luna's R1, round 2).
+  const q = project();
+  fs.writeFileSync(path.join(q.main, 'harness.json'), JSON.stringify(config));
+  const ok = review(q, { FAKE_OC_MODE: 'review-ok', FAKE_OC_REVIEW_EXTRA: 'R1: the docs mention "Invalid API-key".', FAKE_OC_MODELS: JSON.stringify(['alibaba-token-plan/qwen3.8-flash']) }, '--exclude', 'claude', '--reviewer', 'qwen');
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  assert.equal(gh(q).comments.length, 1);
+});
+
 test('a reviewer whose provider is out of quota is skipped before it runs, saying why; with no quota-tracker nothing is skipped (L50)', posix, async () => {
   const s = await quotaServer([entry('zai', 'exhausted', [], { available_in: '2h08m' }), entry('openai', 'ok'), entry('opencode_go', 'ok')]);
   try {
