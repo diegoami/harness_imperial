@@ -7,6 +7,11 @@
       "family": "deepseek"
     },
     "luna": {
+      "id": "openai/gpt-5.6-luna",
+      "variant": "high",
+      "family": "openai"
+    },
+    "luna-6": {
       "id": "openai/gpt-6-luna",
       "variant": "high",
       "family": "openai"

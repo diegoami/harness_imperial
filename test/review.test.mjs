@@ -277,7 +277,7 @@ test('a review that may be cut off is posted under a note, unlabelled, exit 4, a
 test('a flagged review after a failed model: the reason goes in the note, the review stays whole', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, {
-    FAKE_OC_MODES: JSON.stringify({ 'openai/gpt-6-luna': 'exit-no-session', 'opencode-go/spare-model': 'ok' }),
+    FAKE_OC_MODES: JSON.stringify({ 'openai/gpt-5.6-luna': 'exit-no-session', 'opencode-go/spare-model': 'ok' }),
     FAKE_OC_OUTPUT: 'Notes first.\nT07 review (spare)\nrework\n\nR1: the loop in',
   });
   assert.equal(r.status, 4, r.stderr + r.stdout);
@@ -379,8 +379,8 @@ test('a reviewer on watch says what to look for before it runs (L35)', posix, ()
 
 // The review profile's reviewers (#39): GLM-5.3 Flash, then Luna, then DeepSeek; Luna's second opinion; no Claude.
 const PROFILE = { chain: ['glm-flash', 'luna', 'deepseek-flash'], secondOpinion: 'luna', claudeFallback: null };
-const LISTED = JSON.stringify(['zai-coding-plan/glm-5.3-flash', 'openai/gpt-6-luna', 'opencode-go/deepseek-v4.1-flash']);
-const modes = (m) => JSON.stringify({ 'zai-coding-plan/glm-5.3-flash': m[0], 'openai/gpt-6-luna': m[1], 'opencode-go/deepseek-v4.1-flash': m[2] ?? 'review-ok' });
+const LISTED = JSON.stringify(['zai-coding-plan/glm-5.3-flash', 'openai/gpt-5.6-luna', 'opencode-go/deepseek-v4.1-flash']);
+const modes = (m) => JSON.stringify({ 'zai-coding-plan/glm-5.3-flash': m[0], 'openai/gpt-5.6-luna': m[1], 'opencode-go/deepseek-v4.1-flash': m[2] ?? 'review-ok' });
 const labels = (p) => gh(p).issueLabels['12'] ?? [];
 
 test('a second opinion posts both reviews, and the stricter verdict decides the label (#39)', posix, () => {
@@ -491,8 +491,8 @@ test('OpenCode missing says the same as any other failure: the owner, or a Claud
 });
 
 // --hard (L39, L41): GLM-5.3, then DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
-const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-6-luna']);
-const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[2] ?? 'review-ok', 'openai/gpt-6-luna': m[3] ?? 'review-ok' });
+const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
+const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[2] ?? 'review-ok', 'openai/gpt-5.6-luna': m[3] ?? 'review-ok' });
 
 test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM cannot run, saying so (L39, L41)', posix, () => {
   const p = project();
@@ -519,7 +519,7 @@ test('--hard --sol reviews with Sol, and with the hard chain when Sol cannot run
 
 test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s R2 on PR 47)', posix, () => {
   const p = project();
-  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-6-luna']);
+  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
   const r = review(p, { FAKE_OC_MODELS: notListed, FAKE_OC_MODE: 'review-ok' }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(glm; sol-6\.1 not available\)\napprove/);

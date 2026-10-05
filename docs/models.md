@@ -19,7 +19,7 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 
 | Name | Model and route | Family | Used for, here |
 | --- | --- | --- | --- |
-| `luna` | GPT-6 Luna, `openai/gpt-6-luna`, the direct OpenAI route | OpenAI | **easy reviewer** of small, simple PRs, the `harness.json` default |
+| `luna` | GPT-5.6 Luna, `openai/gpt-5.6-luna`, the direct OpenAI route, its own weekly pool (L51) | OpenAI | **easy reviewer** of small, simple PRs, the `harness.json` default |
 | `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **reviewer of complex work**: `--reviewer sol-6.1` (the owner, 2026-10-04, below), and `--hard --sol` for a guard task and a hard task's last round (L41); still on watch (L35) |
 | `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project; first in the `harness.json` default chain (L42); on watch |
 | `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project (`--model deepseek-flash`); second in the default chain |
@@ -54,7 +54,7 @@ follows the work's difficulty. Claude writes every PR here, so here only the rev
 
 | Difficulty | Writes | Reviews | If the reviewer is unavailable |
 | --- | --- | --- | --- |
-| Easy, the default | Claude, the main session | GPT-6 Luna (`luna`) | escalate: no Claude reviewer may review here |
+| Easy, the default | Claude, the main session | GPT-5.6 Luna (`luna`) | escalate: no Claude reviewer may review here |
 | Hard | Claude, the main session | `--hard`: GLM-5.3; `--hard --sol`: GPT-6.1 Sol, for a guard task and the last round (L41) | the rest of `reviewer.hard`: DeepSeek V4 Pro, then Luna, by itself (L39) |
 
 The review always runs through `review.mjs` from the root, with `--exclude claude`.
@@ -78,7 +78,7 @@ the listing, made five mutations and checked the data bytes.
 
 **Reviewer choice, by the owner (2026-10-04).** Complex work goes to GPT-6.1 Sol at effort `low`
 (`medium` if justified, never `high`): guards, harness or driver changes, measurement integrity,
-research deliverables, plans with many acceptance lines. GPT-6 Luna reviews only small, simple PRs.
+research deliverables, plans with many acceptance lines. Luna (GPT-5.6) reviews only small, simple PRs.
 Here almost every PR is a harness change, so the main session names Sol (`--reviewer sol-6.1`).
 `reviewer.hard`'s committed order (L41) is unchanged until the owner decides otherwise.
 
@@ -143,6 +143,13 @@ Pro)". A number measured for another game is a target to measure, not a promise.
 
 ## How a run is made
 
+- **Quota first** (L50). Before choosing an implementer or a reviewer, run
+  `curl -s localhost:8765/avoid` (quota-tracker, `template/docs/environment.md`): a provider that is
+  `exhausted` is skipped. Name the next model of the chain with quota (`--model`, `--reviewer`) and
+  say so in the report. On 2026-10-04 Z.AI's 5-hour window and Go's week were both used up, which
+  left OpenAI (Sol, Luna) as the only OpenCode route. GPT-5.6 Luna, the reviewer `luna` since that
+  day (L51), has a pool of its own, separate from the one Sol (and GPT-6 Luna, now `luna-6`) draw
+  on; the endpoint's windows show which pools exist.
 - **The review of a PR here.** Run it from the root, on `main`, in the background:
   `node template/tools/harness/review.mjs --pr <n> --brief <file> --exclude claude`.
   - The reviewer's agent and config come from the main checkout (L34). While a review runs, do
@@ -195,7 +202,7 @@ Each observation has a source. The PRs hold the full record. "At Isle Wars" mean
 [isle-wars-archaeology's `docs/models.md`](https://github.com/diegoami/isle-wars-archaeology/blob/main/docs/models.md)
 and the trials issue it names.
 
-- **GPT-6 Luna** (reviewer of every PR here since PR 18):
+- **GPT-6 Luna** (`luna` until 2026-10-04, now `luna-6`; reviewer of every PR here from PR 18 to PR 75):
   - Its blocking findings were real:
     - PR 17: `--family` bypassed the family rule.
     - PR 21: an agent instruction had no regression test.

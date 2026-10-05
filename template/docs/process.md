@@ -21,13 +21,14 @@ Tag capability jumps, not phases. Release notes come from GitHub when the tag is
 | --- | --- | --- |
 | Main session | Claude, the session the user talks to | Plans, writes task files, runs `/run-task`, triages, merges, reports |
 | Implementer | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, via `tools/harness/implement.mjs`, then a Claude Sonnet agent (L42); a heavier model only with the reason in the task file (L46) | One task, one branch, one PR, in its own worktree |
-| Reviewer | OpenCode GPT-6 Luna (direct OpenAI) via `tools/harness/review.mjs`, then a Claude Opus agent; never the implementer's family (L27). Exit 3: Opus reviews; exit 4: the main session reads the flagged review and decides (L28) | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
+| Reviewer | OpenCode GPT-5.6 Luna (direct OpenAI, L51) via `tools/harness/review.mjs`, then a Claude Opus agent; never the implementer's family (L27). Exit 3: Opus reviews; exit 4: the main session reads the flagged review and decides (L28) | Re-runs the Done-when, audits scope and evidence, posts one PR comment, applies the label |
 | Decider | Jev via `tools/harness/jev.mjs` (the `/jev` skill) | Repeated yes/no decisions over many items, at the confident ends only (§12) |
 | Generator | Models on OpenRouter (images, other families) and ElevenLabs (speech, sound, music) | Assets, each committed with a sidecar naming provider, model, prompt, date and cost |
 
 `/delegate` picks the delegate; model ids come from `models.mjs` or `opencode models`, never memory
-(L25). The main session runs `implement.mjs` itself: a wrapper agent would spend tokens watching it.
-It watches each background job (start, end, no output for 10 min), never with `pgrep -f`. (L48)
+(L25), after a look at the provider's quota: skip an exhausted one for the next with quota, saying so (L50).
+The main session runs `implement.mjs` itself: a wrapper agent would spend tokens watching it.
+It watches each background job (start, end, no output for 10 min), never with `pgrep -f`. (L48), and checks quota with `docs/environment.md`'s quota-tracker.
 
 ## 2. Task files
 
@@ -137,8 +138,7 @@ run, or the owner's decision with its basis. Plausible rules without either stay
 - Transcribe every number from the research into one fixtures corpus with provenance, and assert
   against it: each re-read of a report is another chance to misread it. (L15)
 - New evidence runs in two stages: findings to the research repository, then a check of every
-  document claim it touches. Each finding is a doc fix, a bug, a task-file edit, or a question for
-  the user; research never decides design. (L16)
+  document claim it touches. Each finding is a doc fix, a bug, a task-file edit, or a question for the user; research never decides design. (L16)
 - The original files never enter the repository. CI fetches them from a private fixtures
   repository holding the whole corpus; tests find fixtures by name; local tests skip without them. (L17)
 

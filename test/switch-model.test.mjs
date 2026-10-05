@@ -27,7 +27,7 @@ test('the family comes from the vendor in the id, not the route', () => {
 });
 
 test('the name is the existing entry\'s for a known id, else the id\'s model part', () => {
-  assert.equal(nameOf(template(), 'openai/gpt-6-luna'), 'luna');
+  assert.equal(nameOf(template(), 'openai/gpt-5.6-luna'), 'luna');
   assert.equal(nameOf(template(), 'opencode-go/kimi-k3'), 'kimi-k3');
 });
 
@@ -38,7 +38,7 @@ test('a switch makes the model the role\'s one model, at high, and keeps every o
   assert.equal(p.config.reviewer.claudeFallback, 'opus');
   assert.ok(p.config.models.luna);
   assert.deepEqual(p.config.implementer, template().implementer);
-  assert.match(p.before, /^luna \(openai\/gpt-6-luna, high\) then Claude opus$/);
+  assert.match(p.before, /^luna \(openai\/gpt-5\.6-luna, high\) then Claude opus$/);
   assert.match(p.after, /^kimi-k3 \(opencode-go\/kimi-k3, high\) then Claude opus$/);
   assert.equal(planSwitch(template(), { role: 'implementer', id: 'opencode-go/kimi-k3', fallback: 'opus' }).config.implementer.claudeFallback, 'opus');
 });
@@ -48,7 +48,7 @@ test('refused: max effort, the other role\'s family (unless forced), a taken nam
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro' }), /^Error: Refused: deepseek is also the implementer's family/);
   const forced = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', force: true });
   assert.match(forced.conflict, /every review would exit 3/);
-  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', name: 'luna' }), /already holds openai\/gpt-6-luna/);
+  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', name: 'luna' }), /already holds openai\/gpt-5\.6-luna/);
   assert.throws(() => planSwitch(template(), { role: 'tester', id: 'opencode-go/kimi-k3' }), /--role must be/);
   // --family cannot carry a model past the family rule (Luna's R1 on PR 17).
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', family: 'kimi' }),
@@ -62,7 +62,7 @@ test('refused: max effort, the other role\'s family (unless forced), a taken nam
 test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
     'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
-    'reviewer: luna = openai/gpt-6-luna (high, family openai), then Claude opus',
+    'reviewer: luna = openai/gpt-5.6-luna (high, family openai), then Claude opus',
     'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash',
   ].join('\n'));
 });
@@ -74,7 +74,7 @@ test('showRoles in the review profile: no implementer line, and the owner after 
   const shown = showRoles(config).split('\n');
   assert.equal(shown.filter((l) => l.startsWith('implementer')).length, 0);
   assert.match(shown[0], /^reviewer: glm-flash = zai-coding-plan\/glm-5\.3-flash .*, deepseek-flash = opencode-go\/deepseek-v4\.1-flash \(high, family deepseek\), then the owner$/);
-  assert.match(planSwitch(config, { role: 'reviewer', id: 'openai/gpt-6-luna' }).after, /then the owner$/);
+  assert.match(planSwitch(config, { role: 'reviewer', id: 'openai/gpt-5.6-luna' }).after, /then the owner$/);
   assert.match(showRoles({ reviewer: { chain: [] } }), /then Claude \?$/);       // unsaid stays visible
 });
 
@@ -94,7 +94,7 @@ function project() {
   fs.copyFileSync(path.join(root, 'harness.json'), path.join(repo, 'harness.json'));
   return { base, repo, config: () => JSON.parse(fs.readFileSync(path.join(repo, 'harness.json'), 'utf8')) };
 }
-const MODELS = JSON.stringify(['opencode-go/deepseek-v4.1-flash', 'opencode-go/deepseek-v4-pro', 'opencode-go/kimi-k3', 'openai/gpt-6-luna']);
+const MODELS = JSON.stringify(['opencode-go/deepseek-v4.1-flash', 'opencode-go/deepseek-v4-pro', 'opencode-go/kimi-k3', 'openai/gpt-5.6-luna']);
 function sw(p, env, ...args) {
   return spawnSync(process.execPath, [path.join(root, 'tools/harness/switch-model.mjs'), ...args], {
     cwd: p.repo, encoding: 'utf8',
@@ -125,7 +125,7 @@ test('a model OpenCode does not list exits 3, with the login command, and writes
   const unknown = sw(p, {}, '--role', 'reviewer', '--model', 'opencode-go/no-such-model');
   assert.equal(unknown.status, 3);
   assert.match(unknown.stderr, /is not in `opencode models opencode-go`: check the id/);
-  const noLogin = sw(p, { FAKE_OC_MODELS: '["openai/gpt-6-luna"]' }, '--role', 'implementer', '--model', 'opencode-go/kimi-k3');
+  const noLogin = sw(p, { FAKE_OC_MODELS: '["openai/gpt-5.6-luna"]' }, '--role', 'implementer', '--model', 'opencode-go/kimi-k3');
   assert.equal(noLogin.status, 3);
   assert.match(noLogin.stderr, /OpenCode Go is not logged in for .*opencode console login/);
   assert.deepEqual(p.config(), JSON.parse(fs.readFileSync(path.join(root, 'harness.json'), 'utf8')));

@@ -13,7 +13,7 @@ yourself, check whether a delegate below does it better or cheaper.
 | Work | Delegate | How | Key |
 | --- | --- | --- | --- |
 | Code: implement a task or a fix | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | Z.AI's login (`opencode auth login`) and OpenCode Go's (`opencode console login`) to implement; OpenAI's (`opencode auth login`) to review |
-| Review a PR | GPT-6 Luna on OpenAI, through OpenCode (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
+| Review a PR | GPT-5.6 Luna on OpenAI, through OpenCode (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
 | Repeated decisions with known answers (triage, routing, gating, labelling) | Jev | `/jev` → `tools/harness/jev.mjs` | `OPENROUTER_API_KEY` |
 | Images: sprites, icons, maps, mockups, illustrations | An image model on OpenRouter | pick one with `models.mjs openrouter --output image` | `OPENROUTER_API_KEY` |
 | A second opinion from another model family, or reading audio or images | A model on OpenRouter | `models.mjs openrouter --input image` (or `audio`) | `OPENROUTER_API_KEY` |
@@ -33,18 +33,23 @@ another way, or tell the user what is missing (`docs/environment.md`).
 
    Do the same when you are unsure a model still exists. (L25)
    To change the implementer's or reviewer's model itself, use `/switch-model`.
-2. **Choose on the evidence you have.** In order of preference:
+2. **Check the quota first** (L50). Where quota-tracker runs (`curl -sf localhost:8765/health`),
+   `curl -s localhost:8765/avoid` lists the providers out of quota and when each is usable again,
+   and `curl -s localhost:8765/best` those with quota, most headroom first (`docs/environment.md`).
+   Skip a model whose provider is `exhausted`: name the next model of its chain that has quota
+   (`--model` for `implement.mjs`, `--reviewer` for `review.mjs`) and say so in the run's report.
+3. **Choose on the evidence you have.** In order of preference:
    - this project's own measurements (review rounds and tokens per task, from the merge comments);
    - a small trial;
    - the listed price and capabilities.
 
    Vendor benchmarks come last.
-3. **Record the choice where it is used.** Implementer and reviewer models go in `harness.json`,
+4. **Record the choice where it is used.** Implementer and reviewer models go in `harness.json`,
    and a task's own choice goes in its task file, with the date and the reason in the commit
    message. A generated asset gets a sidecar next to it, `<asset>.json`, with the provider, the
    model id, the prompt, the date and the cost. That records where it came from, and lets it be
    made again.
-4. **Say the cost first.** Before a batch (many images, a long narration), tell the user the
+5. **Say the cost first.** Before a batch (many images, a long narration), tell the user the
    estimated cost from the listed prices, and ask when it is more than a few dollars.
 
 ## Making media

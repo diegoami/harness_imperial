@@ -96,6 +96,21 @@ test('the main session watches background work, and never waits on pgrep -f (L48
   assert.match(s, /with `run_in_background`, and watch it \(below\); never poll with sleep/);
 });
 
+test('a model is chosen after a look at its provider\'s quota, and an exhausted one skipped (L50)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/docs/process.md'), /after a look at the provider's quota: skip an exhausted one for the next with quota, saying so \(L50\)/);
+  assert.match(flat('template/.claude/skills/delegate/SKILL.md'), /\*\*Check the quota first\*\* \(L50\)\. .*`curl -s localhost:8765\/avoid` .* Skip a model whose provider is `exhausted`: name the next model of its chain that has quota/);
+  assert.match(flat('profiles/review/CLAUDE.md'), /Check the quota first \(`docs\/environment\.md`\): skip an exhausted reviewer with `--reviewer` on the next one of the chain that has quota, and say so in the PR\. \(L50\)/);
+  for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
+    const e = flat(f);
+    assert.match(e, /## Quota: quota-tracker/, f);
+    assert.match(e, /`curl -s localhost:8765\/best`.*`curl -s localhost:8765\/avoid`/, f);
+    assert.match(e, /Never read or edit `~\/\.config\/quota-tracker\/config\.toml`: it holds account tokens\./, f);
+    assert.match(e, /Read which pools exist from the windows the endpoint returns, not from this page\./, f);
+  }
+  assert.match(read('template/docs/lessons.md'), /^\| L50 \| Before choosing, recommending or delegating to a model, the main session checks the providers' quota/m);
+});
+
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
 const ONE_PASS = `## Report every blocking finding in this one review
 
