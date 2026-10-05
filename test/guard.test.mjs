@@ -32,6 +32,10 @@ const REFUSED = {
     'gh api repos/o/r -iXPOST', 'gh api repos/o/r -fbody=x', 'gh api repos/o/r -Fbody=x', 'FLAGS=-XPOST; gh api repos/o/r "$FLAGS"',
     'FLAGS=--input=package.json; gh api repos/o/r "$FLAGS"', 'gh api repos/o/r --raw-field=a=b', 'gh api repos/o/r --input body.json',
     'gh api "$EP"', 'gh api repos/o/r --$OPT=1',
+    // Sol's R1-R3 on PR 92, round 2: an unquoted expansion that splits into an option, in an
+    // endpoint or in a value; -R's value shifting what an option consumes; -R before api.
+    'VALUE="r -XPOST"; gh api repos/$VALUE', 'VALUE="x -XPOST"; gh api repos/o/r -H X-Test:$VALUE',
+    'gh api repos/o/r -q -Rfoo -X POST', 'gh api -R o/r repos/x -X POST', 'gh -R o/r api repos/x -X POST',
     'gh pr ready 7', 'gh label create x', 'gh repo delete o/r',
     // Luna's R1, round 2: a substitution inside double quotes, git options before the subcommand.
     'echo "$(git push origin HEAD)"', 'echo "x `git push` y"', 'echo "$(echo "$(git commit -m x)")"',
@@ -88,7 +92,9 @@ const ALLOWED = {
     'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls', 'gh api -XGET repos/o/r', 'gh api --method=get repos/o/r', 'gh api -X "GET" repos/o/r',
     // Sol's R4 on PR 92: an option's value is a value, never read as an option.
     'gh api repos/o/r -H "X-Test: -XPOST"', 'gh api repos/o/r -X GET -H "X-Test: --method=POST"', 'gh api -q ".[] | -XPOST" repos/o/r',
-    'gh api repos/$OWNER/r/pulls --jq .x --paginate',
+    'gh api repos/o/r/pulls --jq .x --paginate', 'gh api -R o/r repos/x',
+    // Sol's R4-R5 on PR 92, round 2: after --, a word is the endpoint; a header may say (writes).
+    'gh api -- -XPOST', 'gh api repos/o/r -H "X-Test: (writes)"',
     'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
     "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3',
     'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'cat .git/HEAD',
