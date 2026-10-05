@@ -22,7 +22,12 @@ export async function readQuota(env = process.env, { timeoutMs = 3000 } = {}) {
     if (!res.ok) return { off: `${url} answered ${res.status}` };
     const body = await res.json();
     const list = Array.isArray(body) ? body : Object.values(body);
-    if (!list.every((p) => p && typeof p.provider === 'string')) return { off: `${url} answered something unreadable` };
+    // Every entry readable, windows included, or none is used (Sol's R1 on PR 77: a malformed window
+    // crashed the run instead of checking nothing).
+    const window = (w) => w && typeof w.name === 'string' && typeof w.used_pct === 'number';
+    const readable = (p) => p && typeof p.provider === 'string' && typeof p.status === 'string'
+      && (p.windows === undefined || (Array.isArray(p.windows) && p.windows.every(window)));
+    if (!list.every(readable)) return { off: `${url} answered something unreadable` };
     return { providers: new Map(list.map((p) => [p.provider, p])) };
   } catch (e) {
     return { off: `${url} did not answer (${e.cause?.code ?? e.name})` };
@@ -32,7 +37,8 @@ export async function readQuota(env = process.env, { timeoutMs = 3000 } = {}) {
 // Why a model may not run now, or null.
 export function quotaBlock(id, quota) {
   const p = quota.providers?.get(providerOf(id));
-  if (!p) return null;
+  // A provider that could not be checked blocks nothing, its windows included (Sol's R2 on PR 77).
+  if (!p || p.status === 'error' || p.status === 'not_configured') return null;
   const own = (p.windows ?? []).find((w) => w.name.split(':')[0] === id.split('/').slice(1).join('/'));
   if (own) return own.used_pct >= EXHAUSTED_PCT ? `its own ${own.name} window is ${own.used_pct}% used${own.resets_in ? `, resets in ${own.resets_in}` : ''}` : null;
   if (p.status !== 'exhausted') return null;

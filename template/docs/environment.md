@@ -102,8 +102,11 @@ If `curl -sf localhost:8765/health` fails where the service is installed:
    in the background (it stops when the session ends).
 
 `implement.mjs` and `review.mjs` ask the service themselves before their chain runs (`lib/quota.mjs`,
-L52): a model whose provider is exhausted, or whose own window is at 95% or more, is skipped with
-the reason in the log, and with none left the script exits 3. `HARNESS_QUOTA_URL` names another
+L52): a model with a window of its own (GPT-5.6 Luna's `gpt-5.6-luna:7d`) is judged by that window
+alone, skipped at 95% or more even when its provider is not exhausted, and run under 95% even when
+it is; any other model is skipped when its provider is `exhausted`. A provider in `error` or
+`not_configured` skips nothing. Each skip is logged with its reason, and with none left the script
+exits 3. `HARNESS_QUOTA_URL` names another
 address. Where the service does not answer, they skip nothing and log `quota: not checked`.
 
 Never read or edit `~/.config/quota-tracker/config.toml`: it holds account tokens. A provider in

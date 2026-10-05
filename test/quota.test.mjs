@@ -30,6 +30,10 @@ test('a model with its own window is judged by it: GPT-5.6 Luna runs while it is
   const lunaOut = of(entry('openai', 'ok', [{ name: '7d', used_pct: 10 }, { name: 'gpt-5.6-luna:7d', used_pct: 99 }]));
   assert.match(quotaBlock('openai/gpt-5.6-luna', lunaOut), /99% used/);
   assert.equal(quotaBlock('openai/gpt-6.1-sol', lunaOut), null);
+  // error and not_configured block nothing, even with a full window of the model's own (Sol's R2 on PR 77).
+  for (const status of ['error', 'not_configured']) {
+    assert.equal(quotaBlock('openai/gpt-5.6-luna', of(entry('openai', status, [{ name: 'gpt-5.6-luna:7d', used_pct: 97 }]))), null, status);
+  }
 });
 
 test('readQuota reads the service, and is off, saying why, when it does not answer or answers nonsense', async () => {
@@ -39,8 +43,12 @@ test('readQuota reads the service, and is off, saying why, when it does not answ
     assert.deepEqual([...q.providers.keys()], ['zai', 'openai']);
   } finally { s.stop(); }
   assert.match((await readQuota({ HARNESS_QUOTA_URL: 'http://127.0.0.1:9' })).off, /did not answer/);
-  const bad = await quotaServer({ nonsense: 1 });
-  try {
-    assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/);
-  } finally { bad.stop(); }
+  // Nonsense, or a malformed window, checks nothing rather than crash (Sol's R1 on PR 77).
+  for (const body of [{ nonsense: 1 }, [entry('openai', 'ok', {})], [entry('openai', 'ok', [null])],
+    [entry('openai', 'ok', [{ used_pct: 97 }])], [entry('openai', 'ok', [{ name: 'x', used_pct: '97' }])], [{ provider: 'openai' }]]) {
+    const bad = await quotaServer(body);
+    try {
+      assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/, JSON.stringify(body));
+    } finally { bad.stop(); }
+  }
 });
