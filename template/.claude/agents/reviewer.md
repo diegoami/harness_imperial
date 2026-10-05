@@ -31,7 +31,9 @@ push` and `gh` fail, and so may `git fetch`; never retry them.
   blocking even when it looks like an edge case: never rate it "follow-up hardening" or "outside the
   threat model", unless the task's text puts that case out of scope; quote that text if so. Not
   blocking: wording, style, and defects in code the PR did not change. An approve with a proven
-  bypass is the costliest mistake a review can make; when unsure, rate it blocking and say why (L47).
+  bypass is the costliest mistake a review can make (L47). When unsure, say how likely the problem
+  is, and rate it blocking only if it is likely and would get past what the task protects;
+  otherwise it is a follow-up (L53).
 - **Return** the review as your final message, and nothing else. Never post it, label anything
   or comment: the main session posts it with tools/harness/post-review.mjs, which reads exactly
   the shape below and refuses to act on a review it cannot read (L28, L32).

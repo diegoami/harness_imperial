@@ -106,10 +106,13 @@ test('every reviewer is told a proven bypass of what the task protects is blocki
   assert.match(prompt, /A finding you proved that lets a forbidden action or a wrong result past what the task protects is blocking, and blocks an approve: never "follow-up hardening" or "outside the threat model" unless the task's text says so \(L47\)\./);
   const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(instructions, /A proven bypass of the task's own guard is blocking even when it looks like an edge case/);
-  assert.match(instructions, /when unsure, rate it blocking and say why \(L47\)/);
+  assert.match(instructions, /When unsure, say how likely the problem is, and rate it blocking only if it is likely and would get past what the task protects; otherwise it is a follow-up \(L53\)/);
   const claude = fs.readFileSync(path.join(root, '.claude/agents/reviewer.md'), 'utf8').replace(/\s+/g, ' ');   // the Claude fallback reviewer too
   assert.match(claude, /A proven bypass of the task's own guard is blocking even when it looks like an edge case/);
-  assert.match(claude, /when unsure, rate it blocking and say why \(L47\)/);
+  assert.match(claude, /When unsure, say how likely the problem is, and rate it blocking only if it is likely and would get past what the task protects; otherwise it is a follow-up \(L53\)/);
+  for (const f of ['docs/review-brief.md', '../profiles/review/docs/review.md']) {
+    assert.match(fs.readFileSync(path.join(root, f), 'utf8').replace(/\s+/g, ' '), /When unsure, say how likely the problem is\. Rate it blocking only if it is likely and would get past what the task protects; otherwise it is a follow-up\. \(L53\)/, f);
+  }
   assert.match(instructions, /Scratch output goes to a file in the worktree root .* never `\/tmp`\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
 });
 

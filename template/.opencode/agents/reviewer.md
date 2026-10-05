@@ -56,7 +56,9 @@ how the run works.
   blocking even when it looks like an edge case: never rate it "follow-up hardening" or "outside the
   threat model", unless the task's text puts that case out of scope; quote that text if so. Not
   blocking: wording, style, and defects in code the PR did not change. An approve with a proven
-  bypass is the costliest mistake a review can make; when unsure, rate it blocking and say why (L47).
+  bypass is the costliest mistake a review can make (L47). When unsure, say how likely the problem
+  is, and rate it blocking only if it is likely and would get past what the task protects;
+  otherwise it is a follow-up (L53).
 - Report every blocking finding in this one review (L49). It is your only pass before the author
   fixes: do not stop at the first blocking finding; read the whole diff and the task file, check
   every Done-when line and every item under "Blocking means", and report all blocking findings
