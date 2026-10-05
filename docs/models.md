@@ -256,7 +256,7 @@ and the trials issue it names.
   - On PR 69, the first brief with L49's one-pass section, it reported all three blocking findings
     in one review, ended with "Final pass done", and approved the fix in round 2.
   - It approved PR 57 (the `/tmp/opencode` deny) with no findings, re-running the real-OpenCode test.
-  - On PR 74 (the credential jail, #68; 2026-10-04/05, at `low`) it asked for rework four times
+  - On PR 74 (the credential jail, #68; 2026-10-04/05, at effort `low`) it asked for rework four times
     with 7, 4, 4 and 4 blocking findings, each proven with fake credentials in a real nested jail,
     each a new way past a same-user jail. The owner then cut the task back to mistakes only. In
     round 4 OpenAI's filter stopped it mid-run ("This content was flagged for possible
