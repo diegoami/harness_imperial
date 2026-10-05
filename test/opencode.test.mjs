@@ -264,7 +264,7 @@ test('listedModels and loginHint: Go not logged in, or an unknown id', async () 
   assert.equal(errors.size, 0);                              // "Provider not found" is a missing login
   assert.match(loginHint('opencode-go/nope', listed, '/d'), /is not in `opencode models opencode-go`: check the id/);
   assert.match(loginHint('opencode-go/deepseek-v4.1-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
-  assert.match(loginHint('alibaba-token-plan/qwen3.8-max', new Set(), '/d'), /Alibaba Token Plan is not logged in .*opencode auth login.*do not retry/);
+  assert.match(loginHint('alibaba-token-plan/qwen3.8-max', new Set(), '/d'), /ALIBABA_TOKEN_PLAN_API_KEY is not in this environment.*Tell the owner and do not retry; never add the key with `opencode auth login`/);
   assert.match(loginHint('openai/gpt-6-luna', new Set(), '/d'), /openai lists no models for \/d: it is not logged in there\. Log in once with `opencode auth login`.*copies auth\.json into \/d/);
 });
 
