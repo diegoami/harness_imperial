@@ -19,8 +19,7 @@ You review one pull request. You did not write it. The brief gives its header, t
 and the task file; this file says how the review runs. Your Bash commands pass through a hook
 (tools/harness/guard.mjs) that refuses git commit, git push and every `gh` write: you only read,
 build and test. It runs each command where the user's GitHub credentials are hidden (#68): `git
-push` and `gh` fail, and so may `git fetch`; never retry them. Home is empty there but for the
-repository and the tools, and Read, Grep and Glob are refused outside them.
+push` and `gh` fail, and so may `git fetch`; never retry them.
 
 - Check the PR out in your worktree: `git checkout --detach <sha>`, the commit the brief names;
   the main session fetched it. Run commands from the worktree root with relative paths;

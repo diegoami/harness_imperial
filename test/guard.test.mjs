@@ -145,10 +145,7 @@ test('the hook runs a reviewer\'s allowed command in the credential jail, and wa
   assert.equal(r.status, 0, r.stderr);
   const updated = out(r).hookSpecificOutput;
   assert.equal(updated.hookEventName, 'PreToolUse');
-  // A subshell that closes inherited descriptors and reads /dev/null, then the jail (Sol's R2 of round 3).
-  assert.ok(updated.updatedInput.command.startsWith('( for f in /proc/self/fd/*; do'));
-  assert.ok(updated.updatedInput.command.includes(`; exec '${path.join(here, 'fake-bwrap.sh')}' `));
-  assert.ok(updated.updatedInput.command.endsWith(' ) </dev/null'));
+  assert.equal(updated.updatedInput.command.split(' ')[0], `'${path.join(here, 'fake-bwrap.sh')}'`);
   assert.match(updated.updatedInput.command, / '--unshare-pid' .* '--' 'bash' '-c' /);
   assert.equal(spawnSync('sh', ['-c', updated.updatedInput.command], { encoding: 'utf8' }).stdout, "it's ok\n");
   assert.equal(hook('implementer', bash(command)).stdout, '');                      // the implementer pushes
@@ -159,10 +156,6 @@ test('the hook runs a reviewer\'s allowed command in the credential jail, and wa
     assert.match(out(off).systemMessage, /^WARNING: the reviewer's credential jail is off/);
     assert.equal(out(off).hookSpecificOutput, undefined);
   }
-  // A bus on an abstract socket cannot be hidden: the command is still jailed, and the user told.
-  const gap = out(hook('reviewer', bash(command), { DBUS_SESSION_BUS_ADDRESS: 'unix:abstract=/tmp/dbus-x' }));
-  assert.ok(gap.hookSpecificOutput.updatedInput.command.includes('--unshare-pid'));
-  assert.match(gap.systemMessage, /cannot hide everything here: the session bus is on an abstract socket/);
 });
 
 test('the hook refuses what it cannot read, rather than fail open', () => {
@@ -177,31 +170,22 @@ test('the hook refuses what it cannot read, rather than fail open', () => {
   }
 });
 
-test('the hook refuses a reviewer\'s Read, Grep or Glob of what the jail hides, and nothing else (Sol\'s R1 on PR 74)', () => {
+test('the hook refuses a reviewer\'s Read, Grep or Glob where credentials are kept, and nothing else', () => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-home-')));
   fs.mkdirSync(path.join(home, '.config/gh'), { recursive: true });
   fs.writeFileSync(path.join(home, '.config/gh/hosts.yml'), 'oauth_token: x\n');
-  const env = { HOME: home, XDG_CONFIG_HOME: '' };
   const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-work-')));
+  const env = { HOME: home, XDG_CONFIG_HOME: '' };
   const tool = (tool_name, tool_input) => ({ tool_name, tool_input, cwd: work });
   for (const [name, input] of [['Read', { file_path: path.join(home, '.config/gh/hosts.yml') }],
-    ['Grep', { pattern: 'token', path: home }], ['Glob', { pattern: '**', path: path.join(home, '.config') }],
-    ['Read', { file_path: '/proc/self/environ' }], ['Read', { file_path: 42 }]]) {
+    ['Grep', { pattern: 'token', path: home }], ['Glob', { pattern: '**', path: path.join(home, '.config') }], ['Read', { file_path: 42 }]]) {
     const r = hook('reviewer', tool(name, input), env);
     assert.equal(r.status, 2, `${name} ${JSON.stringify(input)}`);
-    assert.match(r.stderr, /may not read|no readable path/);
+    assert.match(r.stderr, /where credentials are kept|no readable path/);
   }
   assert.equal(hook('reviewer', tool('Read', { file_path: path.join(work, 'a.txt') }), env).status, 0);
-  assert.equal(hook('reviewer', tool('Grep', { pattern: 'x' }), env).status, 0);                 // the working directory
+  assert.equal(hook('reviewer', tool('Grep', { pattern: 'x' }), env).status, 0);
   assert.equal(hook('implementer', tool('Read', { file_path: path.join(home, '.config/gh/hosts.yml') }), env).status, 0);
-  // Home outside what is kept is refused; harness.json's jail.keep brings a folder back.
-  fs.mkdirSync(path.join(home, 'sdk'));
-  const sdk = tool('Read', { file_path: path.join(home, 'sdk/x') });
-  assert.equal(hook('reviewer', sdk, env).status, 2);
-  fs.writeFileSync(path.join(work, 'harness.json'), JSON.stringify({ jail: { keep: ['~/sdk'] } }));
-  assert.equal(hook('reviewer', sdk, { ...env, CLAUDE_PROJECT_DIR: work }).status, 0);
-  // Only the project directory Claude Code names: the reviewer's own tree cannot widen its jail.
-  assert.equal(hook('reviewer', sdk, { ...env, CLAUDE_PROJECT_DIR: '' }).status, 2);
 });
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and

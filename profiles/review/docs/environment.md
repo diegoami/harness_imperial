@@ -12,9 +12,7 @@ exit 3, and the main session tells the user: there is no Claude reviewer here.
   puts it there): the `opencode` WSL finds on PATH is often the Windows npm shim under `/mnt/c`,
   which the script skips. `HARNESS_OPENCODE_EXE` names another. Avoid `opencode upgrade`.
 - On Linux and WSL, bubblewrap (`sudo apt install bubblewrap`): the reviewer runs in it without your
-  GitHub credentials (`tools/harness/lib/jail.mjs`, #68). Without it, the script warns first. In the
-  jail, home is empty but for the repository and the tools on PATH; add any other folder the
-  checks need to `harness.json`'s `jail.keep` (read-only, e.g. `"~/.dotnet"`).
+  GitHub credentials (`tools/harness/lib/jail.mjs`, #68). Without it, the script warns first.
 
 ## The scripts' own data directory
 

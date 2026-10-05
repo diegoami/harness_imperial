@@ -91,6 +91,5 @@
       "baseUrl": "https://api.elevenlabs.io",
       "apiKeyEnv": "ELEVENLABS_API_KEY"
     }
-  },
-  "jail": { "keep": [] }
+  }
 }

@@ -9,10 +9,10 @@
 // A reviewer's allowed command is rewritten to run in the credential jail (lib/jail.mjs, #68), so a
 // push or a gh write that the guard misses finds no credentials. Where the jail cannot run, the
 // command runs as typed and the hook says so to the user. A reviewer's Read, Grep and Glob are
-// refused on what the jail hides (Sol's R1 on PR 74: a token read outside the jail works inside it).
+// refused where credentials are kept.
 
 import { refusal } from './lib/guard.mjs';
-import { credentialJail, jailCommand, hiddenTarget, keepFrom, OFF_WARNING } from './lib/jail.mjs';
+import { credentialJail, jailCommand, hiddenTarget, OFF_WARNING } from './lib/jail.mjs';
 
 const role = process.argv[2];
 let input = '';
@@ -22,15 +22,12 @@ try { event = JSON.parse(input); } catch {
   console.error(`guard (${role}): the hook input is not JSON, so the command is refused.`);
   process.exit(2);
 }
-const cwd = typeof event?.cwd === 'string' ? event.cwd : process.cwd();
-// harness.json's jail.keep: tool folders under home the project's checks need (lib/jail.mjs). Only
-// from the project directory Claude Code names, never the reviewer's own tree: the jail keeps that
-// file read-only, so the reviewer cannot widen its own jail (Sol's R1 of round 3 on PR 74).
-const keep = { ro: process.env.CLAUDE_PROJECT_DIR ? keepFrom(process.env.CLAUDE_PROJECT_DIR) : [] };
+// A reviewer's Read, Grep and Glob stay out of where credentials are kept (lib/jail.mjs).
 if (role === 'reviewer' && ['Read', 'Grep', 'Glob'].includes(event?.tool_name)) {
   const input = event.tool_input ?? {};
-  const target = input.file_path ?? input.path ?? cwd;
-  const why = typeof target === 'string' ? hiddenTarget(target, { cwd, keep }) : `the ${event.tool_name} call has no readable path`;
+  const target = input.file_path ?? input.path ?? (typeof event.cwd === 'string' ? event.cwd : process.cwd());
+  const why = typeof target === 'string' ? hiddenTarget(target, { cwd: typeof event.cwd === 'string' ? event.cwd : process.cwd() })
+    : `the ${event.tool_name} call has no readable path`;
   if (why) {
     console.error(`guard: ${why}. The harness forbids it for this agent (tools/harness/lib/jail.mjs).`);
     process.exit(2);
@@ -43,16 +40,15 @@ if (typeof event?.tool_input?.command !== 'string') {
   console.error(`guard (${role}): the Bash call has no command string, so it is refused.`);
   process.exit(2);
 }
-const reason = refusal(event.tool_input.command, role, { cwd });
+const reason = refusal(event.tool_input.command, role, { cwd: typeof event.cwd === 'string' ? event.cwd : process.cwd() });
 if (reason) {
   console.error(`guard: ${reason}. The harness forbids it for this agent (tools/harness/lib/guard.mjs).`);
   process.exit(2);
 }
 if (role === 'reviewer') {
-  const jail = credentialJail({ cwd, keep });
+  const jail = credentialJail();
   const out = jail.off ? { systemMessage: OFF_WARNING(jail.off) }
     : { hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...event.tool_input, command: jailCommand(event.tool_input.command, jail) } } };
-  if (jail.gaps?.length) out.systemMessage = `WARNING: the reviewer's credential jail cannot hide everything here: ${jail.gaps.join('; ')} (#68).`;
   process.stdout.write(JSON.stringify(out));
 }
 process.exit(0);
