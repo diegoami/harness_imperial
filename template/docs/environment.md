@@ -10,6 +10,9 @@ nothing. You need:
 - Node 20 or later.
 - `gh`, logged in (`gh auth login`). It needs no `GH_TOKEN`.
 - OpenCode 1.18 (`opencode --version`), logged in to OpenCode Go (next section).
+- On Linux and WSL, bubblewrap (`sudo apt install bubblewrap`): reviewers run in it without your
+  GitHub credentials (`tools/harness/lib/jail.mjs`, #68). Without it they run with them, and the
+  review hook and `review.mjs` print a warning; only the guard stops a push.
 - The other keys below, as user environment variables. On Windows, in PowerShell:
   `[Environment]::SetEnvironmentVariable("ELEVENLABS_API_KEY", "<key>", "User")`.
   Then restart the terminal and Claude Code, so they see it.

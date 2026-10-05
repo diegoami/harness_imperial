@@ -123,8 +123,9 @@ test('simpleCommands splits at ; && || | ( ) and newlines, but not inside quotes
 });
 
 // The hook itself, fed PreToolUse JSON on stdin as Claude Code does.
-const hook = (role, event) => spawnSync(process.execPath, [path.join(root, 'tools/harness/guard.mjs'), role],
-  { input: typeof event === 'string' ? event : JSON.stringify(event), encoding: 'utf8' });
+const hook = (role, event, env = {}) => spawnSync(process.execPath, [path.join(root, 'tools/harness/guard.mjs'), role],
+  { input: typeof event === 'string' ? event : JSON.stringify(event), encoding: 'utf8',
+    env: { ...process.env, HARNESS_BWRAP: path.join(here, 'fake-bwrap.sh'), ...env } });
 const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd: '/w' });
 
 test('the hook blocks a refused command with exit 2 and the reason on stderr; allows the rest with exit 0', () => {
@@ -137,6 +138,26 @@ test('the hook blocks a refused command with exit 2 and the reason on stderr; al
   assert.equal(hook('reviewer', { tool_name: 'Read', tool_input: { file_path: 'a' } }).status, 0);
 });
 
+test('the hook runs a reviewer\'s allowed command in the credential jail, and warns where there is none (#68)', { skip: process.platform !== 'linux' }, () => {
+  const out = (r) => (r.stdout ? JSON.parse(r.stdout) : null);
+  const command = `echo "it's" 'ok'`;
+  const r = hook('reviewer', bash(command));
+  assert.equal(r.status, 0, r.stderr);
+  const updated = out(r).hookSpecificOutput;
+  assert.equal(updated.hookEventName, 'PreToolUse');
+  assert.equal(updated.updatedInput.command.split(' ')[0], `'${path.join(here, 'fake-bwrap.sh')}'`);
+  assert.match(updated.updatedInput.command, / '--unshare-pid' .* '--' 'bash' '-c' /);
+  assert.equal(spawnSync('sh', ['-c', updated.updatedInput.command], { encoding: 'utf8' }).stdout, "it's ok\n");
+  assert.equal(hook('implementer', bash(command)).stdout, '');                      // the implementer pushes
+  assert.equal(hook('reviewer', bash('git push origin HEAD')).stdout, '');           // refused, not rewritten
+  for (const bwrap of ['/nonexistent/bwrap', '/bin/false']) {                        // missing, or does not run
+    const off = hook('reviewer', bash(command), { HARNESS_BWRAP: bwrap });
+    assert.equal(off.status, 0);
+    assert.match(out(off).systemMessage, /^WARNING: the reviewer's credential jail is off/);
+    assert.equal(out(off).hookSpecificOutput, undefined);
+  }
+});
+
 test('the hook refuses what it cannot read, rather than fail open', () => {
   const r = hook('reviewer', 'not json');
   assert.equal(r.status, 2);
@@ -147,6 +168,24 @@ test('the hook refuses what it cannot read, rather than fail open', () => {
     assert.equal(b.status, 2, JSON.stringify(tool_input));
     assert.match(b.stderr, /no command string/);
   }
+});
+
+test('the hook refuses a reviewer\'s Read, Grep or Glob where credentials are kept, and nothing else', () => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-home-')));
+  fs.mkdirSync(path.join(home, '.config/gh'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config/gh/hosts.yml'), 'oauth_token: x\n');
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guard-work-')));
+  const env = { HOME: home, XDG_CONFIG_HOME: '' };
+  const tool = (tool_name, tool_input) => ({ tool_name, tool_input, cwd: work });
+  for (const [name, input] of [['Read', { file_path: path.join(home, '.config/gh/hosts.yml') }],
+    ['Grep', { pattern: 'token', path: home }], ['Glob', { pattern: '**', path: path.join(home, '.config') }], ['Read', { file_path: 42 }]]) {
+    const r = hook('reviewer', tool(name, input), env);
+    assert.equal(r.status, 2, `${name} ${JSON.stringify(input)}`);
+    assert.match(r.stderr, /where credentials are kept|no readable path/);
+  }
+  assert.equal(hook('reviewer', tool('Read', { file_path: path.join(work, 'a.txt') }), env).status, 0);
+  assert.equal(hook('reviewer', tool('Grep', { pattern: 'x' }), env).status, 0);
+  assert.equal(hook('implementer', tool('Read', { file_path: path.join(home, '.config/gh/hosts.yml') }), env).status, 0);
 });
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and
@@ -165,6 +204,8 @@ test('each agent file declares the guard for its own role on Bash', () => {
     assert.match(f, new RegExp(`^name: ${role}$`, 'm'));
     assert.match(f, /PreToolUse:\s*\n\s*- matcher: "Bash"\s*\n\s*hooks:\s*\n\s*- type: command\s*\n\s*command: '.*tools\/harness\/guard\.mjs" (\w+)'/);
     assert.equal(f.match(/guard\.mjs" (\w+)'/)[1], role);
+    // The reviewer's reading tools pass the guard too (#68).
+    if (role === 'reviewer') assert.match(f, /- matcher: "Read\|Grep\|Glob"\s*\n\s*hooks:\s*\n\s*- type: command\s*\n\s*command: '.*tools\/harness\/guard\.mjs" reviewer'/);
   }
   assert.match(front(agent('reviewer')), /^tools: Read, Grep, Glob, Bash$/m);
   assert.match(front(agent('reviewer')), /^model: opus$/m);
