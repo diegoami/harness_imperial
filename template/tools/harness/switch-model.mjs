@@ -10,7 +10,8 @@
 // 1. OpenCode must list the id in the scripts' own data directory (as implement.mjs and review.mjs
 //    check before every run): an unknown id or a missing login exits 3 with the command that fixes
 //    it.
-// 2. The variant is high unless given; max is refused (L27). The family comes from the id unless
+// 2. Unless --variant is given, the effort is high for a light model and low (else medium, else its
+//    lowest) for a heavy one, from the efforts OpenCode offers (L54); max is refused (L27). The family comes from the id unless
 //    given, and a model of the other role's family is refused unless --force (the family rule).
 // 3. --probe sends a one-word prompt through the watched runner at that variant, in a throwaway
 //    git directory under the work root. It is one small billed call, and a failure stops the switch.
@@ -23,8 +24,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
-import { planSwitch, showRoles } from './lib/switch.mjs';
+import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, modelVariants } from './lib/opencode.mjs';
+import { planSwitch, showRoles, defaultVariant } from './lib/switch.mjs';
 import { sh, repoPaths, loadConfig, parseArgs, prepareOpenCode } from './lib/common.mjs';
 
 const say = (s) => console.log(s);
@@ -40,7 +41,7 @@ if (!a.role || !a.model) die(2, 'Usage: switch-model.mjs --role implementer|revi
 let plan;
 try {
   plan = planSwitch(config, {
-    role: a.role, id: a.model, variant: a.variant ?? 'high', name: a.name, family: a.family, fallback: a.fallback, force: a.force,
+    role: a.role, id: a.model, variant: a.variant ?? defaultVariant(a.model, null), name: a.name, family: a.family, fallback: a.fallback, force: a.force,
   });
 } catch (e) { die(/^Refused/.test(e.message) ? 1 : 2, e.message); }
 if (plan.conflict) say(`warning (--force): ${plan.conflict}`);
@@ -55,6 +56,15 @@ const models = { [plan.name]: plan.entry };
 const pre = await prepareOpenCode({ opencode, chain: [plan.name], models, env: process.env, cwd: top, log: say });
 if (!pre.usable.length) die(3, `${pre.problems.join('; ')}. Nothing written.`);
 say(`listed: ${plan.entry.id}`);
+// The default effort, from what OpenCode offers for this model (L54).
+if (!a.variant) {
+  const offered = await modelVariants(opencode, plan.entry.id, { env: pre.env, cwd: top });
+  const v = defaultVariant(plan.entry.id, offered);
+  if (v !== plan.entry.variant) {
+    plan = planSwitch(config, { role: a.role, id: a.model, variant: v, name: a.name, family: a.family, fallback: a.fallback, force: a.force });
+    say(`${a.role}: ${plan.name} = ${plan.entry.id} (${plan.entry.variant}, family ${plan.entry.family}): the lowest effort it offers (L54)`);
+  }
+}
 
 if (a.probe) {
   const { workRoot } = repoPaths(config);

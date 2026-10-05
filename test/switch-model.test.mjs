@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
-import { familyOf, nameOf, planSwitch, showRoles } from '../template/tools/harness/lib/switch.mjs';
+import { familyOf, nameOf, planSwitch, showRoles, isHeavy, defaultVariant } from '../template/tools/harness/lib/switch.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../template');
@@ -57,6 +57,21 @@ test('refused: max effort, the other role\'s family (unless forced), a taken nam
     /^deepseek is also the implementer's family/);
   assert.equal(planSwitch(template(), { role: 'reviewer', id: 'opencode-go/space-bunny-free', family: 'bunny' }).entry.family, 'bunny');
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'kimi-k3' }), /provider\/model id/);
+});
+
+test('a heavy model\'s default effort is low, else medium, else its lowest; a light one\'s is high (L54, #83)', () => {
+  for (const id of ['openai/gpt-6.1-sol', 'openai/gpt-6-sol-fast', 'zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro',
+    'openrouter/deepseek/deepseek-v4-pro', 'anthropic/claude-opus-5-5']) assert.ok(isHeavy(id), id);
+  for (const id of ['openai/gpt-5.6-luna', 'zai-coding-plan/glm-5.3-flash', 'opencode-go/deepseek-v4.1-flash', 'anthropic/claude-sonnet-5-5']) {
+    assert.ok(!isHeavy(id), id);
+    assert.equal(defaultVariant(id, ['low', 'high']), 'high', id);
+  }
+  assert.equal(defaultVariant('openai/gpt-6.1-sol', ['low', 'medium', 'high', 'xhigh', 'max']), 'low');
+  assert.equal(defaultVariant('zai-coding-plan/glm-5.3', ['low', 'high', 'max']), 'low');
+  assert.equal(defaultVariant('openai/gpt-6.1-sol', ['medium', 'high']), 'medium');
+  assert.equal(defaultVariant('opencode-go/deepseek-v4-pro', ['high', 'max']), 'high');      // its lowest
+  assert.equal(defaultVariant('openai/gpt-6.1-sol', ['none', 'low']), 'low');                // never none
+  assert.equal(defaultVariant('openai/gpt-6.1-sol', null), 'low');                          // not known
 });
 
 test('showRoles says what runs now', () => {
@@ -119,6 +134,21 @@ test('a switch writes harness.json; a dry run writes nothing', posix, () => {
   assert.deepEqual(p.config().reviewer.chain, ['kimi-k3']);
   assert.match(r.stdout, /Commit it on main with the reason/);
   assert.match(sw(p, {}, '--show').stdout, /^reviewer: kimi-k3 = opencode-go\/kimi-k3 \(high, family kimi\), then Claude opus$/m);
+});
+
+test('without --variant, a switch writes the lowest effort OpenCode offers for a heavy model, and high for a light one (L54)', posix, () => {
+  const p = project();
+  const variants = JSON.stringify({ 'opencode-go/deepseek-v4-pro': ['high', 'max'], 'opencode-go/kimi-k3': ['low', 'high', 'max'] });
+  const heavy = sw(p, { FAKE_OC_VARIANTS: variants }, '--role', 'implementer', '--model', 'opencode-go/deepseek-v4-pro', '--dry-run');
+  assert.equal(heavy.status, 0, heavy.stderr);
+  assert.match(heavy.stdout, /after: {2}deepseek-pro \(opencode-go\/deepseek-v4-pro, high\)/);
+  const sol = sw(p, { FAKE_OC_MODELS: JSON.stringify(['openai/gpt-6.1-sol']), FAKE_OC_VARIANTS: JSON.stringify({ 'openai/gpt-6.1-sol': ['low', 'medium', 'high'] }) },
+    '--role', 'reviewer', '--model', 'openai/gpt-6.1-sol', '--dry-run');
+  assert.match(sol.stdout, /after: {2}sol-6\.1 \(openai\/gpt-6\.1-sol, low\)/);
+  const given = sw(p, { FAKE_OC_MODELS: JSON.stringify(['openai/gpt-6.1-sol']) }, '--role', 'reviewer', '--model', 'openai/gpt-6.1-sol', '--variant', 'medium', '--dry-run');
+  assert.match(given.stdout, /after: {2}sol-6\.1 \(openai\/gpt-6\.1-sol, medium\)/);                       // --variant wins
+  const light = sw(p, { FAKE_OC_VARIANTS: variants }, '--role', 'reviewer', '--model', 'opencode-go/kimi-k3', '--dry-run');
+  assert.match(light.stdout, /after: {2}kimi-k3 \(opencode-go\/kimi-k3, high\)/);
 });
 
 test('a model OpenCode does not list exits 3, with the login command, and writes nothing', posix, () => {

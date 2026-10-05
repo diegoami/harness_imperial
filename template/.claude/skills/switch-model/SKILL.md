@@ -27,7 +27,9 @@ propose it and the user says yes.
    `node tools/harness/switch-model.mjs --role implementer|reviewer --model PROVIDER/ID --probe --dry-run`.
    - It checks the id against OpenCode's list in the scripts' data directory. On exit 3, give
      the user the login command it prints; the user runs it.
-   - The effort is `high`. `max` is refused.
+   - The effort, unless `--variant` gives one: `high` for a light model; for a heavy one (Sol,
+     GLM-5.3, DeepSeek V4 Pro, Opus) `low`, else `medium`, else the lowest OpenCode offers (L54).
+     `max` is refused.
    - It shows the family and refuses the other role's. `--force` is only for when the user is
      switching both roles.
    - The probe is one billed one-word call at that effort.

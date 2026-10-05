@@ -21,6 +21,21 @@ export function familyOf(id) {
   return knownFamilyOf(id) ?? (model.match(/^[a-z]+/)?.[0] ?? model);
 }
 
+// Heavy models run at `low`, or `medium` at most; light ones at `high` (L54, #83). Heavy: Sol, GLM-5.3
+// (not Flash), DeepSeek V4 Pro, Opus, wherever they are served from.
+const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-[\d.]+$/, /(^|\/)deepseek-v[\d.]+-pro$/, /opus/];
+export const isHeavy = (id) => HEAVY.some((re) => re.test(modelPart(id)));
+
+// The effort a switch writes when --variant is not given, from the efforts OpenCode offers for the
+// model (`offered`, from `opencode models --verbose`; null when unknown): a light model `high`; a
+// heavy one `low`, else `medium`, else its lowest effort (DeepSeek V4 Pro offers only high and max).
+export function defaultVariant(id, offered) {
+  if (!isHeavy(id)) return 'high';
+  if (!offered) return 'low';
+  const usable = offered.filter((v) => v !== 'none' && v !== 'max');
+  return ['low', 'medium'].find((v) => usable.includes(v)) ?? usable[0] ?? 'high';
+}
+
 // The harness.json name for an id: the existing entry's, else the id's model part.
 export function nameOf(config, id) {
   const found = Object.entries(config.models ?? {}).find(([, m]) => m.id === id);
