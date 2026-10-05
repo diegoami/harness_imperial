@@ -90,7 +90,11 @@ if (fs.existsSync(worktree)) {
   sh('git', ['-C', worktree, 'push', '-q', '-u', 'origin', branch]);
 }
 if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${branch}`]);
-for (const f of a.copy) fs.copyFileSync(path.join(mainRoot, f), path.join(worktree, f));
+// A copied file's folder may be untracked or ignored, so absent from a fresh worktree (#90).
+for (const f of a.copy) {
+  fs.mkdirSync(path.dirname(path.join(worktree, f)), { recursive: true });
+  fs.copyFileSync(path.join(mainRoot, f), path.join(worktree, f));
+}
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);
 

@@ -74,6 +74,15 @@ test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)',
   assert.equal(long(session.agentFile), long(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md')));
 });
 
+test('--copy brings an untracked file into the worktree, its folders created (#90)', posix, async () => {
+  const p = project();
+  fs.mkdirSync(path.join(p.main, '.cache/kept/E005'), { recursive: true });
+  fs.writeFileSync(path.join(p.main, '.cache/kept/E005/save.sav'), 'kept\n');
+  const r = implement(p, { FAKE_OC_MODE: 'implement' }, '--copy', '.cache/kept/E005/save.sav');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(fs.readFileSync(path.join(p.base, 'proj-work', 'T07', '.cache/kept/E005/save.sav'), 'utf8'), 'kept\n');
+});
+
 test('a task runs to an open PR, in its own worktree, with the agent kept out of git', posix, async () => {
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement' });
