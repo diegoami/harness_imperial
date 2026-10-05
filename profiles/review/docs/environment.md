@@ -82,7 +82,7 @@ Never read or edit `~/.config/quota-tracker/config.toml`: it holds account token
 login. Where the service is not installed, go on without it, and count a usage-limit error as
 `exhausted`.
 
-
+## The logins, one per reviewer
 
 | Reviewer | Login | Check |
 | --- | --- | --- |
