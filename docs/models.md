@@ -47,6 +47,10 @@ Every model runs at effort `high`, never `max` (L27), except Sol: it runs sparin
 - DeepSeek runs on OpenCode Go.
 - Luna and Sol run on the direct OpenAI route.
 
+**Free OpenRouter models** (`…:free`; the list and cautions are in `template/docs/environment.md`):
+a supplement for small tasks and extra second opinions, never the main model for important work.
+This repository is public, so its code may go to them; a private project decides for itself.
+
 ## Routing: easy or hard
 
 The owner decided on 2026-10-03, for this repository as for Isle Wars and malpaco, that the pair

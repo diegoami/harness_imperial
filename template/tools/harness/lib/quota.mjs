@@ -7,6 +7,7 @@
 // HARNESS_QUOTA_URL names the service (default http://localhost:8765). A service that does not
 // answer within a few seconds, or answers with something unreadable, checks nothing: every model
 // stays usable, and the caller says so. A provider in `error` or `not_configured` stays usable too.
+// A free OpenRouter model (`…:free`) is judged by the shared daily allowance of free requests alone.
 
 export const EXHAUSTED_PCT = 95;
 
@@ -30,7 +31,10 @@ export async function readQuota(env = process.env, { timeoutMs = 3000 } = {}) {
     // The optional texts a reason quotes are strings or absent (Sol's R1-R2 of round 2).
     const text = (v) => v === undefined || v === null || typeof v === 'string';
     const window = (w) => w && typeof w.name === 'string' && typeof w.used_pct === 'number' && text(w.resets_in);
+    const num = (v) => typeof v === 'number';
+    const free = (f) => f === undefined || f === null || (typeof f === 'object' && num(f.remaining) && num(f.limit));
     const readable = (p) => p && typeof p.provider === 'string' && typeof p.status === 'string' && text(p.available_in)
+      && free(p.free_model_daily_requests)
       && (p.windows === undefined || (Array.isArray(p.windows) && p.windows.every(window)));
     if (!list.every(readable)) return { off: `${url} answered something unreadable` };
     return { providers: new Map(list.map((p) => [p.provider, p])) };
@@ -44,6 +48,13 @@ export function quotaBlock(id, quota) {
   const p = quota.providers?.get(providerOf(id));
   // A provider that could not be checked blocks nothing, its windows included (Sol's R2 on PR 77).
   if (!p || p.status === 'error' || p.status === 'not_configured') return null;
+  // A free OpenRouter model draws on the shared daily allowance of free requests, not on the
+  // credit: it runs while requests remain, even with the credit spent (the owner, 2026-10-06).
+  if (id.endsWith(':free')) {
+    const f = p.free_model_daily_requests;
+    if (!f) return null;
+    return f.remaining > 0 ? null : `the free models' daily allowance is used up (${f.used ?? f.limit} of ${f.limit} requests)`;
+  }
   const own = (p.windows ?? []).find((w) => w.name.split(':')[0] === id.split('/').slice(1).join('/'));
   if (own) return own.used_pct >= EXHAUSTED_PCT ? `its own ${own.name} window is ${own.used_pct}% used${own.resets_in ? `, resets in ${own.resets_in}` : ''}` : null;
   if (p.status !== 'exhausted') return null;

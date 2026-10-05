@@ -37,6 +37,16 @@ test('a model with its own window is judged by it: GPT-5.6 Luna runs while it is
   }
 });
 
+test('a free OpenRouter model is judged by the daily allowance of free requests, not the credit', () => {
+  const or = (status, remaining) => of(entry('openrouter', status, [{ name: 'credits', used_pct: 100 }],
+    { free_model_daily_requests: { used: 1000 - remaining, limit: 1000, remaining } }));
+  const free = 'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free';
+  assert.equal(quotaBlock(free, or('exhausted', 995)), null);                         // credit spent, requests left
+  assert.match(quotaBlock(free, or('ok', 0)), /free models' daily allowance is used up \(1000 of 1000 requests\)/);
+  assert.match(quotaBlock('openrouter/deepseek/deepseek-v4-pro', or('exhausted', 995)), /openrouter is exhausted/);   // a paid model
+  assert.equal(quotaBlock(free, of(entry('openrouter', 'ok'))), null);                 // no allowance reported
+});
+
 test('readQuota reads the service, and is off, saying why, when it does not answer or answers nonsense', async () => {
   const s = await quotaServer([entry('zai', 'exhausted'), entry('openai', 'ok')]);
   try {
@@ -48,7 +58,8 @@ test('readQuota reads the service, and is off, saying why, when it does not answ
   for (const body of [{ nonsense: 1 }, [entry('openai', 'ok', {})], [entry('openai', 'ok', [null])],
     [entry('openai', 'ok', [{ used_pct: 97 }])], [entry('openai', 'ok', [{ name: 'x', used_pct: '97' }])], [{ provider: 'openai' }],
     [entry('openai', 'ok', [{ name: 'gpt-5.6-luna:7d', used_pct: 97, resets_in: { toString: null } }])],
-    [entry('zai', 'exhausted', [], { available_in: { toString: null } })]]) {
+    [entry('zai', 'exhausted', [], { available_in: { toString: null } })],
+    [entry('openrouter', 'ok', [], { free_model_daily_requests: { remaining: '5', limit: 1000 } })]]) {
     const bad = await quotaServer(body);
     try {
       assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/, JSON.stringify(body));
