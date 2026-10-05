@@ -43,7 +43,6 @@ function project(reviewer = {}, prLabels = []) {
   git(main, 'checkout', '-q', 'main');
   const bin = path.join(base, 'bin');
   fs.mkdirSync(bin);
-  fs.symlinkSync(path.join(here, 'fake-gh.mjs'), path.join(bin, 'gh'));
   const ghState = path.join(base, 'gh.json');
   fs.writeFileSync(ghState, JSON.stringify({ prs: [{ number: 7, head: 'task/T07-x', sha, labels: prLabels }] }));
   fs.writeFileSync(path.join(base, 'brief.md'), 'T07 review (x)\nReview PR #7.\n');
@@ -57,7 +56,7 @@ function review(p, env, ...args) {
     env: {
       ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`,
       HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), HARNESS_QUOTA_URL: 'http://127.0.0.1:9',
-      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
+      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState, HARNESS_GH_EXE: path.join(here, 'fake-gh.mjs'),
       HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
       HARNESS_BWRAP: path.join(here, 'fake-bwrap.sh'), FAKE_BWRAP_LOG: path.join(p.base, 'bwrap.log'),
       ...env,
@@ -65,7 +64,8 @@ function review(p, env, ...args) {
   });
 }
 const gh = (p) => ({ comments: [], issueLabels: {}, ...JSON.parse(fs.readFileSync(p.ghState, 'utf8')) });
-const posix = { skip: process.platform === 'win32' };
+// The fakes run through Node (HARNESS_GH_EXE, HARNESS_OPENCODE_EXE), so these tests run on Windows too (#2).
+const posix = {};
 
 test('a complete review is posted once, labelled, and its worktree removed', posix, () => {
   const p = project();
@@ -88,7 +88,7 @@ test('OpenCode reviews in the credential jail; without one, the log warns first 
   const reviewRun = runs.find((a) => a.includes('run'));
   assert.ok(reviewRun, 'the review run went through bwrap');
   assert.ok(reviewRun.includes('--unshare-pid') && reviewRun.includes('GH_TOKEN'));
-  assert.equal(reviewRun[reviewRun.indexOf('--') + 1], path.join(here, 'fake-opencode.mjs'));
+  assert.deepEqual(reviewRun.slice(reviewRun.indexOf('--') + 1, reviewRun.indexOf('--') + 3), [process.execPath, path.join(here, 'fake-opencode.mjs')]);
   assert.doesNotMatch(r.stdout, /credential jail is off/);
   const q = project();
   const off = review(q, { FAKE_OC_MODE: 'review-ok', HARNESS_BWRAP: path.join(q.base, 'no-bwrap') });

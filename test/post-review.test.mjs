@@ -20,7 +20,6 @@ function project(brief = `${H}\nYou review PR #7 at ${'a'.repeat(40)}. The task 
   spawnSync('git', ['init', '-q', repo]);
   const bin = path.join(base, 'bin');
   fs.mkdirSync(bin);
-  fs.symlinkSync(path.join(here, 'fake-gh.mjs'), path.join(bin, 'gh'));
   const ghState = path.join(base, 'gh.json');
   fs.writeFileSync(ghState, JSON.stringify({ prs: [{ number: 7, head: 'task/T07-x', sha: 'a'.repeat(40), labels: [] }] }));
   fs.writeFileSync(path.join(base, 'brief.md'), brief);
@@ -31,11 +30,12 @@ function post(p, review, ...args) {
   return spawnSync(process.execPath, [tool, '--pr', '7', '--brief', path.join(p.base, 'brief.md'),
     '--review', path.join(p.base, 'review.md'), '--by', 'claude (opus)', ...args], {
     cwd: p.repo, encoding: 'utf8',
-    env: { ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`, FAKE_GH_STATE: p.ghState },
+    env: { ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`, FAKE_GH_STATE: p.ghState, HARNESS_GH_EXE: path.join(here, 'fake-gh.mjs') },
   });
 }
 const gh = (p) => ({ comments: [], issueLabels: {}, ...JSON.parse(fs.readFileSync(p.ghState, 'utf8')) });
-const posix = { skip: process.platform === 'win32' };
+// The fakes run through Node (HARNESS_GH_EXE, HARNESS_OPENCODE_EXE), so these tests run on Windows too (#2).
+const posix = {};
 const DW = 'DW1: ran node a.js → 1\nDW2: ran npm test → 9 pass';
 
 test('a readable approve is posted normalised, signed, and labelled', posix, () => {

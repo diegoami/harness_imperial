@@ -6,8 +6,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem } from './opencode.mjs';
 
+// The command that runs a tool. HARNESS_GH_EXE names the gh to run (the tests' fake, #2); a .mjs or
+// .js one runs through Node, since Windows cannot execute a script.
+export function toolCommand(cmd, env = process.env) {
+  const over = cmd === 'gh' ? env.HARNESS_GH_EXE : null;
+  if (!over) return [cmd, []];
+  return /\.m?js$/.test(over) ? [process.execPath, [over]] : [over, []];
+}
+
 export function sh(cmd, args, { cwd, allowFail = false, env } = {}) {
-  const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const [exe, pre] = toolCommand(cmd, env ?? process.env);
+  const r = spawnSync(exe, [...pre, ...args], { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (r.error) throw new Error(`${cmd} could not run: ${r.error.message}`);
   if (r.status !== 0 && !allowFail) throw new Error(`${cmd} ${args.join(' ')} failed (${r.status}):\n${r.stderr}`);
   return r.status === 0 ? r.stdout.trim() : '';
@@ -15,7 +24,8 @@ export function sh(cmd, args, { cwd, allowFail = false, env } = {}) {
 
 export function requireTools(...tools) {
   for (const t of tools) {
-    const r = spawnSync(t, ['--version'], { stdio: 'ignore' });
+    const [exe, pre] = toolCommand(t);
+    const r = spawnSync(exe, [...pre, '--version'], { stdio: 'ignore' });
     if (r.error) throw new Error(`${t} is not on PATH.`);
   }
 }

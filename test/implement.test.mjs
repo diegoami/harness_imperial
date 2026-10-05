@@ -39,7 +39,6 @@ function project(harness = {}) {
   git(main, 'config', 'user.email', 't@example.com');
   const bin = path.join(base, 'bin');
   fs.mkdirSync(bin);
-  fs.symlinkSync(path.join(here, 'fake-gh.mjs'), path.join(bin, 'gh'));
   const ghState = path.join(base, 'gh.json');
   fs.writeFileSync(ghState, JSON.stringify({ prs: [] }));
   fs.writeFileSync(path.join(base, 'brief.md'), 'Implement T07.\n');
@@ -53,14 +52,15 @@ function implement(p, env, ...args) {
     env: {
       ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`,
       HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), HARNESS_QUOTA_URL: 'http://127.0.0.1:9',
-      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
+      FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState, HARNESS_GH_EXE: path.join(here, 'fake-gh.mjs'),
       HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
       ...env,
     },
   });
 }
 
-const posix = { skip: process.platform === 'win32' };
+// The fakes run through Node (HARNESS_GH_EXE, HARNESS_OPENCODE_EXE), so these tests run on Windows too (#2).
+const posix = {};
 
 test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)', posix, async () => {
   const p = project();

@@ -112,6 +112,8 @@ function isWindowsShim(file) {
 // OpenCode's own installer location (~/.opencode/bin), which is not always on PATH.
 export function resolveOpenCode(env = process.env) {
   if (env.HARNESS_OPENCODE_EXE) {
+    // A script (the tests' fake, #2) runs through Node, since Windows cannot execute one.
+    if (fs.existsSync(env.HARNESS_OPENCODE_EXE) && /\.m?js$/.test(env.HARNESS_OPENCODE_EXE)) return { exe: process.execPath, prefix: [env.HARNESS_OPENCODE_EXE] };
     if (fs.existsSync(env.HARNESS_OPENCODE_EXE)) return { exe: env.HARNESS_OPENCODE_EXE, prefix: [] };
     throw new OpenCodeInfraError('opencode not found', `HARNESS_OPENCODE_EXE points at a missing file: ${env.HARNESS_OPENCODE_EXE}`);
   }

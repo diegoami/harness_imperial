@@ -105,7 +105,8 @@ function sw(p, env, ...args) {
     },
   });
 }
-const posix = { skip: process.platform === 'win32' };
+// The fakes run through Node (HARNESS_GH_EXE, HARNESS_OPENCODE_EXE), so these tests run on Windows too (#2).
+const posix = {};
 
 test('a switch writes harness.json; a dry run writes nothing', posix, () => {
   const p = project();
