@@ -156,6 +156,7 @@ function throwaway() {
   fs.mkdirSync(repo);
   const g = (...a) => git(repo, ...a);
   g('init', '-q');
+  g('config', 'core.autocrlf', 'false');                           // Windows CI converts line endings
   fs.writeFileSync(path.join(repo, 'tracked.txt'), 'one\n');
   g('add', '-A');
   g('-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-q', '-m', 'start');
@@ -168,8 +169,9 @@ test('the reset saves a tracked change and an untracked file in one patch that a
   const t = throwaway();
   fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'one\ntwo\n');
   fs.writeFileSync(path.join(t.repo, 'untracked.txt'), 'fresh\n');
-  const patch = resetWorktree(at(t));
+  const [patch, more] = resetWorktree(at(t));
   assert.equal(patch, path.join(t.saves, 'T07.deepseek-flash.2026-10-05T12-00-00.000Z.unsaved.patch'));
+  assert.equal(more, undefined);                                                    // one patch
   assert.equal(t.g('status', '--porcelain'), '');                                   // reset as before
   t.g('apply', '--check', patch);
   t.g('apply', patch);
@@ -179,15 +181,38 @@ test('the reset saves a tracked change and an untracked file in one patch that a
 
 test('a clean worktree writes no patch, and a second save never overwrites the first (#87)', () => {
   const t = throwaway();
-  assert.equal(resetWorktree(at(t)), null);
+  assert.deepEqual(resetWorktree(at(t)), []);
   assert.ok(!fs.existsSync(t.saves) || fs.readdirSync(t.saves).length === 0);
   fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'first\n');
-  const first = resetWorktree(at(t));
+  const [first] = resetWorktree(at(t));
   fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'second\n');
-  const second = resetWorktree(at(t));                                               // the same stamp
+  const [second] = resetWorktree(at(t));                                             // the same stamp
   assert.equal(second, first.replace('.unsaved.patch', '.1.unsaved.patch'));
   assert.match(fs.readFileSync(first, 'utf8'), /\+first/);
   assert.match(fs.readFileSync(second, 'utf8'), /\+second/);
+});
+
+test('a staged version that differs from the working copy is saved on its own first, and no empty patch is written (Sol\'s R1-R2 on PR 100)', () => {
+  const t = throwaway();
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'staged-only\n');
+  t.g('add', 'tracked.txt');
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'one\n');                    // the working copy is back at the start
+  const patches = resetWorktree(at(t));
+  assert.deepEqual(patches, [path.join(t.saves, 'T07.deepseek-flash.2026-10-05T12-00-00.000Z.staged.unsaved.patch')]);
+  t.g('apply', '--check', patches[0]);
+  t.g('apply', patches[0]);
+  assert.equal(fs.readFileSync(path.join(t.repo, 'tracked.txt'), 'utf8'), 'staged-only\n');
+  for (const f of fs.readdirSync(t.saves)) assert.ok(fs.statSync(path.join(t.saves, f)).size > 0, f);
+  // Staged and unstaged both differ from the start: two patches, each applying to the start commit.
+  t.g('checkout', '--', '.');
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'staged\n');
+  t.g('add', 'tracked.txt');
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'working\n');
+  const both = resetWorktree({ ...at(t), stamp: new Date('2026-10-05T13:00:00Z') });
+  assert.equal(both.length, 2);
+  assert.match(fs.readFileSync(both[0], 'utf8'), /\+staged/);
+  assert.match(fs.readFileSync(both[1], 'utf8'), /\+working/);
+  for (const p of both) t.g('apply', '--check', p);
 });
 
 test('a run that edited without committing and was rejected keeps its work in a patch the exit names (#87)', posix, async () => {
@@ -213,6 +238,13 @@ test('an exit 1 after a later attempt committed still names the earlier attempt\
   const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'commit-fail' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
   assert.match(r.stderr, /after committing, pushing or opening a PR .* Unsaved work was saved before the reset: \S+T07\.deepseek-flash\.\S+\.unsaved\.patch\./);
+});
+
+test('the no-PR exit 1 names the patch a failed attempt saved (Sol\'s R3 on PR 100)', posix, async () => {
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'stop-report' }) });
+  assert.equal(r.status, 1, r.stderr + r.stdout);
+  assert.match(r.stderr, /No open PR .* Unsaved work was saved before the reset: \S+T07\.deepseek-flash\.\S+\.unsaved\.patch\./);
 });
 
 test('implement.mjs --self-test checks the reset\'s save on a throwaway repository (#87)', () => {

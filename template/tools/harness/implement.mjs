@@ -161,15 +161,15 @@ const result = await runChain({
   // Before the hard reset destroys it, the failed attempt's uncommitted work goes to a patch
   // (lib/unsaved.mjs, #87), so a run that a rejected tool call ended is not lost.
   reset: async () => {
-    const patch = resetWorktree({ worktree, startSha, workRoot, name, model: attemptModel, log: say });
-    if (patch) patches.push(patch);
+    patches.push(...resetWorktree({ worktree, startSha, workRoot, name, model: attemptModel, log: say }));
   },
 });
 
 say(`run log: ${logFile}`);
+// Every exit after the chain names the patches its resets saved (#87; Sol's R3 on PR 100).
+const saved = patches.length ? ` Unsaved work was saved before the reset: ${patches.join(', ')}.` : '';
 const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
 if (!result.ok) {
-  const saved = patches.length ? ` Unsaved work was saved before the reset: ${patches.join(', ')}.` : '';
   if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.${saved}`);
   die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}${saved}`);
 }
@@ -185,5 +185,5 @@ if (sh('git', ['-C', worktree, 'rev-parse', 'HEAD']) !== originSha()) console.wa
 sh('git', ['-C', worktree, 'checkout', '-q', '--detach']);
 say('--- tail of the run ---');
 say(result.value.split(/\r?\n/).slice(-40).join('\n'));
-if (!pr) die(1, `No open PR for ${branch}. Read ${logFile}: an implementer that stopped and reported is not a failure.`);
+if (!pr) die(1, `No open PR for ${branch}. Read ${logFile}: an implementer that stopped and reported is not a failure.${saved}`);
 say(`PR: ${pr}`);
