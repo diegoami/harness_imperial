@@ -27,6 +27,11 @@ const REFUSED = {
     // #79 (Luna on goal2-archaeology PR 39): a method that is not literally GET.
     'gh api --method="$METHOD" repos/o/r/issues/1/comments', 'gh api -X $(printf POST) repos/o/r/issues', 'gh api -XPOST repos/o/r/issues',
     'gh api repos/o/r/issues -X',
+    // Sol's R1-R3 on PR 92: a method in a short cluster, a field with its value attached, an option
+    // that a variable supplies; and the forms gh's flag parser accepts.
+    'gh api repos/o/r -iXPOST', 'gh api repos/o/r -fbody=x', 'gh api repos/o/r -Fbody=x', 'FLAGS=-XPOST; gh api repos/o/r "$FLAGS"',
+    'FLAGS=--input=package.json; gh api repos/o/r "$FLAGS"', 'gh api repos/o/r --raw-field=a=b', 'gh api repos/o/r --input body.json',
+    'gh api "$EP"', 'gh api repos/o/r --$OPT=1',
     'gh pr ready 7', 'gh label create x', 'gh repo delete o/r',
     // Luna's R1, round 2: a substitution inside double quotes, git options before the subcommand.
     'echo "$(git push origin HEAD)"', 'echo "x `git push` y"', 'echo "$(echo "$(git commit -m x)")"',
@@ -81,6 +86,9 @@ const ALLOWED = {
   reviewer: ['git log --oneline | head', 'git diff --name-only origin/main...HEAD', 'gh pr view 7 --json body',
     'git checkout -- src/a.js', 'git fetch origin pull/7/head', 'npm test', 'grep -rn "git push" docs', 'echo "gh pr merge is not for you"',
     'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls', 'gh api -XGET repos/o/r', 'gh api --method=get repos/o/r', 'gh api -X "GET" repos/o/r',
+    // Sol's R4 on PR 92: an option's value is a value, never read as an option.
+    'gh api repos/o/r -H "X-Test: -XPOST"', 'gh api repos/o/r -X GET -H "X-Test: --method=POST"', 'gh api -q ".[] | -XPOST" repos/o/r',
+    'gh api repos/$OWNER/r/pulls --jq .x --paginate',
     'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
     "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3',
     'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'cat .git/HEAD',
