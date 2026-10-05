@@ -239,7 +239,8 @@ test('the reviewer\'s agent comes from the main checkout, never from the PR unde
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
-  assert.equal(session.agentFile, path.join(p.main, '.opencode', 'agents', 'reviewer.md'));
+  // Both sides through realpathSync.native: Windows may give the temp directory as an 8.3 short name.
+  assert.equal(fs.realpathSync.native(session.agentFile), fs.realpathSync.native(path.join(p.main, '.opencode', 'agents', 'reviewer.md')));
   assert.doesNotMatch(session.agentDescription, /THE PR'S OWN REVIEWER/);
   // and the PR's .opencode/ is not read at all: an opencode.json or a plugin there is ignored too.
   assert.equal(session.projectConfig, 'disabled');

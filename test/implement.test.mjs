@@ -68,7 +68,9 @@ test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)',
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.projectConfig, 'read');
-  assert.equal(session.agentFile, path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md'));
+  // Both sides through realpathSync.native: Windows may give the temp directory as an 8.3 short name.
+  const long = (f) => fs.realpathSync.native(f);
+  assert.equal(long(session.agentFile), long(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md')));
 });
 
 test('a task runs to an open PR, in its own worktree, with the agent kept out of git', posix, async () => {
