@@ -46,7 +46,7 @@ function hiddenPlaces(env) {
 // Why a reviewer may not Read, Grep or Glob `target`, or null: it is, holds or lies in a hidden place.
 export function hiddenTarget(target, { env = process.env, cwd = process.cwd() } = {}) {
   const t = real(path.resolve(cwd, target)) ?? path.resolve(cwd, target);
-  const inside = (p, dir) => p === dir || p.startsWith(dir === '/' ? '/' : `${dir}/`);
+  const inside = (p, dir) => { const r = path.relative(dir, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
   for (const h of hiddenPlaces(env).map((p) => real(p) ?? p)) {
     if (inside(t, h) || inside(h, t)) return `${target} is or holds ${h}, where credentials are kept (#68)`;
   }
