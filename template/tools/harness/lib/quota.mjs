@@ -24,8 +24,10 @@ export async function readQuota(env = process.env, { timeoutMs = 3000 } = {}) {
     const list = Array.isArray(body) ? body : Object.values(body);
     // Every entry readable, windows included, or none is used (Sol's R1 on PR 77: a malformed window
     // crashed the run instead of checking nothing).
-    const window = (w) => w && typeof w.name === 'string' && typeof w.used_pct === 'number';
-    const readable = (p) => p && typeof p.provider === 'string' && typeof p.status === 'string'
+    // The optional texts a reason quotes are strings or absent (Sol's R1-R2 of round 2).
+    const text = (v) => v === undefined || v === null || typeof v === 'string';
+    const window = (w) => w && typeof w.name === 'string' && typeof w.used_pct === 'number' && text(w.resets_in);
+    const readable = (p) => p && typeof p.provider === 'string' && typeof p.status === 'string' && text(p.available_in)
       && (p.windows === undefined || (Array.isArray(p.windows) && p.windows.every(window)));
     if (!list.every(readable)) return { off: `${url} answered something unreadable` };
     return { providers: new Map(list.map((p) => [p.provider, p])) };

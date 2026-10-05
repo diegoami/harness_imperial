@@ -45,7 +45,9 @@ test('readQuota reads the service, and is off, saying why, when it does not answ
   assert.match((await readQuota({ HARNESS_QUOTA_URL: 'http://127.0.0.1:9' })).off, /did not answer/);
   // Nonsense, or a malformed window, checks nothing rather than crash (Sol's R1 on PR 77).
   for (const body of [{ nonsense: 1 }, [entry('openai', 'ok', {})], [entry('openai', 'ok', [null])],
-    [entry('openai', 'ok', [{ used_pct: 97 }])], [entry('openai', 'ok', [{ name: 'x', used_pct: '97' }])], [{ provider: 'openai' }]]) {
+    [entry('openai', 'ok', [{ used_pct: 97 }])], [entry('openai', 'ok', [{ name: 'x', used_pct: '97' }])], [{ provider: 'openai' }],
+    [entry('openai', 'ok', [{ name: 'gpt-5.6-luna:7d', used_pct: 97, resets_in: { toString: null } }])],
+    [entry('zai', 'exhausted', [], { available_in: { toString: null } })]]) {
     const bad = await quotaServer(body);
     try {
       assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/, JSON.stringify(body));
