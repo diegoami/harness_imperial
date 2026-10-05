@@ -116,10 +116,11 @@ try { opencode = resolveOpenCode(); } catch (e) {
   throw e;
 }
 // OpenCode, and every command it runs, in the credential jail (lib/jail.mjs, #68): the reviewer
-// reads and tests, and this script posts. Where the jail cannot run, the log says so first.
-const jail = credentialJail();
-if (jail.off) say(OFF_WARNING(jail.off));
-else opencode = { exe: jail.exe, prefix: [...jail.args, '--', opencode.exe, ...opencode.prefix] };
+// reads and tests, and this script posts. Only where harness.json turns it on (jail.enabled); where
+// it is on but cannot run, the log says so first.
+const jail = config.jail?.enabled === true ? credentialJail() : { off: 'harness.json does not enable it', quiet: true };
+if (jail.off && !jail.quiet) say(OFF_WARNING(jail.off));
+else if (!jail.off) opencode = { exe: jail.exe, prefix: [...jail.args, '--', opencode.exe, ...opencode.prefix] };
 if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);
 // A second opinion (--second-opinion, for a critical PR): reviewer.secondOpinion, else the chain's
 // other models, never the model that wrote the first review (#39).

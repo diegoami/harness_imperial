@@ -11,8 +11,9 @@ exit 3, and the main session tells the user: there is no Claude reviewer here.
   anything is billed. In WSL, use OpenCode's Linux binary in `~/.opencode/bin` (its own installer
   puts it there): the `opencode` WSL finds on PATH is often the Windows npm shim under `/mnt/c`,
   which the script skips. `HARNESS_OPENCODE_EXE` names another. Avoid `opencode upgrade`.
-- On Linux and WSL, bubblewrap (`sudo apt install bubblewrap`): the reviewer runs in it without your
-  GitHub credentials (`tools/harness/lib/jail.mjs`, #68). Without it, the script warns first.
+- Optional: the credential jail (`tools/harness/lib/jail.mjs`, #68), off by default. With
+  `"jail": { "enabled": true }` in `harness.json` and bubblewrap on Linux or WSL, the reviewer runs
+  without your GitHub credentials; enabled where bwrap cannot run, the script warns first.
 
 ## The scripts' own data directory
 

@@ -6,13 +6,14 @@
 // Reads the hook's JSON on stdin. A Bash command that the role may not run (lib/guard.mjs) is
 // blocked: exit 2, with the reason on stderr, which the agent sees as the tool's error. Anything else
 // exits 0. Input it cannot read is blocked too: a guard that fails open guards nothing.
-// A reviewer's allowed command is rewritten to run in the credential jail (lib/jail.mjs, #68), so a
+// Where the project's harness.json turns the jail on (jail.enabled; off by default), a reviewer's
+// allowed command is rewritten to run in the credential jail (lib/jail.mjs, #68), so a
 // push or a gh write that the guard misses finds no credentials. Where the jail cannot run, the
 // command runs as typed and the hook says so to the user. A reviewer's Read, Grep and Glob are
 // refused where credentials are kept.
 
 import { refusal } from './lib/guard.mjs';
-import { credentialJail, jailCommand, hiddenTarget, OFF_WARNING } from './lib/jail.mjs';
+import { credentialJail, jailCommand, hiddenTarget, jailEnabled, OFF_WARNING } from './lib/jail.mjs';
 
 const role = process.argv[2];
 let input = '';
@@ -46,6 +47,8 @@ if (reason) {
   process.exit(2);
 }
 if (role === 'reviewer') {
+  // The project directory Claude Code names holds harness.json; without it, the jail stays off.
+  if (!jailEnabled(process.env.CLAUDE_PROJECT_DIR || '')) process.exit(0);
   const jail = credentialJail();
   const out = jail.off ? { systemMessage: OFF_WARNING(jail.off) }
     : { hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...event.tool_input, command: jailCommand(event.tool_input.command, jail) } } };

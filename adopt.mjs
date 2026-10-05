@@ -65,6 +65,7 @@ if (profile === 'full') {
     worktreeRoot: t.worktreeRoot,
     models: Object.fromEntries(p.harness.models.map((m) => [m, t.models[m]])),
     reviewer: { ...t.reviewer, ...p.harness.reviewer },
+    jail: t.jail,
   };
   plan.push({ path: 'harness.json', content: Buffer.from(`${JSON.stringify(config, null, 2)}\n`), mode: 0o644 });
   adapt = p.adapt;

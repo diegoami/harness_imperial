@@ -18,7 +18,7 @@ const git = (cwd, ...a) => {
 };
 const commit = (cwd, msg) => git(cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', msg);
 
-function project(reviewer = {}, prLabels = []) {
+function project(reviewer = {}, prLabels = [], jail = false) {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-rev-')));
   const origin = path.join(base, 'origin.git');
   const main = path.join(base, 'proj');
@@ -29,6 +29,7 @@ function project(reviewer = {}, prLabels = []) {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'harness.json'), 'utf8'));
   config.models.spare = { id: 'opencode-go/spare-model', variant: 'high', family: 'spare' };   // a third model, tests only
   config.reviewer = { ...config.reviewer, startupTimeoutSec: 2, idleTimeoutSec: 5, totalTimeoutSec: 20, ...reviewer };
+  config.jail = { enabled: jail };
   fs.writeFileSync(path.join(main, 'harness.json'), JSON.stringify(config));
   git(main, 'add', '.');
   commit(main, 'init');
@@ -80,8 +81,17 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.doesNotMatch(git(p.main, 'worktree', 'list'), /proj-work[\\/]7-review-/);
 });
 
-test('OpenCode reviews in the credential jail; without one, the log warns first and the review still runs (#68)', { skip: process.platform !== 'linux' }, () => {
+test('the jail is off unless harness.json enables it: OpenCode runs outside it, and nothing warns', () => {
   const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!fs.existsSync(path.join(p.base, 'bwrap.log')), 'bwrap never ran');
+  assert.doesNotMatch(r.stdout, /credential jail/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'harness.json'), 'utf8')).jail, { enabled: false });   // the template's default
+});
+
+test('OpenCode reviews in the credential jail; without one, the log warns first and the review still runs (#68)', { skip: process.platform !== 'linux' }, () => {
+  const p = project({}, [], true);
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const runs = fs.readFileSync(path.join(p.base, 'bwrap.log'), 'utf8').split('===\n').filter(Boolean).map((b) => b.split('\n'));
@@ -90,7 +100,7 @@ test('OpenCode reviews in the credential jail; without one, the log warns first 
   assert.ok(reviewRun.includes('--unshare-pid') && reviewRun.includes('GH_TOKEN'));
   assert.deepEqual(reviewRun.slice(reviewRun.indexOf('--') + 1, reviewRun.indexOf('--') + 3), [process.execPath, path.join(here, 'fake-opencode.mjs')]);
   assert.doesNotMatch(r.stdout, /credential jail is off/);
-  const q = project();
+  const q = project({}, [], true);
   const off = review(q, { FAKE_OC_MODE: 'review-ok', HARNESS_BWRAP: path.join(q.base, 'no-bwrap') });
   assert.equal(off.status, 0, off.stderr + off.stdout);
   assert.match(off.stdout, /WARNING: the reviewer's credential jail is off \(HARNESS_BWRAP points at a missing file/);

@@ -155,20 +155,36 @@ test('the hook blocks a refused command with exit 2 and the reason on stderr; al
   assert.equal(hook('reviewer', { tool_name: 'Read', tool_input: { file_path: 'a' } }).status, 0);
 });
 
+// A project directory whose harness.json turns the jail on, or leaves it off.
+const projectDir = (enabled) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-project-'));
+  fs.writeFileSync(path.join(d, 'harness.json'), JSON.stringify({ jail: { enabled } }));
+  return d;
+};
+
+test('the hook leaves a reviewer\'s command as typed, and says nothing, unless harness.json enables the jail', () => {
+  for (const env of [{ CLAUDE_PROJECT_DIR: projectDir(false) }, { CLAUDE_PROJECT_DIR: '' }]) {
+    const r = hook('reviewer', bash('git log'), env);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, '');
+  }
+});
+
 test('the hook runs a reviewer\'s allowed command in the credential jail, and warns where there is none (#68)', { skip: process.platform !== 'linux' }, () => {
   const out = (r) => (r.stdout ? JSON.parse(r.stdout) : null);
   const command = `echo "it's" 'ok'`;
-  const r = hook('reviewer', bash(command));
+  const on = { CLAUDE_PROJECT_DIR: projectDir(true) };
+  const r = hook('reviewer', bash(command), on);
   assert.equal(r.status, 0, r.stderr);
   const updated = out(r).hookSpecificOutput;
   assert.equal(updated.hookEventName, 'PreToolUse');
   assert.equal(updated.updatedInput.command.split(' ')[0], `'${path.join(here, 'fake-bwrap.sh')}'`);
   assert.match(updated.updatedInput.command, / '--unshare-pid' .* '--' 'bash' '-c' /);
   assert.equal(spawnSync('sh', ['-c', updated.updatedInput.command], { encoding: 'utf8' }).stdout, "it's ok\n");
-  assert.equal(hook('implementer', bash(command)).stdout, '');                      // the implementer pushes
-  assert.equal(hook('reviewer', bash('git push origin HEAD')).stdout, '');           // refused, not rewritten
+  assert.equal(hook('implementer', bash(command), on).stdout, '');                      // the implementer pushes
+  assert.equal(hook('reviewer', bash('git push origin HEAD'), on).stdout, '');           // refused, not rewritten
   for (const bwrap of ['/nonexistent/bwrap', '/bin/false']) {                        // missing, or does not run
-    const off = hook('reviewer', bash(command), { HARNESS_BWRAP: bwrap });
+    const off = hook('reviewer', bash(command), { ...on, HARNESS_BWRAP: bwrap });
     assert.equal(off.status, 0);
     assert.match(out(off).systemMessage, /^WARNING: the reviewer's credential jail is off/);
     assert.equal(out(off).hookSpecificOutput, undefined);
