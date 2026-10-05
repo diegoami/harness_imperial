@@ -108,6 +108,8 @@ test('a model is chosen after a look at its provider\'s quota, and an exhausted 
     assert.match(e, /Never read or edit `~\/\.config\/quota-tracker\/config\.toml`: it holds account tokens\./, f);
     assert.match(e, /Read which pools exist from the windows the endpoint returns, not from this page\./, f);
   }
+  // The review profile's logins table keeps its header after the quota section (PR 75 dropped it).
+  assert.match(read('profiles/review/docs/environment.md'), /\n## The logins, one per reviewer\n\n\| Reviewer \| Login \| Check \|/);
   assert.match(read('template/docs/lessons.md'), /^\| L50 \| Before choosing, recommending or delegating to a model, the main session checks the providers' quota/m);
 });
 

@@ -9,7 +9,7 @@
 // chain, the text in its final parentheses becomes each attempt's model. The model never writes to
 // GitHub (the agent file denies it); this script is the only writer.
 //
-// The models are harness.json's reviewer.chain, then its claudeFallback (the full profile: GPT-6
+// The models are harness.json's reviewer.chain, then its claudeFallback (the full profile: GPT-5.6
 // Luna on the direct OpenAI route, then Claude Opus; the review profile: GLM-5.3 Flash, Luna and
 // DeepSeek V4.1 Flash, then the owner). It is never the implementer's model family: --exclude
 // (implement.mjs prints the name on its "implemented by:" line, or "claude"), else a model:<name>

@@ -98,4 +98,4 @@ export function jailCommand(command, jail) {
 }
 
 export const OFF_WARNING = (why) => `WARNING: the reviewer's credential jail is off (${why}). It keeps the user's `
-  + 'GitHub credentials, and only the guard stops a push or a gh write (#68).';
+  + 'GitHub credentials, and only its agent rules stop a push or a gh write (#68).';
