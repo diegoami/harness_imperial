@@ -122,6 +122,18 @@ test('the scripts skip an exhausted provider themselves, and no chain is edited 
   assert.match(read('template/docs/lessons.md'), /^\| L52 \| `implement\.mjs` and `review\.mjs` check quota themselves/m);
 });
 
+test('a delegated run\'s final message is read before it is retried, re-routed or called a failure (L55)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/CLAUDE.md'), /8\. Relay review findings in full\. Read a run's final message before you retry or re-route it \(L55\)\./);
+  const s = flat('template/.claude/skills/run-task/SKILL.md');
+  assert.match(s, /\*\*Read before you retry \(L55\)\.\*\* Before a retry, a re-route to another model, or calling a run a failure, read what it returned; never retry blind\./);
+  assert.match(s, /\?mode=ro'/);
+  assert.match(s, /os\.environ\.get\('HARNESS_OPENCODE_HOME'\)/);                       // where the runner put it (Luna's R1)
+  assert.match(s, /select data from part where session_id=\? order by time_created/);
+  assert.match(s, /A run that stopped and reported gets an answer to its report \(amend the task, decide, or escalate\), and the report is posted on the task's issue/);
+  assert.match(read('template/docs/lessons.md'), /^\| L55 \| Before a delegated run is retried, re-routed to another model, or called a failure, its final message is read/m);
+});
+
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
 const ONE_PASS = `## Report every blocking finding in this one review
 
