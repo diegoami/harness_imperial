@@ -81,6 +81,15 @@ test('--copy brings an untracked file into the worktree, its folders created (#9
   const r = implement(p, { FAKE_OC_MODE: 'implement' }, '--copy', '.cache/kept/E005/save.sav');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.equal(fs.readFileSync(path.join(p.base, 'proj-work', 'T07', '.cache/kept/E005/save.sav'), 'utf8'), 'kept\n');
+  // A path that leaves the checkout is refused, and nothing is written outside the worktree.
+  for (const bad of ['../newdir/escaped.sav', path.join(p.base, 'abs.sav')]) {
+    const q = project();
+    fs.writeFileSync(path.join(q.base, 'abs.sav'), 'x\n');
+    const s = implement(q, { FAKE_OC_MODE: 'implement' }, '--copy', bad === '../newdir/escaped.sav' ? bad : path.join(q.base, 'abs.sav'));
+    assert.equal(s.status, 2, s.stderr + s.stdout);
+    assert.match(s.stderr, /--copy takes a path inside the checkout/);
+    assert.ok(!fs.existsSync(path.join(q.base, 'proj-work', 'newdir')));
+  }
 });
 
 test('a task runs to an open PR, in its own worktree, with the agent kept out of git', posix, async () => {

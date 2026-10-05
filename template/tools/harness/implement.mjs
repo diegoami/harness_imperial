@@ -90,8 +90,11 @@ if (fs.existsSync(worktree)) {
   sh('git', ['-C', worktree, 'push', '-q', '-u', 'origin', branch]);
 }
 if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${branch}`]);
-// A copied file's folder may be untracked or ignored, so absent from a fresh worktree (#90).
+// A copied file's folder may be untracked or ignored, so absent from a fresh worktree (#90). A path
+// that leaves the main checkout or the worktree is refused (Luna's R1 on PR 91).
 for (const f of a.copy) {
+  const inside = (root) => { const r = path.relative(root, path.resolve(root, f)); return r && !r.startsWith('..') && !path.isAbsolute(r); };
+  if (!inside(mainRoot) || !inside(worktree)) die(2, `--copy takes a path inside the checkout; got ${f}`);
   fs.mkdirSync(path.dirname(path.join(worktree, f)), { recursive: true });
   fs.copyFileSync(path.join(mainRoot, f), path.join(worktree, f));
 }
