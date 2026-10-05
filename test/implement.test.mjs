@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
+import { quotaServer, entry } from './quota-server.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../template');
@@ -51,7 +52,7 @@ function implement(p, env, ...args) {
     cwd: p.main, encoding: 'utf8',
     env: {
       ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`,
-      HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'),
+      HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), HARNESS_QUOTA_URL: 'http://127.0.0.1:9',
       FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
       HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
       ...env,
@@ -84,6 +85,19 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
   assert.ok(fs.existsSync(path.join(wt, '.opencode/agents/implementer.md')));
   assert.equal(git(wt, 'status', '--porcelain'), '');                           // the copy is excluded
   assert.equal(git(p.main, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');       // main checkout untouched
+});
+
+test('an implementer whose provider is out of quota is skipped before it runs; the next one implements (L50)', posix, async () => {
+  const s = await quotaServer([entry('zai', 'exhausted', [], { available_in: '41m' }), entry('opencode_go', 'ok')]);
+  try {
+    const p = project();
+    const models = '["zai-coding-plan/glm-5.3-flash", "opencode-go/deepseek-v4.1-flash"]';
+    const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: models, HARNESS_QUOTA_URL: s.url });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /glm-flash: skipped, out of quota: zai is exhausted until it is usable again in 41m \(quota-tracker, L50\)/);
+    assert.doesNotMatch(r.stdout, /attempt: glm-flash/);
+    assert.match(r.stdout, /attempt: deepseek-flash/);
+  } finally { s.stop(); }
 });
 
 test('a model on watch says what to look for, on the console and in the run log; others say nothing (L35)', posix, async () => {

@@ -1,6 +1,7 @@
 // git, gh, the config and argument parsing, for implement.mjs and review.mjs.
 
 import { spawnSync } from 'node:child_process';
+import { readQuota, quotaBlock } from './quota.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { openCodeHome, listedModels, loginHint, openCodeVersion, versionProblem } from './opencode.mjs';
@@ -85,7 +86,8 @@ export function ensureAgent({ top, commonDir, worktree, agent }) {
 
 // Before anything is billed: the scripts' own data directory, the OpenCode version (any major but
 // the supported one is refused, #26), and which models of the chain OpenCode lists there. A model it does not list (an unknown id, or a provider not logged in in
-// that directory) is dropped, with the command that fixes it. Returns { env, usable, problems }.
+// that directory) is dropped, with the command that fixes it. So is a model whose provider's quota is
+// exhausted, when quota-tracker answers (lib/quota.mjs, L50). Returns { env, usable, problems }.
 export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }) {
   const oc = openCodeHome(env, { log });
   const version = await openCodeVersion(opencode, { env: oc.env, cwd });
@@ -94,10 +96,16 @@ export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }
   if (bad) return { env: oc.env, usable: [], problems: [bad], version };
   const { listed, errors } = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
   const problems = [];
+  const quota = await readQuota(env);
+  log(quota.off ? `quota: not checked: ${quota.off} (L50)` : `quota: checked (${[...quota.providers.values()].map((p) => `${p.provider} ${p.status}`).join(', ')})`);
   const usable = chain.filter((m) => {
-    if (listed.has(models[m].id)) return true;
-    problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome, errors)}`);
-    return false;
+    if (!listed.has(models[m].id)) {
+      problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome, errors)}`);
+      return false;
+    }
+    const block = quota.off ? null : quotaBlock(models[m].id, quota);
+    if (block) problems.push(`${m}: skipped, out of quota: ${block} (quota-tracker, L50)`);
+    return !block;
   });
   return { env: oc.env, usable, problems, version };
 }
