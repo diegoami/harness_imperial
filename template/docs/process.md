@@ -34,10 +34,8 @@ It watches each background job (start, end, no output for 10 min), never with `p
 
 `docs/tasks/T<nn>.md`, 150–400 words, from `docs/tasks/TEMPLATE.md`: Kind, Evidence, Owns,
 Scope, Done when, Hazards, Implementer, Reviewer, Merge after. Rules:
-- **Owns** names directories or files. Go finer only when two tasks run at once in one file:
-  function-level Owns made one project open 27 PRs that only widened a list. (L5)
-- **Done when**: each line is one check a command can run. The main session runs each line before
-  dispatch: it fails on `main` and passes on a mock fix. (L45)
+- **Owns** names directories or files. Go finer only when two tasks run at once in one file: function-level Owns made one project open 27 PRs that only widened a list. (L5)
+- **Done when**: each line is one check a command can run. The main session runs each line before dispatch: it fails on `main` and passes on a mock fix. (L45)
 - The main session edits task files directly on `main`, the reason in the commit; the reviewer sees it. (L6)
 
 ## 3. The loop
@@ -58,8 +56,10 @@ What the implementer script guarantees, and why:
 
 ## 4. The implementer brief
 
-The brief is the task file pasted in full, then this block, then on a rework round the review's
-URL. The OpenCode agent file repeats the run mechanics; this block is the contract.
+The brief is the task file pasted in full, then this block, then on a rework round the review's URL. The
+OpenCode agent file repeats the run mechanics; this block is the contract. A brief never asks an OpenCode
+implementer for anything outside its worktree: a line that needs it (a TMPDIR outside every checkout, the
+user's install, `.git/info`) is one the main session runs itself (L57).
 
 ```text
 You implement <T<nn>>. The task file above is the contract.

@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
+import { resetWorktree } from '../template/tools/harness/lib/unsaved.mjs';
 import { quotaServer, entry } from './quota-server.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -146,6 +147,78 @@ test('a rejected tool call is a failure, not a clean finish: the next model runs
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /fell back: deepseek-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
   assert.match(r.stdout, /implemented by: luna/);
+});
+
+// The reset's save (#87, L56): unit checks on a throwaway repository, then a run end to end.
+function throwaway() {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'unsaved-')));
+  const repo = path.join(dir, 'repo');
+  fs.mkdirSync(repo);
+  const g = (...a) => git(repo, ...a);
+  g('init', '-q');
+  fs.writeFileSync(path.join(repo, 'tracked.txt'), 'one\n');
+  g('add', '-A');
+  g('-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-q', '-m', 'start');
+  return { repo, saves: path.join(dir, 'saves'), start: g('rev-parse', 'HEAD'), g };
+}
+const stamp = new Date('2026-10-05T12:00:00Z');
+const at = (t) => ({ name: 'T07', model: 'deepseek-flash', stamp, worktree: t.repo, startSha: t.start, workRoot: t.saves });
+
+test('the reset saves a tracked change and an untracked file in one patch that applies cleanly (#87, L56)', () => {
+  const t = throwaway();
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'one\ntwo\n');
+  fs.writeFileSync(path.join(t.repo, 'untracked.txt'), 'fresh\n');
+  const patch = resetWorktree(at(t));
+  assert.equal(patch, path.join(t.saves, 'T07.deepseek-flash.2026-10-05T12-00-00.000Z.unsaved.patch'));
+  assert.equal(t.g('status', '--porcelain'), '');                                   // reset as before
+  t.g('apply', '--check', patch);
+  t.g('apply', patch);
+  assert.equal(fs.readFileSync(path.join(t.repo, 'tracked.txt'), 'utf8'), 'one\ntwo\n');
+  assert.equal(fs.readFileSync(path.join(t.repo, 'untracked.txt'), 'utf8'), 'fresh\n');
+});
+
+test('a clean worktree writes no patch, and a second save never overwrites the first (#87)', () => {
+  const t = throwaway();
+  assert.equal(resetWorktree(at(t)), null);
+  assert.ok(!fs.existsSync(t.saves) || fs.readdirSync(t.saves).length === 0);
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'first\n');
+  const first = resetWorktree(at(t));
+  fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'second\n');
+  const second = resetWorktree(at(t));                                               // the same stamp
+  assert.equal(second, first.replace('.unsaved.patch', '.1.unsaved.patch'));
+  assert.match(fs.readFileSync(first, 'utf8'), /\+first/);
+  assert.match(fs.readFileSync(second, 'utf8'), /\+second/);
+});
+
+test('a run that edited without committing and was rejected keeps its work in a patch the exit names (#87)', posix, async () => {
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'permission' }) });
+  assert.equal(r.status, 3, r.stderr + r.stdout);
+  const m = r.stderr.match(/Unsaved work was saved before the reset: (\S+\.unsaved\.patch)\./);
+  assert.ok(m, r.stderr);
+  assert.match(path.basename(m[1]), /^T07\.deepseek-flash\.\d{4}-\d\d-\d\dT[\d-]+\.\d{3}Z\.unsaved\.patch$/);
+  const text = fs.readFileSync(m[1], 'utf8');
+  assert.match(text, /\+edited, not committed/);
+  assert.match(text, /\+untracked work/);
+  assert.match(r.stdout, /unsaved work saved to: /);
+  // Every brief's run rules keep the implementer inside its worktree and committing as it goes (L57).
+  const prompt = readSessions(path.join(p.base, 'oc.json'))[0].prompt.replace(/\s+/g, ' ');
+  assert.match(prompt, /Never read, write or redirect to any path outside your worktree: no \/tmp, no home directory, no git internals/);
+  assert.match(prompt, /A test that needs a TMPDIR outside every checkout is run by the main session, not by you\. \(L57\)/);
+  assert.match(prompt, /Commit and push after each step, so a run that ends early keeps its work\. \(L57\)/);
+});
+
+test('an exit 1 after a later attempt committed still names the earlier attempt\'s patch (#87)', posix, async () => {
+  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'commit-fail' }) });
+  assert.equal(r.status, 1, r.stderr + r.stdout);
+  assert.match(r.stderr, /after committing, pushing or opening a PR .* Unsaved work was saved before the reset: \S+T07\.deepseek-flash\.\S+\.unsaved\.patch\./);
+});
+
+test('implement.mjs --self-test checks the reset\'s save on a throwaway repository (#87)', () => {
+  const r = spawnSync(process.execPath, [path.join(root, 'tools/harness/implement.mjs'), '--self-test'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /self-test: all checks passed/);
 });
 
 test('a rejection from cd or .. says so in the failure, naming L31 (#14)', posix, async () => {
