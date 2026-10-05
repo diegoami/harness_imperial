@@ -43,9 +43,8 @@ const git = (sub) => new RegExp(`^git${GIT_OPT}\\s+${sub}`);
 
 // gh commands that only read. Every other gh command is a write for the reviewer.
 const GH_READ = /^gh\s+(?:--version\b|version\b|auth\s+status\b|pr\s+(?:view|diff|list|checks|status)\b|issue\s+(?:view|list|status)\b|run\s+(?:view|list|watch)\b|workflow\s+(?:view|list)\b|repo\s+view\b|release\s+(?:view|list)\b|label\s+list\b|search\s+\w+)/;
-// `gh api` reads only as a plain GET: no other method, and no field or input (which make it a POST).
-const ghApiWrite = (cmd) => /^gh\s+api\b/.test(cmd)
-  && (/\s(?:-X|--method)(?:\s+|=)(?!GET\b)\w+/i.test(cmd) || /\s(?:-f|-F|--field|--raw-field|--input)(?:\s|=)/.test(cmd));
+// `gh api` is a write unless ghApi (below) read its arguments as a plain GET: ghParts marks it.
+const ghApiWrite = (cmd) => /^gh\s+api\b/.test(cmd) && cmd.endsWith(GH_API_WRITES);
 const ghWrite = (cmd) => /^gh\b/.test(cmd) && (/^gh\s+api\b/.test(cmd) ? ghApiWrite(cmd) : !GH_READ.test(cmd));
 
 export const RULES = {
@@ -362,11 +361,58 @@ function gitParts(args, unread) {
 }
 
 // A gh command as the rules read it, without -R/--repo; a dynamic word before its arguments is refused.
+// `gh api`'s arguments read as gh's flag parser reads them (#79; Sol's R1-R4 on PR 92, rounds 1
+// and 2): short options clustered (-iXPOST) or with the value attached (-fbody=x), long ones as
+// --opt=value or --opt value, an option's value taken as a value (so a header's text is never
+// read as an option), and `--` ending the options. It writes with a
+// method other than literally GET, or with a field or an input. Any dynamic word is unreadable:
+// an unquoted expansion may split into more words, one of them an option.
+const GH_API_SHORT_VALUE = new Set(['X', 'f', 'F', 'H', 'p', 'q', 't']);
+const GH_API_LONG_VALUE = new Set(['method', 'field', 'raw-field', 'header', 'input', 'jq', 'template', 'preview', 'hostname', 'cache']);
+// Marks a write in the command text; a command line with a control character is refused before
+// it is read, so no argument can carry it (Sol's R5, round 2).
+const GH_API_WRITES = '\0writes';
+function ghApi(args) {
+  if (args.some((a) => a.dynamic)) return { unread: true };
+  let write = false;
+  const option = (name, value) => {
+    if ((name === 'X' || name === 'method') && !/^GET$/i.test(value ?? '')) write = true;
+    if (['f', 'F', 'field', 'raw-field', 'input'].includes(name)) write = true;
+  };
+  for (let k = 0; k < args.length; k++) {
+    const { text } = args[k];
+    if (text === '--') break;
+    if (!text.startsWith('-') || text === '-') continue;
+    if (text.startsWith('--')) {
+      const eq = text.indexOf('=');
+      const name = text.slice(2, eq < 0 ? undefined : eq);
+      if (!GH_API_LONG_VALUE.has(name)) continue;
+      option(name, eq >= 0 ? text.slice(eq + 1) : args[++k]?.text);
+      continue;
+    }
+    // A short cluster: flags, until one that takes a value, which takes the rest or the next word.
+    for (let c = 1; c < text.length; c++) {
+      if (!GH_API_SHORT_VALUE.has(text[c])) continue;
+      option(text[c], c + 1 < text.length ? text.slice(c + 1) : args[++k]?.text);
+      break;
+    }
+  }
+  return { write };
+}
+
 function ghParts(args, unread) {
   const rest = args.filter((a, k) => !(a.text === '-R' || a.text === '--repo' || /^(?:--repo=|-R\S)/.test(a.text)
     || (k > 0 && (args[k - 1].text === '-R' || args[k - 1].text === '--repo'))));
   const path = rest.filter((a) => !a.text.startsWith('-')).slice(0, rest[0]?.text === 'api' ? 1 : 2);
   const last = rest.indexOf(path.at(-1));
+  // gh api is read from its own words, -R and its value included (Sol's R3, round 2).
+  const at = args.findIndex((a) => !a.text.startsWith('-'));
+  if (args[at]?.text === 'api' && !args[at].dynamic && args.slice(0, at).every((a) => !a.dynamic && /^(?:-R\S+|--repo=\S+)$/.test(a.text))) {
+    const api = ghApi(args.slice(at + 1));
+    if (api.unread) return [unread];
+    return [['gh', ...rest.map((a) => a.text)].join(' ') + (api.write ? GH_API_WRITES : '')];
+  }
+  if (rest[0]?.text === 'api') return [unread];                    // gh api read any other way
   const out = rest.slice(0, last + 1).some((a) => a.dynamic) || !path.length && rest.some((a) => a.dynamic) ? [unread] : [];
   return [...out, ['gh', ...rest.map((a) => a.text)].join(' ')];
 }

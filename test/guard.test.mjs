@@ -24,6 +24,18 @@ const REFUSED = {
     'echo \\"; git push origin HEAD', "bash -c 'git push origin HEAD'", 'sh -c "npm test && git commit -m x"',
     'eval git push', 'env FOO=1 git push', 'xargs git push', 'git push & wait',
     'gh api -X DELETE repos/o/r/issues/3', 'gh api --method=POST repos/o/r/issues', 'gh api repos/o/r/issues/3/comments -f body=x',
+    // #79 (Luna on goal2-archaeology PR 39): a method that is not literally GET.
+    'gh api --method="$METHOD" repos/o/r/issues/1/comments', 'gh api -X $(printf POST) repos/o/r/issues', 'gh api -XPOST repos/o/r/issues',
+    'gh api repos/o/r/issues -X',
+    // Sol's R1-R3 on PR 92: a method in a short cluster, a field with its value attached, an option
+    // that a variable supplies; and the forms gh's flag parser accepts.
+    'gh api repos/o/r -iXPOST', 'gh api repos/o/r -fbody=x', 'gh api repos/o/r -Fbody=x', 'FLAGS=-XPOST; gh api repos/o/r "$FLAGS"',
+    'FLAGS=--input=package.json; gh api repos/o/r "$FLAGS"', 'gh api repos/o/r --raw-field=a=b', 'gh api repos/o/r --input body.json',
+    'gh api "$EP"', 'gh api repos/o/r --$OPT=1',
+    // Sol's R1-R3 on PR 92, round 2: an unquoted expansion that splits into an option, in an
+    // endpoint or in a value; -R's value shifting what an option consumes; -R before api.
+    'VALUE="r -XPOST"; gh api repos/$VALUE', 'VALUE="x -XPOST"; gh api repos/o/r -H X-Test:$VALUE',
+    'gh api repos/o/r -q -Rfoo -X POST', 'gh api -R o/r repos/x -X POST', 'gh -R o/r api repos/x -X POST',
     'gh pr ready 7', 'gh label create x', 'gh repo delete o/r',
     // Luna's R1, round 2: a substitution inside double quotes, git options before the subcommand.
     'echo "$(git push origin HEAD)"', 'echo "x `git push` y"', 'echo "$(echo "$(git commit -m x)")"',
@@ -77,7 +89,12 @@ const REFUSED = {
 const ALLOWED = {
   reviewer: ['git log --oneline | head', 'git diff --name-only origin/main...HEAD', 'gh pr view 7 --json body',
     'git checkout -- src/a.js', 'git fetch origin pull/7/head', 'npm test', 'grep -rn "git push" docs', 'echo "gh pr merge is not for you"',
-    'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls',
+    'gh pr diff 7', 'gh pr checks 7', 'gh issue view 3 --comments', 'gh api repos/o/r/pulls/7', 'gh api -X GET repos/o/r/pulls', 'gh api -XGET repos/o/r', 'gh api --method=get repos/o/r', 'gh api -X "GET" repos/o/r',
+    // Sol's R4 on PR 92: an option's value is a value, never read as an option.
+    'gh api repos/o/r -H "X-Test: -XPOST"', 'gh api repos/o/r -X GET -H "X-Test: --method=POST"', 'gh api -q ".[] | -XPOST" repos/o/r',
+    'gh api repos/o/r/pulls --jq .x --paginate', 'gh api -R o/r repos/x',
+    // Sol's R4-R5 on PR 92, round 2: after --, a word is the endpoint; a header may say (writes).
+    'gh api -- -XPOST', 'gh api repos/o/r -H "X-Test: (writes)"',
     'gh run view 123 --log-failed', 'npm test 2>&1 | tail -5', "bash -c 'npm test'",
     "echo '$(git push)'", 'echo "$(git log -1)"', 'git --no-pager log -3',
     'git log --grep push', 'ls /usr/bin/git', 'git -C "a b" log', 'cat .git/HEAD',
