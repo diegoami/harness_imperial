@@ -51,7 +51,8 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      ```bash
      python3 - <<'EOF'
      import sqlite3, json, os
-     db = 'file:' + os.path.expanduser('~/.local/share/harness-opencode/data/opencode/opencode.db') + '?mode=ro'
+     home = os.environ.get('HARNESS_OPENCODE_HOME') or os.path.expanduser('~/.local/share/harness-opencode')
+     db = 'file:' + os.path.join(home, 'data', 'opencode', 'opencode.db') + '?mode=ro'   # the scripts' data directory
      c = sqlite3.connect(db, uri=True)
      sid = 'ses_...'   # the "session ses_..." line in the run's log
      parts = [json.loads(d) for (d,) in c.execute("select data from part where session_id=? order by time_created", (sid,))]
