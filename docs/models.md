@@ -226,7 +226,9 @@ and the trials issue it names.
   meet.
 - **DeepSeek V4 Pro**: it ran a read-only review brief with no rejection, always giving paths from
   the root (L31). It answered a probe on 2026-10-03. In the PR 29 replay (below) it gave no review:
-  OpenCode rejected its access to `/tmp` (`external_directory`), as in L31.
+  OpenCode rejected its access to `/tmp` (`external_directory`), as in L31. On PR 74 (the credential
+  jail, 2026-10-05) it read `/proc/1` and then `/tmp` while probing the jail, even with a brief that
+  said to stay in the worktree; both runs were discarded with no review.
 - **GLM-5.3**: in IC2 it ended long implementer runs early (L27). Here, as a read-only reviewer, it
   chained `cd` commands, and the run was rejected (L31, #14). At Isle Wars (T06) it finished every run, but
   added scope nobody asked for, and the bypasses were there. At games_revival_framework (goal2 T04)
@@ -235,7 +237,9 @@ and the trials issue it names.
   not blocking. In game-archaeologist's replay it approved every head. With L47's prompt it asked
   for rework on that head, and found real bypasses on the head Luna had approved (#62). It approved
   PR 63 (the L47 prompt) with two valid non-blocking findings, keeping its scratch output inside the
-  worktree as the new rule asks.
+  worktree as the new rule asks. On PR 74 (the credential jail, 2026-10-05) it read `/proc/self`
+  while probing the jail, twice, the second time against a brief that said not to: both runs were
+  discarded (L26). A task about what lies outside the worktree draws OpenCode reviewers out of it.
 - **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1, on
   OpenCode Go; its runs on Z.AI since have had no stall, L42), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
@@ -252,6 +256,17 @@ and the trials issue it names.
   - On PR 69, the first brief with L49's one-pass section, it reported all three blocking findings
     in one review, ended with "Final pass done", and approved the fix in round 2.
   - It approved PR 57 (the `/tmp/opencode` deny) with no findings, re-running the real-OpenCode test.
+  - On PR 74 (the credential jail, #68; 2026-10-04/05, at `low`) it asked for rework four times
+    with 7, 4, 4 and 4 blocking findings, each proven with fake credentials in a real nested jail,
+    each a new way past a same-user jail. The owner then cut the task back to mistakes only. In
+    round 4 OpenAI's filter stopped it mid-run ("This content was flagged for possible
+    cybersecurity risk"), so no review came back: on security-heavy reviews it may not finish.
+  - On PR 77 (the runners' quota check) it asked for rework twice, both times about trusting the
+    shape of quota-tracker's answer, and approved round 3 with no findings.
+- **GPT-5.6 Luna** (`luna` since 2026-10-04, L51; its own weekly pool): it approved PR 76 (its own
+  switch) and PR 74's mistakes-only head with no findings, staying in its worktree where GLM-5.3
+  and DeepSeek V4 Pro did not. Both reviews were thin, with Done-when results and little else, so
+  the main session re-ran the key checks before merging (L46).
 
 **The PR 29 replay (2026-10-04).** PR 29's first commit (36abb20, the PreToolUse guard) had blocking
 bypasses that Luna found in the real round 1: escaped quotes and nested shells let a `git push`
