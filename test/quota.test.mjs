@@ -11,6 +11,7 @@ test('each model id maps to its quota-tracker provider', () => {
   assert.equal(providerOf('zai-coding-plan/glm-5.3-flash'), 'zai');
   assert.equal(providerOf('opencode-go/deepseek-v4.1-flash'), 'opencode_go');
   assert.equal(providerOf('openrouter/deepseek/deepseek-v4-pro'), 'openrouter');
+  assert.equal(providerOf('alibaba-token-plan/qwen3.8-max'), 'alibaba');
   assert.equal(providerOf('someone/else'), null);
 });
 

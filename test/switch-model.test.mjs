@@ -71,6 +71,8 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
   assert.equal(defaultVariant('openai/gpt-6.1-sol', ['medium', 'high']), 'medium');
   assert.equal(defaultVariant('opencode-go/deepseek-v4-pro', ['high', 'max']), 'high');      // its lowest
   assert.equal(defaultVariant('opencode-go/deepseek-v4-pro', ['xhigh', 'high', 'max']), 'high');  // by rank, not order
+  for (const id of ['alibaba-token-plan/qwen3.8-max', 'alibaba-token-plan/deepseek-v4-pro', 'alibaba-token-plan/glm-5.3']) assert.ok(isHeavy(id), id);
+  assert.ok(!isHeavy('alibaba-token-plan/qwen3.8-flash'));
   for (const id of ['zai-coding-plan/glm-4.7', 'zai-coding-plan/glm-6', 'opencode-go/deepseek-v5-pro']) {
     assert.ok(!isHeavy(id), id);                                                             // only the models named
   }

@@ -11,7 +11,10 @@
 export const EXHAUSTED_PCT = 95;
 
 // quota-tracker's provider for a model id ("zai-coding-plan/glm-5.3-flash" → "zai").
-const PROVIDERS = { openai: 'openai', 'zai-coding-plan': 'zai', 'opencode-go': 'opencode_go', openrouter: 'openrouter', anthropic: 'claude' };
+const PROVIDERS = {
+  openai: 'openai', 'zai-coding-plan': 'zai', 'opencode-go': 'opencode_go', openrouter: 'openrouter', anthropic: 'claude',
+  'alibaba-token-plan': 'alibaba',   // one monthly pool shared by every model on the plan
+};
 export const providerOf = (id) => PROVIDERS[id.split('/')[0]] ?? null;
 
 // { providers: Map(name → entry) } or { off: why }.

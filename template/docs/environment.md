@@ -67,8 +67,9 @@ the plan.
 
 Where the machine runs quota-tracker, a local service, it reports how much subscription quota is
 left on each provider: `claude` (the main session and Claude agents), `openai` (Sol and Luna, via
-OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek) and `openrouter` (prepaid
-credit). Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
+OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit) and
+`alibaba` (Alibaba's Token Plan: DeepSeek, Qwen, GLM, Kimi and MiniMax, one monthly pool).
+Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one;
 - `curl -s localhost:8765/best`: the providers with quota left, most headroom first;
@@ -92,6 +93,23 @@ The models per provider, heavy and light:
 | zai | `opencode -m zai-coding-plan/glm-5.3` | `opencode -m zai-coding-plan/glm-5.3-flash` |
 | opencode_go | `opencode -m opencode-go/deepseek-v4-pro` | `opencode -m opencode-go/deepseek-v4.1-flash` |
 | openrouter | `opencode -m openrouter/deepseek/deepseek-v4-pro` | `opencode -m openrouter/deepseek/deepseek-v4.1-flash` |
+| alibaba (DeepSeek) | `opencode -m alibaba-token-plan/deepseek-v4-pro` | `opencode -m alibaba-token-plan/deepseek-v4.1-flash` |
+| alibaba (Qwen) | `opencode -m alibaba-token-plan/qwen3.8-max` | `opencode -m alibaba-token-plan/qwen3.8-flash` |
+| alibaba (GLM) | `opencode -m alibaba-token-plan/glm-5.3` | none on alibaba (zai has `glm-5.3-flash`) |
+
+Alibaba's Token Plan has one credit pool for every model on it, in a single `month` window (no
+5-hour or weekly windows); its entry also has `plan` and `subscription_ends_at`. Its quota comes
+from an Alibaba console login: a `not_configured` or login error goes to the owner, who runs
+`bl auth login --console --console-site international`. OpenCode's "Provider not found:
+alibaba-token-plan" means its key is not installed: tell the owner (`opencode auth login`, then
+Alibaba Token Plan), and do not retry.
+
+The tracker also keeps the usage history: `curl -s 'localhost:8765/usage?since=7d'` gives, per
+provider, the models called with their `calls`, `sessions`, `tokens` and `effort` (OpenCode's
+`variant`, Claude Code's effort; `default` when none was set), and
+`curl -s 'localhost:8765/usage/sessions?since=7d&model=glm-5.3&effort=high'` the sessions behind
+them (`title`, `project`, `tool`, `data_dir`, `launched_by`). `since` takes `90m`, `24h`, `7d`, `4w`
+or `all`. Use it to check that heavy models ran at the effort L54 asks for.
 
 GPT-5.6 Luna, the reviewer (L51), has its own weekly limit: for light work OpenAI is usable while
 the `gpt-5.6-luna:7d` window in `/quota/openai` is under 95%, even when OpenAI's main window is
