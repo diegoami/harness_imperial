@@ -363,8 +363,8 @@ function gitParts(args, unread) {
 // A gh command as the rules read it, without -R/--repo; a dynamic word before its arguments is refused.
 // `gh api`'s arguments read as gh's flag parser reads them (#79, Sol's R1-R4 on PR 92): short
 // options clustered (-iXPOST) or with the value attached (-fbody=x), long ones as --opt=value or
-// --opt value, an option's value taken as a value (so a header's text is never read as an option),
-// and `--` ending the options. It writes with a method other than literally GET, or with a field
+// --opt value, and an option's value taken as a value (so a header's text is never read as an
+// option). It writes with a method other than literally GET, or with a field
 // or an input. A dynamic word is read only where it cannot become an option: a value, or a
 // positional word that starts with a literal character; anything else is unreadable.
 const GH_API_SHORT_VALUE = new Set(['X', 'f', 'F', 'H', 'p', 'q', 't']);
@@ -376,15 +376,13 @@ function ghApi(args) {
     if (name === 'X' || name === 'method') { if (dynamic || !/^GET$/i.test(value ?? '')) write = true; }
     if (['f', 'F', 'field', 'raw-field', 'input'].includes(name)) write = true;
   };
-  let positional = false;
   for (let k = 0; k < args.length; k++) {
     const { text, dynamic } = args[k];
     const startsLiteral = !/^[$`*?[{~]/.test(text);
-    if (positional || !text.startsWith('-') || text === '-') {
+    if (!text.startsWith('-') || text === '-') {
       if (dynamic && !(startsLiteral && !text.startsWith('-'))) return { unread: true };
       continue;
     }
-    if (text === '--') { positional = true; continue; }
     if (text.startsWith('--')) {
       const eq = text.indexOf('=');
       const name = text.slice(2, eq < 0 ? undefined : eq);
