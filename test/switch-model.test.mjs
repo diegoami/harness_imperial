@@ -70,7 +70,7 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
   assert.equal(defaultVariant('zai-coding-plan/glm-5.3', ['low', 'high', 'max']), 'low');
   assert.equal(defaultVariant('openai/gpt-6.1-sol', ['medium', 'high']), 'medium');
   assert.equal(defaultVariant('opencode-go/deepseek-v4-pro', ['high', 'max']), 'high');      // its lowest
-  assert.equal(defaultVariant('openai/gpt-6.1-sol', ['none', 'low']), 'low');                // never none
+  assert.equal(defaultVariant('openai/gpt-6.1-sol', ['none', 'high', 'max']), 'high');        // never none, never max
   assert.equal(defaultVariant('openai/gpt-6.1-sol', null), 'low');                          // not known
 });
 
