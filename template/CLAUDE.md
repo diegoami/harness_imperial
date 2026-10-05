@@ -17,7 +17,7 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
 6. The reviewer is never the implementer's model family. It re-runs every Done-when line itself.
 7. Merge only with an approving review and green CI. Two rework rounds, then escalate. After a heavy
    review, the next round's implementer moves one step up, never down (`/run-task`). (L38)
-8. Relay review findings in full, never a subset.
+8. Relay review findings in full. Read a run's final message before you retry or re-route it (L55).
 9. A test proves behaviour only if it fails without that behaviour; re-take a claim that nothing failed.
 10. A comment asserting behaviour at an edge arrives with the test that visits that edge.
 11. Until the first playable build, schedule only bugs that break play; the rest are `post-playable`.

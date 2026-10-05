@@ -17,3 +17,6 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - `docs/models.md` is the main session's model strategy here: the roster, which pair for which work,
   and what each model has shown. Update it in the same commit as a model change or a lesson from a run.
 - The backlog is this repository's open GitHub issues; the issue titled "Start here" orders them.
+- Before you retry a delegated run (an OpenCode review here), re-route it, or call it a failure, read
+  what it returned: its final message in the session record (`/run-task`, *Read before you retry*;
+  L55). Never retry blind.

@@ -229,7 +229,8 @@ and the trials issue it names.
   OpenCode rejected its access to `/tmp` (`external_directory`), as in L31. On PR 74 (the credential
   jail, 2026-10-05) it read `/proc/1` and then `/tmp` while probing the jail, even with a brief that
   said to stay in the worktree; both runs were discarded with no review.
-- **GLM-5.3**: in IC2 it ended long implementer runs early (L27). Here, as a read-only reviewer, it
+- **GLM-5.3**: in IC2 it ended long implementer runs early (L27; unconfirmed: those runs' final
+  messages were not read, L55). Here, as a read-only reviewer, it
   chained `cd` commands, and the run was rejected (L31, #14). At Isle Wars (T06) it finished every run, but
   added scope nobody asked for, and the bypasses were there. At games_revival_framework (goal2 T04)
   its first hard review re-ran every Done-when line and made five mutations (L41). In the PR 29
@@ -240,7 +241,8 @@ and the trials issue it names.
   worktree as the new rule asks. On PR 74 (the credential jail, 2026-10-05) it read `/proc/self`
   while probing the jail, twice, the second time against a brief that said not to: both runs were
   discarded (L26). A task about what lies outside the worktree draws OpenCode reviewers out of it.
-- **GLM-5.3 Flash**: it went 900 s without a step in the first real run (harness_imperial#1, on
+- **GLM-5.3 Flash** (its "ends runs early" in L27 is unconfirmed until those runs' final messages are
+  read, L55): it went 900 s without a step in the first real run (harness_imperial#1, on
   OpenCode Go; its runs on Z.AI since have had no stall, L42), and
   elsewhere it was the weakest reviewer, missing a must-fix (L27). At Isle Wars (malpaco T02) it
   followed an amended contract, but missed stale counts in its own doc.

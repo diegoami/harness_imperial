@@ -42,6 +42,27 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      - Exit 3: OpenCode unavailable, its model not listed, or Go not logged in (the message gives
        the login command). Use the task file's Claude fallback (Sonnet by default), and say so in
        a comment on the issue.
+   - **Read before you retry (L55).** Before a retry, a re-route to another model, or calling a
+     run a failure, read what it returned; never retry blind. An OpenCode exit 1 with an empty
+     diff looks the same for an early end and for a run that stopped and reported a blocker, and
+     the log's tail shows only the last tool output. Read the model's final message from the
+     session record, read-only (never `auth.json` in that directory), with the `session ses_…` id
+     from the run's log:
+     ```bash
+     python3 - <<'EOF'
+     import sqlite3, json, os
+     home = os.environ.get('HARNESS_OPENCODE_HOME') or os.path.expanduser('~/.local/share/harness-opencode')
+     db = 'file:' + os.path.join(home, 'data', 'opencode', 'opencode.db') + '?mode=ro'   # the scripts' data directory
+     c = sqlite3.connect(db, uri=True)
+     sid = 'ses_...'   # the "session ses_..." line in the run's log
+     parts = [json.loads(d) for (d,) in c.execute("select data from part where session_id=? order by time_created", (sid,))]
+     texts = [p for p in parts if p.get('type') == 'text']
+     print(texts[-1]['text'] if texts else 'no text part')
+     EOF
+     ```
+     For a Claude agent, read its final report in full. A run that stopped and reported gets an
+     answer to its report (amend the task, decide, or escalate), and the report is posted on the
+     task's issue so it is kept.
    - `claude`: `Agent(subagent_type: "implementer", isolation: "worktree")`, Sonnet unless the
      task file names opus, with the brief. The agent file (`.claude/agents/implementer.md`) carries
      §4's block and the run mechanics, and its hook refuses `git stash`, `git worktree`, a
@@ -57,7 +78,8 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      has landed: take it from the local branch (`git rev-parse <branch>`). A brief whose block
      before the task file names another commit exits 2 before anything runs (L33).
      - Exit 0: posted and labelled.
-     - Exit 3: no review came back, or OpenCode or its login is unavailable. Nothing was posted:
+     - Exit 3: no review came back, or OpenCode or its login is unavailable (read the run's final
+       message first, as under step 2's *Read before you retry*). Nothing was posted:
        run the Claude reviewer (Opus). If a Claude agent implemented the PR, Claude may not
        review it either (the family rule): escalate (step 5).
      - Exit 4: a review was posted whole under a note (it may be cut off, its verdict is
