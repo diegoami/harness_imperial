@@ -18,7 +18,8 @@ Any one is enough; a blocking finding means rework, never approve.
 4. <project-specific items: a constant with no evidence, a test that passes with the behaviour
    deleted, a status written into a document>
 Not blocking: wording, style, and defects in code the PR did not change: file those as follow-ups.
-When unsure, rate it blocking and say why.
+When unsure, say how likely the problem is. Rate it blocking only if it is likely and would get
+past what the task protects; otherwise it is a follow-up. (L53)
 
 ## Report every blocking finding in this one review
 
