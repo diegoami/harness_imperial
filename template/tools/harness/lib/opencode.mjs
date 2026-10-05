@@ -183,6 +183,24 @@ export function versionProblem(version, exe) {
     + '~/.opencode/bin/opencode, npm opencode-ai@1.18, or HARNESS_OPENCODE_EXE';
 }
 
+// The efforts (variants) OpenCode offers for a model, from `opencode models <provider> --verbose`,
+// which prints each id followed by its JSON; null when they cannot be read.
+export async function modelVariants(cmd, id, { env, cwd, timeoutMs = 60_000 }) {
+  const r = await execBounded(cmd, ['models', id.split('/')[0], '--verbose'], { cwd, env, timeoutMs });
+  if (!r || r.code !== 0) return null;
+  const at = r.stdout.indexOf(`${id}\n`);
+  const start = at < 0 ? -1 : r.stdout.indexOf('{', at);
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < r.stdout.length; i++) {
+    if (r.stdout[i] === '{') depth++;
+    else if (r.stdout[i] === '}' && --depth === 0) {
+      try { return Object.keys(JSON.parse(r.stdout.slice(start, i + 1)).variants ?? {}); } catch { return null; }
+    }
+  }
+  return null;
+}
+
 // The model ids OpenCode lists for these providers in this environment (`opencode models <p>`), so
 // an unknown id or a provider that is not logged in stops a run before anything is billed. A
 // provider with no login exits 1 with "Provider not found" (OpenCode 1.18.34); any other failure,

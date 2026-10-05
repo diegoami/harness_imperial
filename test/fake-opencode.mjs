@@ -9,6 +9,7 @@
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
 //   ids harness.json names. A provider with none fails like OpenCode 1.18.34 ("Provider not
 //   found"). FAKE_OC_MODELS_ERROR: stderr for a `models` that fails for another reason.
+//   FAKE_OC_VARIANTS: a JSON map of id -> efforts for `models --verbose` (default low, high, max).
 //   Each session records the XDG_DATA_HOME it ran with, the prompt it was given, and the agent file
 //   OpenCode 1.18.34 would load (checked by hand): OPENCODE_CONFIG_DIR's agents/ over the
 //   project's .opencode/agents/; with OPENCODE_DISABLE_PROJECT_CONFIG=1 never the project's.
@@ -44,7 +45,11 @@ if (cmd === 'models') {
   if (process.env.FAKE_OC_MODELS_ERROR) { process.stderr.write(`${process.env.FAKE_OC_MODELS_ERROR}\n`); process.exit(1); }
   const mine = ids.filter((id) => !rest[0] || id.startsWith(`${rest[0]}/`));
   if (!mine.length) { process.stderr.write(`Error: Provider not found: ${rest[0]}\n`); process.exit(1); }
-  process.stdout.write(mine.map((id) => `${id}\n`).join(''));
+  // --verbose: each id, then its JSON with the efforts FAKE_OC_VARIANTS (id -> list) gives it.
+  const variants = JSON.parse(process.env.FAKE_OC_VARIANTS || '{}');
+  process.stdout.write(mine.map((id) => (rest.includes('--verbose')
+    ? `${id}\n${JSON.stringify({ id, variants: Object.fromEntries((variants[id] ?? ['low', 'high', 'max']).map((v) => [v, {}])) }, null, 2)}\n`
+    : `${id}\n`)).join(''));
   process.exit(0);
 }
 if (cmd === 'export') {
