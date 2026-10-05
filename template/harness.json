@@ -36,7 +36,7 @@
     },
     "glm": {
       "id": "zai-coding-plan/glm-5.3",
-      "variant": "high",
+      "variant": "low",
       "family": "glm",
       "watch": "Back on Z.AI's plan (L35) after ending long implementer runs early (L27): look for reading then exit 0 with no commit, and for cd chains rejected as external_directory (L31)."
     },
