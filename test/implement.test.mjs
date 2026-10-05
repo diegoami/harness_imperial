@@ -253,6 +253,17 @@ test('implement.mjs --self-test checks the reset\'s save on a throwaway reposito
   assert.match(r.stdout, /self-test: all checks passed/);
 });
 
+test('an Alibaba implementer refused for its key says which data directory\'s auth.json to check', posix, async () => {
+  const p = project({ chain: ['qwen'] });
+  const file = path.join(p.main, 'harness.json');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  config.models.qwen = { id: 'alibaba-token-plan/qwen3.8-flash', variant: 'high', family: 'qwen' };
+  fs.writeFileSync(file, JSON.stringify(config));
+  const r = implement(p, { FAKE_OC_MODE: 'invalid-key', FAKE_OC_MODELS: JSON.stringify(['alibaba-token-plan/qwen3.8-flash']) });
+  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.match(r.stderr, /qwen: invalid API key for alibaba-token-plan: the auth\.json in \S+ may hold a stale Alibaba entry/);
+});
+
 test('a rejection from cd or .. says so in the failure, naming L31 (#14)', posix, async () => {
   const p = project({ chain: ['deepseek-flash'] });
   const r = implement(p, { FAKE_OC_MODE: 'permission-cd' });

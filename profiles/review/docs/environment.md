@@ -66,12 +66,13 @@ Alibaba's Token Plan has one credit pool for every model on it, in a single `mon
 5-hour or weekly windows); its entry also has `plan` and `subscription_ends_at`. Its quota comes
 from an Alibaba console login: a `not_configured` or login error goes to the owner, who runs
 `bl auth login --console --console-site international`. OpenCode's key for it comes only from the
-environment variable `ALIBABA_TOKEN_PLAN_API_KEY` (in WSL set in `~/.bashrc`, on Windows a user
-variable), so it works in every OpenCode data directory, the scripts' own included. Never add it
+environment variable `ALIBABA_TOKEN_PLAN_API_KEY` (in WSL from `~/.config/ai-keys.env`, which
+`~/.bashrc` and `~/.profile` load, and through WSLENV for commands started from Windows; on Windows
+a user variable), so it works in every OpenCode data directory, the scripts' own included. Never add it
 with `opencode auth login`: an `auth.json` entry overrides the variable, and a bad one breaks the
 provider for that directory. Never print, copy or edit the key or an `auth.json`. If a call fails:
-- "Provider not found: alibaba-token-plan": the variable is not in this environment (a shell that
-  did not read `~/.bashrc`, or a run started with a cleaned environment). Tell the owner; do not retry.
+- "Provider not found: alibaba-token-plan": the variable is not in this environment. Restart the
+  session or shell so it picks it up; if it is still missing, tell the owner. Do not retry.
 - "Invalid API-key": the data directory's `auth.json` may hold a stale Alibaba entry (the scripts
   copy yours into theirs). Tell the owner which `XDG_DATA_HOME` the run used.
 The owner's plan is the Personal edition: the Kimi and MiniMax models OpenCode lists for this

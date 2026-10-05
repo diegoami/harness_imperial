@@ -50,7 +50,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem } from './lib/opencode.mjs';
 import { credentialJail, OFF_WARNING } from './lib/jail.mjs';
 import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
 import { planPost, publish, postComment, applyLabel, withdrawApproval, combinePlans } from './lib/post.mjs';
@@ -217,6 +217,8 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
         if (!(e instanceof OpenCodeInfraError)) throw e;
         return { ok: false, reason: e.reason, detail: e.message };
       }
+      const key = keyProblem(`${run.stderr}\n${run.output}`, model.id, reviewEnv.XDG_DATA_HOME);
+      if (key) return { ok: false, reason: key, detail: run.output };
       if (run.exitCode !== 0) return { ok: false, reason: `exit ${run.exitCode}`, detail: run.output };
       if (run.agentFallback) return { ok: false, reason: 'fell back to the default agent', detail: run.output };
       if (run.permissionRejected) {

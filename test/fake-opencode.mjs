@@ -2,7 +2,7 @@
 // A stand-in for `opencode` that reproduces the failures the runner guards against.
 // FAKE_OC_STATE: the file that names OpenCode's session store (fake-state.mjs).
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
-//   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission | permission-dirty |
+//   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission | permission-dirty | invalid-key |
 //   permission-review | permission-quoted | permission-plain | review-ok | review-cut
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
@@ -143,6 +143,11 @@ switch (mode) {
     break;
   }
   case 'commit-fail': createSession(); commit(); process.exit(1); break;
+  case 'invalid-key':                                  // a provider that refused the key
+    createSession();
+    process.stderr.write('Error: Invalid API-key provided.\n');
+    process.exit(1);
+    break;
   case 'stop-report':
     createSession();
     process.stdout.write('STOP: Done-when 2 cannot be met: the fixture has no such city.\n');
