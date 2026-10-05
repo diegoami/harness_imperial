@@ -233,6 +233,10 @@ export function loginHint(modelId, listed, dataHome, errors = new Map()) {
     return `OpenCode Go is not logged in for ${dataHome}. Run \`opencode console login\` with XDG_DATA_HOME=${dataHome} `
       + `(bash: XDG_DATA_HOME="${dataHome}" opencode console login; PowerShell: $env:XDG_DATA_HOME="${dataHome}"; opencode console login)`;
   }
+  if (provider === 'alibaba-token-plan') {
+    return `Alibaba Token Plan is not logged in for OpenCode (\`Provider not found\`): ask the owner to run \`opencode auth login\` `
+      + `and choose Alibaba Token Plan; do not retry. The next run copies auth.json into ${dataHome}`;
+  }
   return `${provider} lists no models for ${dataHome}: it is not logged in there. Log in once with `
     + `\`opencode auth login\` (or set its API key) in your usual OpenCode; the next run copies auth.json into ${dataHome}`;
 }
