@@ -51,6 +51,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
+import { credentialJail, OFF_WARNING } from './lib/jail.mjs';
 import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
 import { planPost, publish, postComment, applyLabel, withdrawApproval, combinePlans } from './lib/post.mjs';
 import { selfTest, SAMPLES } from './lib/review-selftest.mjs';
@@ -114,6 +115,11 @@ try { opencode = resolveOpenCode(); } catch (e) {
   if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} ${fallback}`);
   throw e;
 }
+// OpenCode, and every command it runs, in the credential jail (lib/jail.mjs, #68): the reviewer
+// reads and tests, and this script posts. Where the jail cannot run, the log says so first.
+const jail = credentialJail();
+if (jail.off) say(OFF_WARNING(jail.off));
+else opencode = { exe: jail.exe, prefix: [...jail.args, '--', opencode.exe, ...opencode.prefix] };
 if (!chain.length) die(3, `OpenCode unavailable: no reviewer left after excluding ${implementedBy.join(', ')}. ${fallback}`);
 // A second opinion (--second-opinion, for a critical PR): reviewer.secondOpinion, else the chain's
 // other models, never the model that wrote the first review (#39).

@@ -59,6 +59,7 @@ function review(p, env, ...args) {
       HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), HARNESS_QUOTA_URL: 'http://127.0.0.1:9',
       FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
       HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
+      HARNESS_BWRAP: path.join(here, 'fake-bwrap.sh'), FAKE_BWRAP_LOG: path.join(p.base, 'bwrap.log'),
       ...env,
     },
   });
@@ -77,6 +78,23 @@ test('a complete review is posted once, labelled, and its worktree removed', pos
   assert.deepEqual(s.issueLabels['12'], ['status:approved']);
   assert.deepEqual(fs.readdirSync(path.join(p.base, 'proj-work')), []);
   assert.doesNotMatch(git(p.main, 'worktree', 'list'), /proj-work[\\/]7-review-/);
+});
+
+test('OpenCode reviews in the credential jail; without one, the log warns first and the review still runs (#68)', { skip: process.platform !== 'linux' }, () => {
+  const p = project();
+  const r = review(p, { FAKE_OC_MODE: 'review-ok' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const runs = fs.readFileSync(path.join(p.base, 'bwrap.log'), 'utf8').split('===\n').filter(Boolean).map((b) => b.split('\n'));
+  const reviewRun = runs.find((a) => a.includes('run'));
+  assert.ok(reviewRun, 'the review run went through bwrap');
+  assert.ok(reviewRun.includes('--unshare-pid') && reviewRun.includes('GH_TOKEN'));
+  assert.equal(reviewRun[reviewRun.indexOf('--') + 1], path.join(here, 'fake-opencode.mjs'));
+  assert.doesNotMatch(r.stdout, /credential jail is off/);
+  const q = project();
+  const off = review(q, { FAKE_OC_MODE: 'review-ok', HARNESS_BWRAP: path.join(q.base, 'no-bwrap') });
+  assert.equal(off.status, 0, off.stderr + off.stdout);
+  assert.match(off.stdout, /WARNING: the reviewer's credential jail is off \(HARNESS_BWRAP points at a missing file/);
+  assert.equal(gh(q).comments.length, 1);
 });
 
 test('every reviewer is told a proven bypass of what the task protects is blocking, never follow-up hardening (L47)', posix, () => {
