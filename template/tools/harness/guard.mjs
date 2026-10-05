@@ -23,8 +23,10 @@ try { event = JSON.parse(input); } catch {
   process.exit(2);
 }
 const cwd = typeof event?.cwd === 'string' ? event.cwd : process.cwd();
-// harness.json's jail.keep: tool folders under home the project's checks need (lib/jail.mjs).
-const keep = { ro: keepFrom(process.env.CLAUDE_PROJECT_DIR || cwd) };
+// harness.json's jail.keep: tool folders under home the project's checks need (lib/jail.mjs). Only
+// from the project directory Claude Code names, never the reviewer's own tree: the jail keeps that
+// file read-only, so the reviewer cannot widen its own jail (Sol's R1 of round 3 on PR 74).
+const keep = { ro: process.env.CLAUDE_PROJECT_DIR ? keepFrom(process.env.CLAUDE_PROJECT_DIR) : [] };
 if (role === 'reviewer' && ['Read', 'Grep', 'Glob'].includes(event?.tool_name)) {
   const input = event.tool_input ?? {};
   const target = input.file_path ?? input.path ?? cwd;

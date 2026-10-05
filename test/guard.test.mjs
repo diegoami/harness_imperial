@@ -145,7 +145,10 @@ test('the hook runs a reviewer\'s allowed command in the credential jail, and wa
   assert.equal(r.status, 0, r.stderr);
   const updated = out(r).hookSpecificOutput;
   assert.equal(updated.hookEventName, 'PreToolUse');
-  assert.equal(updated.updatedInput.command.split(' ')[0], `'${path.join(here, 'fake-bwrap.sh')}'`);
+  // A subshell that closes inherited descriptors and reads /dev/null, then the jail (Sol's R2 of round 3).
+  assert.ok(updated.updatedInput.command.startsWith('( for f in /proc/self/fd/*; do'));
+  assert.ok(updated.updatedInput.command.includes(`; exec '${path.join(here, 'fake-bwrap.sh')}' `));
+  assert.ok(updated.updatedInput.command.endsWith(' ) </dev/null'));
   assert.match(updated.updatedInput.command, / '--unshare-pid' .* '--' 'bash' '-c' /);
   assert.equal(spawnSync('sh', ['-c', updated.updatedInput.command], { encoding: 'utf8' }).stdout, "it's ok\n");
   assert.equal(hook('implementer', bash(command)).stdout, '');                      // the implementer pushes
@@ -197,6 +200,8 @@ test('the hook refuses a reviewer\'s Read, Grep or Glob of what the jail hides, 
   assert.equal(hook('reviewer', sdk, env).status, 2);
   fs.writeFileSync(path.join(work, 'harness.json'), JSON.stringify({ jail: { keep: ['~/sdk'] } }));
   assert.equal(hook('reviewer', sdk, { ...env, CLAUDE_PROJECT_DIR: work }).status, 0);
+  // Only the project directory Claude Code names: the reviewer's own tree cannot widen its jail.
+  assert.equal(hook('reviewer', sdk, { ...env, CLAUDE_PROJECT_DIR: '' }).status, 2);
 });
 
 // The agent files: the hook declared for the right role, the reviewer without editing tools, and

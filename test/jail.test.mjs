@@ -46,6 +46,13 @@ function setup() {
   spawnSync('git', ['-C', repo, 'config', 'http.extraheader', 'AUTHORIZATION: basic SECRET']);
   spawnSync('git', ['-C', repo, 'config', 'core.note', 'ghp_SECRETSECRETSECRETSECRET1234']);
   for (let i = 0; i < 120; i++) spawnSync('git', ['-C', repo, 'config', '--add', 'include.path', path.join(o, `inc/mid${i}.cfg`)]);
+  // What the harness runs and decides by, and a worktree, where a reviewer works.
+  for (const f of ['harness.json', 'tools/harness/guard.mjs', '.claude/agents/reviewer.md', 'README.md']) put(path.join(repo, f), 'policy\n');
+  spawnSync('git', ['-C', repo, 'add', '-A']);
+  spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-q', '-m', 'init']);
+  fs.mkdirSync(path.join(repo, '.git/hooks'), { recursive: true });
+  const wt = path.join(h, 'wt');
+  spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '--detach', wt]);
   const env = {
     ...process.env, HOME: h, PATH: `${path.join(h, 'tools/bin')}:${process.env.PATH}`, XDG_CONFIG_HOME: path.join(o, 'xdg'),
     GH_CONFIG_DIR: path.join(o, 'ghdir'), SSH_AUTH_SOCK: path.join(o, 'agent.sock'), VSCODE_GIT_IPC_HANDLE: path.join(o, 'vscode.sock'),
@@ -54,7 +61,7 @@ function setup() {
     FOO_TOKEN: 'SECRET', HARNESS_PROBE: 'kept', ZHIPU_API_KEY: 'model-key', LC_ALL: 'C',
     ...Object.fromEntries(TOKENS.map((t) => [t, 'SECRET'])),
   };
-  return { h, o, repo, env };
+  return { h, o, repo, wt, env };
 }
 
 test('only listed variables are kept: never a token, a git or ssh override, a socket, or anything unlisted', () => {
@@ -64,13 +71,21 @@ test('only listed variables are kept: never a token, a git or ssh override, a so
   for (const v of DROPPED) assert.ok(!kept.includes(v), v);
 });
 
-test('jailArgs empties home, keeps the repository, the tools and jail.keep, masks the stores outside home, and cleans git config', () => {
-  const { h, o, repo, env } = setup();
-  const args = jailArgs(env, repo, { ro: ['~/keepme'] });
+test('jailArgs empties home, keeps the worktree, the tools and jail.keep, masks the stores outside home, and cleans git config', () => {
+  const { h, o, repo, wt, env } = setup();
+  const args = jailArgs(env, wt, { ro: ['~/keepme'] });
   const after = (flag) => args.flatMap((a, i) => (a === flag ? [args[i + 1]] : []));
   assert.deepEqual(args.slice(0, 9), ['--dev-bind', '/', '/', '--unshare-pid', '--proc', '/proc', '--die-with-parent', '--tmpfs', h]);
   assert.equal(args.at(-1), '--clearenv');
-  assert.ok(after('--bind').includes(repo));
+  // The worktree and the git directory writable; the main checkout, the policy and git's hooks not
+  // (Sol's R1 of round 3), each after the folder it lies in.
+  assert.ok(after('--bind').includes(wt) && after('--bind').includes(path.join(repo, '.git')));
+  const ro = after('--ro-bind');
+  for (const d of [repo, ...['harness.json', 'tools/harness', '.claude'].flatMap((f) => [path.join(repo, f), path.join(wt, f)]), path.join(repo, '.git/hooks')]) {
+    assert.ok(ro.includes(d), d);
+  }
+  const at = (d, how) => args.findIndex((a, i) => a === d && args[i - 1] === how);
+  assert.ok(at(repo, '--ro-bind') < at(path.join(repo, '.git'), '--bind') && at(path.join(repo, '.git'), '--bind') < at(path.join(repo, '.git/hooks'), '--ro-bind'));
   assert.ok(after('--ro-bind').includes(path.join(h, 'tools')));           // the bin directory's parent
   assert.ok(after('--ro-bind').includes(path.join(h, 'keepme')));
   for (const gone of ['.ssh', '.config', 'custom', 'askpass', '.gitconfig']) {
@@ -92,10 +107,7 @@ test('jailArgs empties home, keeps the repository, the tools and jail.keep, mask
 });
 
 test('a reviewer\'s Read, Grep or Glob of home outside what is kept, a hidden place, or /proc is refused; the repository and tools are not', () => {
-  const { h, o, repo, env } = setup();
-  spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-q', '--allow-empty', '-m', 'x']);
-  const wt = path.join(h, 'wt');
-  spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '--detach', wt]);
+  const { h, o, repo, wt, env } = setup();
   fs.symlinkSync(path.join(h, '.config/gh/hosts.yml'), path.join(wt, 'link'));
   const no = (t) => hiddenTarget(t, { env, cwd: wt, keep: { ro: ['~/keepme'] } });
   for (const t of [path.join(h, '.config/gh/hosts.yml'), path.join(h, 'custom/store'), path.join(h, 'askpass'), h, '/',
@@ -121,18 +133,25 @@ test('the jail is off, saying why, off Linux, without bwrap, or where bwrap does
 
 // The real bwrap, where it runs (not on CI's Ubuntu without it, nor Windows).
 const real = setup();
-const jail = process.platform === 'linux' ? credentialJail({ env: real.env, cwd: real.repo }) : { off: 'not Linux' };
+const jail = process.platform === 'linux' ? credentialJail({ env: real.env, cwd: real.wt }) : { off: 'not Linux' };
 
 test('in the real jail, nothing reaches a credential: home, custom stores, askpass, transport commands, includes, sockets, /proc', { skip: jail.off }, async () => {
-  const { h, o, repo, env } = real;
-  // A live agent socket outside home that answers with the secret, as an ssh agent would.
-  const sock = path.join(o, 'live.sock');
-  const server = net.createServer((c) => c.end('SECRET\n')).listen(sock);
-  await new Promise((r) => server.once('listening', r));
-  const liveEnv = { ...env, SSH_AUTH_SOCK: sock };
-  const live = credentialJail({ env: liveEnv, cwd: repo });
+  const { h, o, repo, wt, env } = real;
+  // Live sockets outside home that answer with the secret: the ssh agent named, another agent in
+  // $TMPDIR (R3 of round 3), and git's credential cache under $XDG_CACHE_HOME (R4).
+  const socks = [path.join(o, 'live.sock'), path.join(o, 'ssh-other/agent.1'), path.join(o, 'cache/git/credential/socket')];
+  const servers = [];
+  for (const sock of socks) {
+    fs.mkdirSync(path.dirname(sock), { recursive: true });
+    const server = net.createServer((c) => c.end('SECRET\n')).listen(sock);
+    await new Promise((r) => server.once('listening', r));
+    servers.push(server);
+  }
+  const liveEnv = { ...env, SSH_AUTH_SOCK: socks[0], TMPDIR: o, XDG_CACHE_HOME: path.join(o, 'cache') };
+  const live = credentialJail({ env: liveEnv, cwd: wt });
   assert.equal(live.off, undefined);
-  fs.writeFileSync(path.join(repo, 'leak.sh'), [
+  const connect = (sock) => `node -e "require('net').connect('${sock}').on('data', (d) => process.stdout.write(d)).on('error', () => {})"`;
+  fs.writeFileSync(path.join(wt, 'leak.sh'), [
     `cat ${['.ssh/id_ed25519', '.config/gh/hosts.yml', '.git-credentials', '.netrc', 'custom/store', 'askpass', '.gitconfig']
       .map((f) => `${h}/${f}`).join(' ')}`,
     `cat ${o}/xdg/gh/hosts.yml ${o}/ghdir/hosts.yml ${o}/inc/leaf119.cfg ${o}/inc/mid0.cfg`,
@@ -140,7 +159,11 @@ test('in the real jail, nothing reaches a credential: home, custom stores, askpa
     `printf 'protocol=https\\nhost=github.com\\n\\n' | git -c credential.helper='store --file=${h}/custom/store' credential fill`,
     'git config --list --show-origin; git config --file .git/config --list; git remote get-url origin',
     `cat /proc/${process.pid}/root${h}/.ssh/id_ed25519 /proc/${process.pid}/environ`,
-    `node -e "require('net').connect('${sock}').on('data', (d) => process.stdout.write(d)).on('error', () => {})"`,
+    ...socks.map(connect),
+    // A descriptor the caller had open, and stdin (R2 of round 3).
+    'cat /proc/self/fd/3; cat <&3; cat',
+    // The policy, the code that enforces it, git's hooks and the main checkout stay as they are (R1).
+    `for f in ${repo}/harness.json harness.json tools/harness/guard.mjs .claude/agents/reviewer.md ${repo}/README.md ${repo}/.git/hooks/post-checkout; do echo pwned >> "$f" 2>/dev/null && echo "WROTE $f"; done`,
     `for v in ${DROPPED.join(' ')}; do eval echo "$v=\\$$v"; done`,
     'echo "keep=$HARNESS_PROBE $ZHIPU_API_KEY"; hello; ls -A "$HOME"',
     'git status --short >/dev/null && echo git-works',
@@ -148,23 +171,26 @@ test('in the real jail, nothing reaches a credential: home, custom stores, askpa
     'exit 7',
   ].join('\n'));
   // Async, so that the socket server keeps answering while a command runs.
-  const run = (cmd, args) => new Promise((resolve) => {
-    const c = spawn(cmd, args, { cwd: repo, env: liveEnv });
+  const run = (cmd, args, stdio = 'pipe') => new Promise((resolve) => {
+    const c = spawn(cmd, args, { cwd: wt, env: liveEnv, stdio });
     let out = '';
     c.stdout.on('data', (d) => { out += d; });
     c.stderr.on('data', (d) => { out += d; });
     c.on('close', (status) => resolve({ status, out }));
   });
   // Outside the jail the secrets are there, so the test tells hidden from missing.
-  assert.equal((await run('node', ['-e', `require('net').connect('${sock}').on('data', (d) => process.stdout.write(d))`])).out, 'SECRET\n');
+  for (const sock of socks) assert.equal((await run('sh', ['-c', connect(sock)])).out, 'SECRET\n', sock);
   assert.match((await run('sh', ['-c', `cat ${h}/custom/store ${o}/inc/leaf119.cfg; echo $GIT_SSH_COMMAND`])).out, /SECRET[\s\S]*SECRET[\s\S]*SECRET/);
-  const r = await run('bash', ['-c', jailCommand('sh ./leak.sh', live)]);
-  server.close();
+  const secret = fs.openSync(path.join(h, '.ssh/id_ed25519'), 'r');
+  const r = await run('bash', ['-c', `exec 3<'${h}/.ssh/id_ed25519'; ${jailCommand('sh ./leak.sh', live)}`], [secret, 'pipe', 'pipe']);
+  for (const server of servers) server.close();
   assert.equal(r.status, 7, r.out);                                      // the exit code comes through
-  assert.doesNotMatch(r.out, /SECRET/);
+  assert.doesNotMatch(r.out, /SECRET|WROTE/);
+  for (const f of ['harness.json', 'README.md']) assert.equal(fs.readFileSync(path.join(repo, f), 'utf8'), 'policy\n');
+  assert.ok(!fs.existsSync(path.join(repo, '.git/hooks/post-checkout')));
   for (const v of DROPPED) assert.match(r.out, new RegExp(`^${v}=$`, 'm'));
   assert.match(r.out, /^keep=kept model-key$/m);
   assert.match(r.out, /^hello-tool$/m);                                 // a tool under home still runs
   assert.match(r.out, /^git-works$/m);
-  assert.equal(fs.readFileSync(path.join(repo, 'out.txt'), 'utf8'), 'written\n');   // the repository stays writable
+  assert.equal(fs.readFileSync(path.join(wt, 'out.txt'), 'utf8'), 'written\n');   // the worktree stays writable
 });

@@ -13,14 +13,17 @@ import { createHash } from 'node:crypto';
 //
 // It keeps what is listed, not hides what is found (the owner's choice after Sol's R1–R4 of round
 // 2 on PR 74: each round found another credential that config or a variable points to):
-// - The home directory is an empty tmpfs. Bound back: the repository (its top level and main
-//   checkout, read-write), the folders of the tools on PATH under home (read-only), and what the
-//   caller or harness.json's `jail.keep` adds.
+// - The home directory is an empty tmpfs. Bound back: the reviewer's worktree and the git
+//   directory (read-write); the main checkout, the folders of the tools on PATH under home, and
+//   harness.json's `jail.keep` (read-only); what the caller adds. In every working tree, PROTECTED
+//   and git's hooks stay read-only (Sol's R1 of round 3).
+// - The command inherits no descriptor above 2, and reads stdin from /dev/null (R2 of round 3).
 // - The environment is cleared. Kept: KEEP_ENV, names starting with KEEP_PREFIX, and *_API_KEY
 //   (model providers), never a GH_ or GITHUB name.
 // Outside home, the standard places are still masked (an empty directory, or /dev/null over a file
-// or socket): /run/user (the session bus, so a keyring, and agents' sockets); the session bus, ssh
-// agent and VS Code askpass sockets; gh's store at $GH_CONFIG_DIR and $XDG_CONFIG_HOME/gh. Git's
+// or socket): /run/user and $XDG_RUNTIME_DIR (the session bus, so a keyring, and agents' sockets);
+// the session bus, the ssh agent named and every ssh-* agent directory in /tmp and $TMPDIR (R3),
+// VS Code's askpass socket; git's credential cache at $XDG_CACHE_HOME (R4); gh's store at $GH_CONFIG_DIR and $XDG_CONFIG_HOME/gh. Git's
 // config files (system, this repository's, any a GIT_CONFIG_* named) are bound to copies without
 // what can authenticate (http.*, credential.*, url.*, include*, push URLs, a URL's user:password@,
 // a GitHub-token-shaped value), and every file they include, followed to the end, is masked.
@@ -99,7 +102,7 @@ function gitPlaces(env, cwd, home) {
   const top = at(['rev-parse', '--show-toplevel']);
   const common = at(['rev-parse', '--path-format=absolute', '--git-common-dir']);
   const gitDir = at(['rev-parse', '--path-format=absolute', '--git-dir']);
-  const repo = [top, common && path.basename(common) === '.git' ? path.dirname(common) : common].filter(Boolean);
+  const main = common && path.basename(common) === '.git' ? path.dirname(common) : null;
   const candidates = [path.join(home, '.gitconfig'), path.join(home, '.config', 'git', 'config'),
     env.XDG_CONFIG_HOME && path.join(env.XDG_CONFIG_HOME, 'git', 'config'),
     system.startsWith('file:') ? system.slice(5) : '/etc/gitconfig',
@@ -129,7 +132,7 @@ function gitPlaces(env, cwd, home) {
       if (r && !configs.has(r) && !included.has(r)) { included.add(r); work.push(r); }
     }
   }
-  return { repo: repo.map(real).filter(Boolean), configs, included: [...included] };
+  return { top: top && real(top), main: main && real(main), common: common && real(common), configs, included: [...included] };
 }
 
 // The folders of the tools on PATH under home: a bin directory's parent (node under nvm, OpenCode
@@ -151,23 +154,36 @@ function toolDirs(env, home) {
 }
 
 const expand = (p, home) => p.replace(/^~(?=\/|$)/, home);
+// In each working tree the jail keeps: what the harness runs and decides by, never written there.
+export const PROTECTED = ['harness.json', 'tools/harness', '.claude', '.opencode'];
 
 // What the jail keeps and hides here. keep: { rw: [dirs], ro: [dirs] } from the caller.
 function plan(env, cwd, keep = {}) {
   const home = real(env.HOME || os.homedir()) ?? (env.HOME || os.homedir());
   const configHome = env.XDG_CONFIG_HOME;
   const bus = busPaths(env.DBUS_SESSION_BUS_ADDRESS);
-  const { repo, configs, included } = gitPlaces(env, cwd, home);
-  const rw = [...new Set([...repo, ...(keep.rw ?? []).map((p) => real(expand(p, home)))].filter(Boolean))];
-  const ro = [...new Set([...toolDirs(env, home), ...(keep.ro ?? []).map((p) => real(expand(p, home)))].filter(Boolean))]
-    .filter((d) => !rw.some((r) => within(d, r)));
+  const { top, main, common, configs, included } = gitPlaces(env, cwd, home);
+  // Writable: the working tree the reviewer works in, and the git directory (its worktree's HEAD
+  // and index live there). The main checkout's files are read-only when the reviewer works in a
+  // worktree, so nothing it writes there runs later outside the jail.
+  const rw = [...new Set([top !== main && top, common, ...(keep.rw ?? []).map((p) => real(expand(p, home)))].filter(Boolean))];
+  const ro = [...new Set([main, ...toolDirs(env, home), ...(keep.ro ?? []).map((p) => real(expand(p, home)))].filter(Boolean))]
+    .filter((d) => !rw.includes(d));
+  // Read-only in every working tree, writable or not: the harness's policy and the code that
+  // enforces it, and git's hooks, which run outside the jail when the main session uses git
+  // (Sol's R1 of round 3: a reviewer that rewrote harness.json's jail.keep kept ~ for itself).
+  const protect = [...new Set([top, main].filter(Boolean).flatMap((d) => PROTECTED.map((f) => path.join(d, f)))
+    .concat(common ? [path.join(common, 'hooks')] : []).filter((p) => fs.existsSync(p)))];
   const kept = [...rw, ...ro];
+  const tmpDirs = [...new Set(['/tmp', env.TMPDIR].filter(Boolean).map(real).filter(Boolean))];
+  const agentDirs = tmpDirs.flatMap((t) => { try { return fs.readdirSync(t).filter((n) => /^ssh-/.test(n)).map((n) => path.join(t, n)); } catch { return []; } });
   const places = [env.GH_CONFIG_DIR, configHome && path.join(configHome, 'gh'), configHome && path.join(configHome, 'git', 'credentials'),
-    '/run/user', env.SSH_AUTH_SOCK, env.VSCODE_GIT_IPC_HANDLE, ...bus.paths, ...included];
+    env.XDG_CACHE_HOME && path.join(env.XDG_CACHE_HOME, 'git', 'credential'), '/run/user', env.XDG_RUNTIME_DIR,
+    env.SSH_AUTH_SOCK, ...agentDirs, env.VSCODE_GIT_IPC_HANDLE, ...bus.paths, ...included];
   // Under home only what a kept folder brings back needs a mask; the rest is gone with home.
   const mask = [...new Set(places.filter(Boolean).map(real).filter(Boolean))]
     .filter((p) => !within(p, home) || kept.some((k) => within(p, k)));
-  return { home, rw, ro, kept, mask, configs, gaps: bus.abstract ? ['the session bus is on an abstract socket, which no mount hides'] : [] };
+  return { home, rw, ro, protect, kept, mask, configs, gaps: bus.abstract ? ['the session bus is on an abstract socket, which no mount hides'] : [] };
 }
 
 function cleanCopy(text) {
@@ -182,10 +198,11 @@ function cleanCopy(text) {
 export function jailArgs(env = process.env, cwd = process.cwd(), keep = {}) {
   const p = plan(env, cwd, keep);
   const args = ['--dev-bind', '/', '/', '--unshare-pid', '--proc', '/proc', '--die-with-parent', '--tmpfs', p.home];
-  // Outer folders first, so that a folder kept inside another keeps its own mode.
-  for (const d of p.kept.filter((k) => within(k, p.home)).sort((a, b) => a.length - b.length)) {
-    args.push(p.rw.includes(d) ? '--bind' : '--ro-bind', d, d);
-  }
+  // Outer folders first, so that a folder kept inside another keeps its own mode (a worktree
+  // under the main checkout's .claude/ is writable, its own .claude/ read-only again).
+  const binds = [...p.rw.map((d) => [d, '--bind']), ...p.ro.map((d) => [d, '--ro-bind']), ...p.protect.map((d) => [d, '--ro-bind'])]
+    .sort((a, b) => a[0].length - b[0].length || (a[1] === '--bind' ? -1 : 1));
+  for (const [d, how] of binds) args.push(how, d, d);
   for (const [file, entries] of p.configs) {
     if (!within(file, p.home) || p.kept.some((k) => within(file, k))) args.push('--ro-bind', cleanCopy(configText(entries)), file);
   }
@@ -237,9 +254,13 @@ const quote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 // The command line that runs `command` in the jail, for the Bash tool. Each kept variable is set
 // from the shell's own ("$NAME"), so no value is written into the command.
+// The subshell closes every descriptor above 2 it inherited and reads stdin from /dev/null, so no
+// file the caller had open reaches the jail (Sol's R2 of round 3: /proc/self/fd/3 read a credential
+// opened outside).
 export function jailCommand(command, jail) {
-  return [[jail.exe, ...jail.args].map(quote).join(' '), ...jail.env.map((n) => `--setenv ${n} "$${n}"`),
+  const run = [[jail.exe, ...jail.args].map(quote).join(' '), ...jail.env.map((n) => `--setenv ${n} "$${n}"`),
     ['--', 'bash', '-c', command].map(quote).join(' ')].join(' ');
+  return `( for f in /proc/self/fd/*; do n=\${f##*/}; case $n in 0|1|2) ;; *) eval "exec $n>&-" 2>/dev/null ;; esac; done; exec ${run} ) </dev/null`;
 }
 
 // The arguments that run `exe` in the jail with `env`'s kept variables, for a spawn.

@@ -146,7 +146,7 @@ const exeDir = path.dirname(opencode.exe);
 const jail = credentialJail({
   env: reviewEnv, cwd: top,
   keep: {
-    rw: [top, workRoot, logDir, path.dirname(reviewEnv.XDG_DATA_HOME)],
+    rw: [workRoot, logDir, path.dirname(reviewEnv.XDG_DATA_HOME)],
     ro: [path.basename(exeDir) === 'bin' ? path.dirname(exeDir) : exeDir, '~/.config/opencode', ...(config.jail?.keep ?? [])],
   },
 });
