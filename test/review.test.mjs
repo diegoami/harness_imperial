@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
+import { quotaServer, entry } from './quota-server.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../template');
@@ -55,7 +56,7 @@ function review(p, env, ...args) {
     cwd: p.main, encoding: 'utf8',
     env: {
       ...process.env, PATH: `${path.join(p.base, 'bin')}${path.delimiter}${process.env.PATH}`,
-      HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'),
+      HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), HARNESS_QUOTA_URL: 'http://127.0.0.1:9',
       FAKE_OC_STATE: path.join(p.base, 'oc.json'), FAKE_GH_STATE: p.ghState,
       HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
       ...env,
@@ -486,6 +487,35 @@ test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM c
   const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2']) }, '--exclude', 'claude', '--hard');
   assert.equal(s.status, 0, s.stderr + s.stdout);
   assert.match(gh(q).comments[0].body, /^T07 review \(deepseek-pro; glm failed: exit 2\)\napprove/);
+});
+
+test('a reviewer whose provider is out of quota is skipped before it runs, saying why; with no quota-tracker nothing is skipped (L50)', posix, async () => {
+  const s = await quotaServer([entry('zai', 'exhausted', [], { available_in: '2h08m' }), entry('openai', 'ok'), entry('opencode_go', 'ok')]);
+  try {
+    const p = project();
+    const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]), HARNESS_QUOTA_URL: s.url }, '--exclude', 'claude', '--hard');
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /quota: checked \(zai exhausted, openai ok, opencode_go ok\)/);
+    assert.match(r.stdout, /glm: skipped, out of quota: zai is exhausted until it is usable again in 2h08m \(quota-tracker, L50\)/);
+    assert.doesNotMatch(r.stdout, /attempt: glm/);
+    assert.match(gh(p).comments[0].body, /^T07 review \(deepseek-pro; glm not available\)\napprove/);
+  } finally { s.stop(); }
+  const q = project();                                                           // no service: GLM runs
+  const r = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'claude', '--hard');
+  assert.match(r.stdout, /quota: not checked: http:\/\/127\.0\.0\.1:9\/quota did not answer/);
+  assert.match(gh(q).comments[0].body, /^T07 review \(glm\)\napprove/);
+});
+
+test('every reviewer out of quota: exit 3 before any run, naming why (L50)', posix, async () => {
+  const s = await quotaServer([entry('openai', 'exhausted', [{ name: '7d', used_pct: 100 }, { name: 'gpt-5.6-luna:7d', used_pct: 97 }])]);
+  try {
+    const p = project();
+    const r = review(p, { FAKE_OC_MODE: 'review-ok', HARNESS_QUOTA_URL: s.url }, '--exclude', 'claude');
+    assert.equal(r.status, 3, r.stderr + r.stdout);
+    assert.match(r.stderr, /luna: skipped, out of quota: its own gpt-5\.6-luna:7d window is 97% used/);
+    assert.equal(gh(p).comments.length, 0);
+    assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
+  } finally { s.stop(); }
 });
 
 test('--hard --sol reviews with Sol, and with the hard chain when Sol cannot run, saying so (L41)', posix, () => {

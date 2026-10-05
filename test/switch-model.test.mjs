@@ -99,7 +99,7 @@ function sw(p, env, ...args) {
   return spawnSync(process.execPath, [path.join(root, 'tools/harness/switch-model.mjs'), ...args], {
     cwd: p.repo, encoding: 'utf8',
     env: {
-      ...process.env, HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), FAKE_OC_STATE: path.join(p.base, 'oc.json'),
+      ...process.env, HARNESS_OPENCODE_EXE: path.join(here, 'fake-opencode.mjs'), HARNESS_QUOTA_URL: 'http://127.0.0.1:9', FAKE_OC_STATE: path.join(p.base, 'oc.json'),
       HARNESS_OPENCODE_HOME: path.join(p.base, 'oc-home'), HARNESS_OPENCODE_AUTH_SOURCE: path.join(p.base, 'auth.json'),
       FAKE_OC_MODELS: MODELS, ...env,
     },

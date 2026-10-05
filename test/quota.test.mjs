@@ -1,0 +1,46 @@
+// lib/quota.mjs: which models quota-tracker's answer rules out before a chain runs (L50).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { providerOf, quotaBlock, readQuota } from '../template/tools/harness/lib/quota.mjs';
+import { quotaServer, entry } from './quota-server.mjs';
+
+const of = (...entries) => ({ providers: new Map(entries.map((e) => [e.provider, e])) });
+
+test('each model id maps to its quota-tracker provider', () => {
+  assert.equal(providerOf('openai/gpt-6.1-sol'), 'openai');
+  assert.equal(providerOf('zai-coding-plan/glm-5.3-flash'), 'zai');
+  assert.equal(providerOf('opencode-go/deepseek-v4.1-flash'), 'opencode_go');
+  assert.equal(providerOf('openrouter/deepseek/deepseek-v4-pro'), 'openrouter');
+  assert.equal(providerOf('someone/else'), null);
+});
+
+test('an exhausted provider blocks its models, saying until when; ok, low, error and not_configured do not', () => {
+  assert.equal(quotaBlock('zai-coding-plan/glm-5.3', of(entry('zai', 'exhausted', [], { available_in: '2h08m' }))),
+    'zai is exhausted until it is usable again in 2h08m');
+  for (const status of ['ok', 'low', 'error', 'not_configured']) assert.equal(quotaBlock('zai-coding-plan/glm-5.3', of(entry('zai', status))), null, status);
+  assert.equal(quotaBlock('zai-coding-plan/glm-5.3', of(entry('openai', 'exhausted'))), null);       // another provider
+  assert.equal(quotaBlock('someone/else', of(entry('openai', 'exhausted'))), null);
+});
+
+test('a model with its own window is judged by it: GPT-5.6 Luna runs while it is under 95%, even when OpenAI is exhausted', () => {
+  const openai = (luna) => of(entry('openai', 'exhausted', [{ name: '7d', used_pct: 100 }, { name: 'gpt-5.6-luna:7d', used_pct: luna, resets_in: '6d' }]));
+  assert.equal(quotaBlock('openai/gpt-5.6-luna', openai(94.9)), null);
+  assert.equal(quotaBlock('openai/gpt-5.6-luna', openai(95)), 'its own gpt-5.6-luna:7d window is 95% used, resets in 6d');
+  assert.match(quotaBlock('openai/gpt-6.1-sol', openai(0)), /openai is exhausted/);                 // Sol has no window of its own
+  const lunaOut = of(entry('openai', 'ok', [{ name: '7d', used_pct: 10 }, { name: 'gpt-5.6-luna:7d', used_pct: 99 }]));
+  assert.match(quotaBlock('openai/gpt-5.6-luna', lunaOut), /99% used/);
+  assert.equal(quotaBlock('openai/gpt-6.1-sol', lunaOut), null);
+});
+
+test('readQuota reads the service, and is off, saying why, when it does not answer or answers nonsense', async () => {
+  const s = await quotaServer([entry('zai', 'exhausted'), entry('openai', 'ok')]);
+  try {
+    const q = await readQuota({ HARNESS_QUOTA_URL: s.url });
+    assert.deepEqual([...q.providers.keys()], ['zai', 'openai']);
+  } finally { s.stop(); }
+  assert.match((await readQuota({ HARNESS_QUOTA_URL: 'http://127.0.0.1:9' })).off, /did not answer/);
+  const bad = await quotaServer({ nonsense: 1 });
+  try {
+    assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/);
+  } finally { bad.stop(); }
+});

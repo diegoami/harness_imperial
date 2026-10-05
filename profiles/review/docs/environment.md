@@ -67,6 +67,11 @@ If `curl -sf localhost:8765/health` fails where the service is installed:
 4. To run it without the service: `cd ~/projects/models_quota_tracker && uv run quota-tracker serve`
    in the background (it stops when the session ends).
 
+`implement.mjs` and `review.mjs` ask the service themselves before their chain runs (`lib/quota.mjs`,
+L52): a model whose provider is exhausted, or whose own window is at 95% or more, is skipped with
+the reason in the log, and with none left the script exits 3. `HARNESS_QUOTA_URL` names another
+address. Where the service does not answer, they skip nothing and log `quota: not checked`.
+
 Never read or edit `~/.config/quota-tracker/config.toml`: it holds account tokens. A provider in
 `error` over an expired cookie or token goes to the user, since renewing it needs their browser or
 login. Where the service is not installed, go on without it, and count a usage-limit error as

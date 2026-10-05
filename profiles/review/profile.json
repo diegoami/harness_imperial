@@ -6,6 +6,7 @@
     "tools/harness/lib/opencode.mjs",
     "tools/harness/lib/chain.mjs",
     "tools/harness/lib/common.mjs",
+    "tools/harness/lib/quota.mjs",
     "tools/harness/lib/post.mjs",
     "tools/harness/lib/review-selftest.mjs",
     "tools/harness/lib/switch.mjs",

@@ -111,6 +111,15 @@ test('a model is chosen after a look at its provider\'s quota, and an exhausted 
   assert.match(read('template/docs/lessons.md'), /^\| L50 \| Before choosing, recommending or delegating to a model, the main session checks the providers' quota/m);
 });
 
+test('the scripts skip an exhausted provider themselves, and no chain is edited to pause one (L52)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/.claude/skills/delegate/SKILL.md'), /Both scripts also skip such a model themselves and log why \(L52\); never pause a provider by editing `harness\.json` for quota\./);
+  for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
+    assert.match(flat(f), /`implement\.mjs` and `review\.mjs` ask the service themselves before their chain runs \(`lib\/quota\.mjs`, L52\)/, f);
+  }
+  assert.match(read('template/docs/lessons.md'), /^\| L52 \| `implement\.mjs` and `review\.mjs` check quota themselves/m);
+});
+
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
 const ONE_PASS = `## Report every blocking finding in this one review
 

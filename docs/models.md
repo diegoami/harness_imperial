@@ -143,7 +143,8 @@ Pro)". A number measured for another game is a target to measure, not a promise.
 
 ## How a run is made
 
-- **Quota first** (L50). Before choosing an implementer or a reviewer, run
+- **Quota first** (L50, L52). `implement.mjs` and `review.mjs` skip an exhausted provider themselves
+  and log it; no chain is edited to pause a provider for quota. Before choosing an implementer or a reviewer, run
   `curl -s localhost:8765/avoid` (quota-tracker, `template/docs/environment.md`): a provider that is
   `exhausted` is skipped. Name the next model of the chain with quota (`--model`, `--reviewer`) and
   say so in the report. On 2026-10-04 Z.AI's 5-hour window and Go's week were both used up, which

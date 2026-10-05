@@ -38,6 +38,8 @@ another way, or tell the user what is missing (`docs/environment.md`).
    and `curl -s localhost:8765/best` those with quota, most headroom first (`docs/environment.md`).
    Skip a model whose provider is `exhausted`: name the next model of its chain that has quota
    (`--model` for `implement.mjs`, `--reviewer` for `review.mjs`) and say so in the run's report.
+   Both scripts also skip such a model themselves and log why (L52); never pause a provider by
+   editing `harness.json` for quota.
 3. **Choose on the evidence you have.** In order of preference:
    - this project's own measurements (review rounds and tokens per task, from the merge comments);
    - a small trial;
