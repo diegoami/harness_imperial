@@ -39,7 +39,8 @@ export class OpenCodeInfraError extends Error {
   }
 }
 
-// A run on Alibaba's Token Plan that OpenCode refused for its key: an auth.json entry in the data
+// A failed run on Alibaba's Token Plan whose stderr (OpenCode's own, not the model's output) says the
+// key was refused: an auth.json entry in the data
 // directory overrides ALIBABA_TOKEN_PLAN_API_KEY, and a stale one breaks the provider there (the
 // owner, 2026-10-05). The reason names the directory so the owner can clear it; null otherwise.
 export function keyProblem(text, modelId, dataHome) {

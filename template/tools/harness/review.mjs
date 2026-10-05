@@ -217,9 +217,8 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
         if (!(e instanceof OpenCodeInfraError)) throw e;
         return { ok: false, reason: e.reason, detail: e.message };
       }
-      const key = keyProblem(`${run.stderr}\n${run.output}`, model.id, reviewEnv.XDG_DATA_HOME);
-      if (key) return { ok: false, reason: key, detail: run.output };
-      if (run.exitCode !== 0) return { ok: false, reason: `exit ${run.exitCode}`, detail: run.output };
+      // OpenCode's own error stream on a failed run, never the model's output (Luna's R1, round 2).
+      if (run.exitCode !== 0) return { ok: false, reason: keyProblem(run.stderr, model.id, reviewEnv.XDG_DATA_HOME) ?? `exit ${run.exitCode}`, detail: run.output };
       if (run.agentFallback) return { ok: false, reason: 'fell back to the default agent', detail: run.output };
       if (run.permissionRejected) {
         return { ok: false, reason: `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`, detail: run.output };

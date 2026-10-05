@@ -141,9 +141,8 @@ const result = await runChain({
         totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: implementEnv, log: say,
       });
       output = run.output;
-      const key = keyProblem(`${run.stderr}\n${run.output}`, model.id, implementEnv.XDG_DATA_HOME);
-      if (key) reason = key;
-      else if (run.exitCode !== 0) reason = `exit ${run.exitCode}`;
+      // OpenCode's own error stream on a failed run, never the model's output (Luna's R1, round 2).
+      if (run.exitCode !== 0) reason = keyProblem(run.stderr, model.id, implementEnv.XDG_DATA_HOME) ?? `exit ${run.exitCode}`;
       else if (run.agentFallback) reason = 'fell back to the default agent';
       else if (run.permissionRejected) reason = `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`;
     } catch (e) {

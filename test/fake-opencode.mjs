@@ -160,7 +160,7 @@ switch (mode) {
     createSession();
     const header = rest.at(-1).split('\n')[0];
     process.stdout.write({
-      'review-ok': `reading the diff\n${header}\napprove\n\nR1: fine (not blocking)\n\napprove\n`,
+      'review-ok': `reading the diff\n${header}\napprove\n\nR1: fine (not blocking)${process.env.FAKE_OC_REVIEW_EXTRA ? `\n${process.env.FAKE_OC_REVIEW_EXTRA}` : ''}\n\napprove\n`,
       'review-cut': `${header}\nrework\n\nR1: the loop in`,
       'review-fixes': `${header}\nrework\n\nR1: this fixes #12 only in part.\n\nrework\n`,
       'review-decorated': `Here is my review.\n\n**${header.toUpperCase()}**\n\n**Verdict:** Rework.\n\nR1: x.\n\n**rework**\n\n— signed, the reviewer\n`,
