@@ -43,9 +43,12 @@ const git = (sub) => new RegExp(`^git${GIT_OPT}\\s+${sub}`);
 
 // gh commands that only read. Every other gh command is a write for the reviewer.
 const GH_READ = /^gh\s+(?:--version\b|version\b|auth\s+status\b|pr\s+(?:view|diff|list|checks|status)\b|issue\s+(?:view|list|status)\b|run\s+(?:view|list|watch)\b|workflow\s+(?:view|list)\b|repo\s+view\b|release\s+(?:view|list)\b|label\s+list\b|search\s+\w+)/;
-// `gh api` reads only as a plain GET: no other method, and no field or input (which make it a POST).
+// `gh api` reads only as a plain GET: every method given must be literally GET (-X GET, -XGET,
+// --method=get), so a quoted, substituted or missing one is a write (#79: --method="$X" and
+// -X $(printf POST) passed as reads); and no field or input, which make it a POST.
+const ghApiMethods = (cmd) => [...cmd.matchAll(/\s(?:-X|--method)(?:\s+|=)?(\S*)/gi)].map((m) => m[1]);
 const ghApiWrite = (cmd) => /^gh\s+api\b/.test(cmd)
-  && (/\s(?:-X|--method)(?:\s+|=)(?!GET\b)\w+/i.test(cmd) || /\s(?:-f|-F|--field|--raw-field|--input)(?:\s|=)/.test(cmd));
+  && (ghApiMethods(cmd).some((v) => !/^GET$/i.test(v)) || /\s(?:-f|-F|--field|--raw-field|--input)(?:\s|=)/.test(cmd));
 const ghWrite = (cmd) => /^gh\b/.test(cmd) && (/^gh\s+api\b/.test(cmd) ? ghApiWrite(cmd) : !GH_READ.test(cmd));
 
 export const RULES = {
