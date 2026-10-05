@@ -5,6 +5,7 @@
 //   node tools/harness/implement.mjs --fix 34 --slug save-path --brief brief.md
 //     [--copy local.ini]...  untracked files copied from the main checkout into the worktree
 //     [--env KEY=VALUE]...   environment for the run
+//   node tools/harness/implement.mjs --self-test   (the reset's save, on a throwaway repository)
 //
 // The main session fills the brief (the task file pasted in full, plus review URLs on a rework
 // round). This script creates or resumes the branch and worktree, runs OpenCode watched, and checks
@@ -19,6 +20,11 @@
 // resumed rework branch can still fall back. An implementer that stops and reports has NOT failed:
 // its run exits 0 and is never retried; this script then exits 1 at "no open PR".
 //
+// When an attempt fails and left nothing behind, the reset between attempts first saves the
+// worktree's uncommitted changes (staged, unstaged and untracked) to
+// <workRoot>/<name>.<model key>.<UTC time>.unsaved.patch, created exclusively (lib/unsaved.mjs,
+// #87). The exit 1 and exit 3 messages name every patch the run saved.
+//
 // Exit 0: PR open. Exit 1: the main session decides (read the log). Exit 3: OpenCode unavailable;
 // fall back to a Claude implementer.
 
@@ -26,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError } from './lib/opencode.mjs';
 import { runChain } from './lib/chain.mjs';
+import { resetWorktree, selfTest as unsavedSelfTest } from './lib/unsaved.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode, watchLine,
 } from './lib/common.mjs';
@@ -33,7 +40,14 @@ import {
 const say = (s) => console.log(s);
 const die = (code, s) => { console.error(s); process.exit(code); };
 
-const a = parseArgs(process.argv.slice(2), { repeatable: ['copy', 'env'] });
+const a = parseArgs(process.argv.slice(2), { flags: ['self-test'], repeatable: ['copy', 'env'] });
+// --self-test: the reset's save on a throwaway repository (lib/unsaved.mjs), with no OpenCode or gh.
+if (a['self-test']) {
+  const failures = unsavedSelfTest();
+  for (const f of failures) console.error(`FAIL ${f}`);
+  say(`self-test: ${failures.length ? `${failures.length} checks failed` : 'all checks passed'}`);
+  process.exit(failures.length ? 1 : 0);
+}
 if (!a.task === !a.fix) die(2, 'Give exactly one of --task T<nn> or --fix <issue>.');
 if (a.task && !/^T\d{2,3}$/.test(a.task)) die(2, `--task must look like T07; got ${a.task}`);
 if (!a.slug || !a.brief) die(2, '--slug and --brief are required.');
@@ -89,6 +103,12 @@ RUN RULES (from tools/harness/implement.mjs; they override the brief where they 
   git worktree. Pass git -C "${worktree}" explicitly.
 - Everything else in the brief is binding: Owns, Done when, the PR body, the detach, the report.
 - The PR body's "Closes #${issue}" is the only place a closing keyword may precede #<n>.
+- Never read, write or redirect to any path outside your worktree: no /tmp, no home directory, no
+  git internals (in a worktree, .git points into the main checkout). Scratch files and any TMPDIR go
+  in a folder inside the worktree, which you never commit (add files by name, never git add -A), and
+  which you delete before your last commit. A test that needs a TMPDIR outside every checkout is
+  run by the main session, not by you. (L57)
+- Commit and push after each step, so a run that ends early keeps its work. (L57)
 `;
 const openPr = () => sh('gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number'], { cwd: top, allowFail: true });
 const originSha = () => sh('git', ['-C', top, 'rev-parse', `origin/${branch}`], { allowFail: true });
@@ -102,10 +122,13 @@ fs.writeFileSync(logFile, '');
 // hide that agent, and OPENCODE_CONFIG_DIR would put another in its place.
 const { OPENCODE_CONFIG_DIR: _dir, OPENCODE_DISABLE_PROJECT_CONFIG: _off, ...implementEnv } = pre.env;
 
+const patches = [];        // the unsaved-work patches this run's resets wrote (#87)
+let attemptModel = null;   // the chain key of the attempt whose work a reset saves
 const result = await runChain({
   chain: pre.usable,
   log: say,
   attempt: async (m) => {
+    attemptModel = m;
     const model = config.models[m];
     const watch = watchLine(m, model);
     if (watch) say(watch);
@@ -135,17 +158,20 @@ const result = await runChain({
     return sh('git', ['-C', worktree, 'rev-parse', 'HEAD']) !== startSha
       || originSha() !== startRemote || (pr && pr !== startPr);
   },
+  // Before the hard reset destroys it, the failed attempt's uncommitted work goes to a patch
+  // (lib/unsaved.mjs, #87), so a run that a rejected tool call ended is not lost.
   reset: async () => {
-    sh('git', ['-C', worktree, 'reset', '-q', '--hard', startSha]);
-    sh('git', ['-C', worktree, 'clean', '-q', '-fd']);
+    patches.push(...resetWorktree({ worktree, startSha, workRoot, name, model: attemptModel, log: say }));
   },
 });
 
 say(`run log: ${logFile}`);
+// Every exit after the chain names the patches its resets saved (#87; Sol's R3 on PR 100).
+const saved = patches.length ? ` Unsaved work was saved before the reset: ${patches.join(', ')}.` : '';
 const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
 if (!result.ok) {
-  if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.`);
-  die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}`);
+  if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.${saved}`);
+  die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}${saved}`);
 }
 if (reasons) say(`fell back: ${reasons}`);
 // The reviewer must not be this model's family: pass it to review.mjs as --exclude.
@@ -159,5 +185,5 @@ if (sh('git', ['-C', worktree, 'rev-parse', 'HEAD']) !== originSha()) console.wa
 sh('git', ['-C', worktree, 'checkout', '-q', '--detach']);
 say('--- tail of the run ---');
 say(result.value.split(/\r?\n/).slice(-40).join('\n'));
-if (!pr) die(1, `No open PR for ${branch}. Read ${logFile}: an implementer that stopped and reported is not a failure.`);
+if (!pr) die(1, `No open PR for ${branch}. Read ${logFile}: an implementer that stopped and reported is not a failure.${saved}`);
 say(`PR: ${pr}`);
