@@ -14,7 +14,8 @@ const same = (rel) => assert.equal(
   `${rel} at the root differs from template/${rel}: copy the template's over it`,
 );
 
-for (const rel of ['harness.json', '.opencode/agents/reviewer.md', '.opencode/agents/implementer.md']) {
+for (const rel of ['harness.json', '.opencode/agents/reviewer.md', '.opencode/agents/implementer.md',
+  'docs/jev/breaks-play.md', 'docs/jev/blocks-release.md']) {
   test(`the root ${rel} is the template's`, () => same(rel));
 }
 
