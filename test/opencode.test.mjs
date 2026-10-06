@@ -358,3 +358,61 @@ test('fake opencode processes saving at once neither crash nor lose a session or
   assert.deepEqual(sessions.map((s) => s.title).sort(), Array.from({ length: 32 }, (_, i) => `t${i}`).sort());
   for (const s of sessions) assert.ok(s.updated >= s.created + 25, `${s.title}'s updates were lost`);
 });
+
+test('a cross-device shelve (EXDEV) falls back to copy; a hopeless one still clears the worktree (L60, R1)', async () => {
+  const realRename = fs.renameSync; const realCopy = fs.copyFileSync;
+  const call = (dir, env, title) => runOpenCodeWatched({
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
+    workDir: dir, title, opencode, env, logDir: path.join(dir, 'logs'),
+    pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+  });
+  const exdev = () => Object.assign(new Error('cross-device link'), { code: 'EXDEV' });
+  fs.renameSync = () => { throw exdev(); };
+  try {
+    const { dir, env } = setup('exit2');
+    const r = await call(dir, env, 'exdev');
+    assert.equal(r.exitCode, 2);
+    const kept = path.join(dir, 'logs', `${r.title}.brief.md`);
+    assert.equal(r.briefFile, kept, 'the copy fallback kept the brief');
+    assert.equal(fs.readFileSync(kept, 'utf8'), 'line one\nline two');
+    assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false);
+  } finally { fs.renameSync = realRename; }
+  fs.renameSync = () => { throw exdev(); };
+  fs.copyFileSync = () => { throw new Error('no space left on device'); };
+  try {
+    const { dir, env } = setup('exit2');
+    const r = await call(dir, env, 'hopeless');
+    assert.equal(r.exitCode, 2);
+    assert.equal(r.briefFile, null, 'no kept path is claimed');
+    assert.ok(!r.files.some((f) => f.includes('brief')), JSON.stringify(r.files));
+    for (const f of r.files) assert.ok(fs.existsSync(f), `named path exists: ${f}`);
+    assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false, 'worktree cleared anyway');
+  } finally { fs.renameSync = realRename; fs.copyFileSync = realCopy; }
+});
+
+test('a throw before the watch starts still shelves the brief out of the worktree (L60, R2)', async () => {
+  const { dir, env } = setup('ok');
+  await assert.rejects(runOpenCodeWatched({
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
+    workDir: dir, title: 'spawnthrow', opencode: { exe: null, prefix: [] }, env, logDir: path.join(dir, 'logs'),
+    pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+  }), /The "file" argument must be|invalid/i);
+  assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false, 'worktree cleared');
+  assert.ok(fs.readdirSync(path.join(dir, 'logs')).some((n) => n.endsWith('.brief.md')), 'brief shelved into the log directory');
+});
+
+test('a thrown watch failure names the shelved brief, and every kept path it names exists (L60, R3)', async () => {
+  const { dir, env } = setup('no-session');
+  let error = null;
+  await runOpenCodeWatched({
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
+    workDir: dir, title: 'nosession', opencode, env, logDir: path.join(dir, 'logs'),
+    pollMs: 50, startupTimeoutMs: 400, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+  }).catch((e) => { error = e; });
+  assert.ok(error, 'the run threw');
+  assert.match(error.message, /\.brief\.md/);
+  assert.doesNotMatch(error.message, /\.harness-brief-/);
+  const kept = /files kept: (.*?)\. stderr tail:/s.exec(error.message)?.[1].split(',').map((s) => s.trim()) ?? [];
+  assert.ok(kept.some((f) => f.endsWith('.brief.md')), `kept list names the shelved brief: ${kept.join(', ')}`);
+  for (const f of kept) assert.ok(fs.existsSync(f), `named path exists: ${f}`);
+});
