@@ -183,6 +183,15 @@ Pro)". A number measured for another game is a target to measure, not a promise.
 
 ## How a run is made
 
+- **The chooser ranks, the runners skip** (2026-10-06). `choose.mjs` is the ranked form of the
+  quota check: `node tools/harness/choose.mjs --role implementer --difficulty easy [--pick]`
+  ranks the registered models by headroom band (≥50% left, 20–49%, <20%), then the pricing tier
+  within the band (a discount on promotes, a peak demotes — the rules above), then the
+  `chooser` block's preference order (an absent block falls back to the chains). **Headroom
+  outranks pricing** (the owner): a discounted pool that is nearly burnt loses to a fresh one.
+  `--pick` names the top model for `--model`/`--reviewer`; it never edits `harness.json` — a
+  switch still goes through `/switch-model`. A tracker that does not answer ranks by preference
+  alone and never blocks. The `chooser` block is the owner's to edit.
 - **Quota first** (L50, L52). `implement.mjs` and `review.mjs` skip an exhausted provider themselves
   and log it; no chain is edited to pause a provider for quota. Before choosing an implementer or a reviewer, run
   `curl -s localhost:8765/avoid` (quota-tracker, `template/docs/environment.md`): a provider that is

@@ -88,6 +88,30 @@
       "watch": "Light (the owner, 2026-10-06); it offers no variants, so no variant field. Probed only (2026-10-06, 4.2 s). Key and quota as mm-m3."
     }
   },
+  "chooser": {
+    "implementer": {
+      "easy": [
+        "glm-flash",
+        "deepseek-flash"
+      ],
+      "hard": [
+        "deepseek-flash",
+        "ali-deepseek-flash",
+        "glm-flash"
+      ]
+    },
+    "reviewer": {
+      "easy": [
+        "luna"
+      ],
+      "hard": [
+        "glm",
+        "mm-m3",
+        "deepseek-pro",
+        "luna"
+      ]
+    }
+  },
   "implementer": {
     "agent": "implementer",
     "chain": [

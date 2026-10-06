@@ -30,6 +30,7 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/tools/harness/switch-model.mjs`, `lib/switch.mjs` | Switches the implementer's or reviewer's model in `harness.json`. It checks the live id and the login, keeps effort `high`, enforces the family rule, and can run a one-word probe first. |
 | `template/.claude/skills/switch-model/SKILL.md` | `/switch-model`: why, the candidates (live), a dry run with a probe, the user's yes, the switch and its commit. |
 | `template/tools/harness/models.mjs` | Lists the models OpenRouter or ElevenLabs offer now, filtered by input and output (text, image, audio). |
+| `template/tools/harness/choose.mjs`, `lib/choose.mjs` | Ranks the registered models for a role and difficulty by live quota headroom and time-of-day pricing over the `chooser` block's preference order (`--pick` names the top one); advisory, never edits `harness.json`. |
 | `template/harness.json` | Models, chains, timeouts, providers, and the Jev decisions with their cutoffs. |
 | `template/docs/tasks/`, `template/.github/pull_request_template.md` | The task-file and PR formats. |
 
