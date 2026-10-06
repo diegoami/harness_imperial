@@ -144,6 +144,16 @@ test('a task that would outlast one run, or whose Done-when is all or nothing, i
   assert.match(l, /A milestone's Done-when measures progress as a number \(the records matched, the first divergent minute\), committed with each push, so a resumed run starts from it\. The boundary sits where the evidence already has a number \(a count of matching records, a minute index\), not at an arbitrary half of the scope/m);
 });
 
+test('a granted outside path is read with grep/sed -n, never cd or cat (L59)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  const recipe = /A path granted to you outside the worktree \(`external_directory: allow`\) is read with `grep`, `sed -n`, `head`, `ls` and `sha256sum`, giving the file's path \(quoted when it has spaces\) exactly as the grant writes it\. Never `cd` into or toward a granted folder and never `cat` a file in it: `cd` and `cat` paths are permission-checked as raw command text, and a quoted path fails the match — one such command ends the whole run\. Use `sed -n '1,120p' <file>` where you would have used `cat`\. \(L59\)/;
+  for (const f of ['template/.opencode/agents/implementer.md', 'template/.opencode/agents/reviewer.md']) assert.match(flat(f), recipe, f);
+  // The root copies stay equal to the template's (this repository's CLAUDE.md).
+  assert.equal(read('.opencode/agents/implementer.md'), read('template/.opencode/agents/implementer.md'));
+  assert.equal(read('.opencode/agents/reviewer.md'), read('template/.opencode/agents/reviewer.md'));
+  assert.match(read('template/docs/lessons.md'), /^\| L59 \| A path granted outside the worktree is read with/m);
+});
+
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
 const ONE_PASS = `## Report every blocking finding in this one review
 

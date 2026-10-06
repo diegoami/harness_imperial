@@ -47,6 +47,12 @@ how the run works.
   Scratch output goes to a file in the worktree root (`2>review-err.txt`), deleted afterwards;
   never `/tmp`. Run git commands one at a time, never in parallel, and never touch `.git`: a
   leftover `index.lock` means wait and retry, not delete.
+- A path granted to you outside the worktree (`external_directory: allow`) is read with `grep`,
+  `sed -n`, `head`, `ls` and `sha256sum`, giving the file's path (quoted when it has spaces)
+  exactly as the grant writes it. Never `cd` into or toward a granted folder and never `cat` a
+  file in it: `cd` and `cat` paths are permission-checked as raw command text, and a quoted
+  path fails the match — one such command ends the whole run. Use `sed -n '1,120p' <file>`
+  where you would have used `cat`. (L59)
 - Re-run every Done-when line yourself; the PR's evidence is a convenience, never the proof. Prove
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or
   label it unverified. A claim that nothing failed is re-taken before it is believed.
