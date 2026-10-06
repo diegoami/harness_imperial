@@ -95,7 +95,7 @@ follows the work's difficulty. Claude writes every PR here, so here only the rev
 | Difficulty | Writes | Reviews | If the reviewer is unavailable |
 | --- | --- | --- | --- |
 | Easy, the default | Claude, the main session | GPT-5.6 Luna (`luna`) | escalate: no Claude reviewer may review here |
-| Hard | Claude, the main session | `--hard`: GLM-5.3; `--hard --sol`: GPT-6.1 Sol, for a guard task and the last round (L41) | the rest of `reviewer.hard`: DeepSeek V4 Pro, then Luna, by itself (L39) |
+| Hard | Claude, the main session | `--hard`: GLM-5.3; `--hard --sol`: GPT-6.1 Sol, for a guard task and the last round (L41) | the rest of `reviewer.hard`: MiniMax-M3, then DeepSeek V4 Pro, then Luna, by itself (L39) |
 
 The review always runs through `review.mjs` from the root, with `--exclude claude`.
 
