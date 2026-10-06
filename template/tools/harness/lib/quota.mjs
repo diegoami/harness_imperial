@@ -61,3 +61,30 @@ export function quotaBlock(id, quota) {
   if (p.status !== 'exhausted') return null;
   return `${p.provider} is exhausted${p.available_in ? ` until it is usable again in ${p.available_in}` : ''}`;
 }
+
+// The time-of-day pricing quota-tracker reports per provider (`/quota/<provider>`'s `pricing`:
+// alibaba's `discount_now`/`next_change_at`/`discount_pct`, zai's `peak_now`/`multiplier`), for
+// ranking, never blocking (docs/models.md): a provider without pricing, or a payload that fails
+// to parse, is simply absent from the map; only a service that cannot be reached at all is `{ off }`.
+// { pricing: Map(name → pricing) } or { off: why }.
+const PRICING_PROVIDERS = ['alibaba', 'zai'];
+export async function readPricing(env = process.env, { timeoutMs = 3000 } = {}) {
+  const base = `${(env.HARNESS_QUOTA_URL || 'http://localhost:8765').replace(/\/$/, '')}`;
+  const pricing = new Map();
+  for (const name of PRICING_PROVIDERS) {
+    try {
+      const res = await fetch(`${base}/quota/${name}`, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) continue;
+      const p = await res.json();
+      if (p && typeof p === 'object' && p.pricing && typeof p.pricing === 'object') pricing.set(name, p.pricing);
+    } catch { /* this provider only */ }
+  }
+  if (!pricing.size) {
+    try {
+      await fetch(`${base}/quota`, { signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      return { off: `${base} did not answer (${e.cause?.code ?? e.name})` };
+    }
+  }
+  return { pricing };
+}
