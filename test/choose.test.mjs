@@ -84,6 +84,50 @@ test('an exhausted provider ranks last with the reason; a reviewer never shares 
   assert.match(ranked.find((r) => r.name === 'glm').blocked, /implementer's family/);
 });
 
+test('a model whose own window is exhausted ranks last on fresh provider headroom (quota blocking, Sol\'s R1)', () => {
+  const c = config();
+  c.models.sol = { id: 'openai/gpt-6.1-sol', variant: 'low', family: 'openai' };
+  c.chooser = { reviewer: { easy: ['luna', 'sol'] } };
+  // openai is fresh (70% left) but luna's own gpt-5.6-luna:7d window is exhausted: band sorting
+  // alone would put both in band 0 — only the blocked-first comparator separates them.
+  const quota = of(entry('openai', 'ok', [
+    { name: 'gpt-5.6-luna:7d', used_pct: 97, resets_in: '6d' },
+    { name: '7d', used_pct: 30, resets_in: '4d' },
+  ], { headroom_pct: 70 }));
+  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota, pricing: { pricing: new Map() } });
+  assert.equal(ranked[0].name, 'sol');
+  assert.equal(ranked[ranked.length - 1].name, 'luna');
+  assert.match(ranked.find((r) => r.name === 'luna').blocked, /own gpt-5\.6-luna:7d window is 97% used/);
+});
+
+test('quota off means preference alone, even with pricing reachable (Sol\'s R2)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'choose2-'));
+  const c = config();
+  c.chooser = { implementer: { hard: ['deepseek-flash', 'ali-qwen-flash'] } };
+  fs.writeFileSync(path.join(dir, 'harness.json'), JSON.stringify(c));
+  await new Promise((r) => spawn(process.execPath, ['-e', 'require("child_process").execSync("git init -q")'], { cwd: dir }).on('exit', r));
+  // /quota is garbage; /quota/alibaba answers a discount. The discount must not reorder.
+  process.env.FAKE_QUOTA_PROVIDERS = JSON.stringify([entry('alibaba', 'ok', [], { pricing: { discount_now: true } })]);
+  const s2 = await quotaServer([], 'not json');
+  try {
+    const run = (args) => new Promise((resolve) => {
+      const p = spawn(process.execPath, [tool, ...args], { cwd: dir, env: { ...process.env, HARNESS_QUOTA_URL: s2.url }, encoding: 'utf8' });
+      let out = ''; let err = '';
+      p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+      p.on('exit', (code) => resolve({ code, out, err }));
+    });
+    const r = await run(['--role', 'implementer', '--difficulty', 'hard']);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.err, /quota: not checked/);
+    assert.match(r.out, /1\. deepseek-flash/);
+    assert.match(r.out, /2\. ali-qwen-flash/);
+  } finally {
+    s2.stop();
+    delete process.env.FAKE_QUOTA; delete process.env.FAKE_QUOTA_PROVIDERS;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a provider the tracker could not check is band 1, unknown, blocking nothing', () => {
   const quota = of(entry('openai', 'error', [], { headroom_pct: null }));
   const c = config();

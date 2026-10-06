@@ -41,9 +41,12 @@ const config = loadConfig(top);
 
 const quota = await readQuota();
 const pricing = await readPricing();
+// Quota off means ranking by preference alone (Sol's R2, PR 117): reachable pricing must not
+// still reorder when the quota it would rank against is missing.
+const effective = quota.off ? { pricing: new Map() } : pricing;
 let ranked;
 try {
-  ranked = rankCandidates({ config, role: a.role, difficulty: a.difficulty, quota, pricing, implementedBy: a.implementedBy });
+  ranked = rankCandidates({ config, role: a.role, difficulty: a.difficulty, quota, pricing: effective, implementedBy: a.implementedBy });
 } catch (e) {
   die(2, e.message);
 }
