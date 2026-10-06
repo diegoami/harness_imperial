@@ -227,7 +227,7 @@ test('a run that edited without committing and was rejected keeps its work in a 
   assert.match(text, /\+untracked work/);
   assert.match(r.stdout, /unsaved work saved to: /);
   // Every brief's run rules keep the implementer inside its worktree and committing as it goes (L57).
-  const prompt = readSessions(path.join(p.base, 'oc.json'))[0].prompt.replace(/\s+/g, ' ');
+  const prompt = readSessions(path.join(p.base, "oc.json"))[0].brief.replace(/\s+/g, " ");
   assert.match(prompt, /Never read, write or redirect to any path outside your worktree: no \/tmp, no home directory, no git internals/);
   assert.match(prompt, /A test that needs a TMPDIR outside every checkout is run by the main session, not by you\. \(L57\)/);
   assert.match(prompt, /Commit and push after each step, so a run that ends early keeps its work\. \(L57\)/);

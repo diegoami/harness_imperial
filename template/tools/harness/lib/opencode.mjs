@@ -348,10 +348,25 @@ function tail(file, lines = 30) {
   } catch { return '(no output file)'; }
 }
 
+// Windows caps a process command line at 32767 characters; Linux a single argument at 128 KiB
+// (L60). The brief never rides the command line, so this is a tripwire, not a delivery path.
+export function commandLineTooLong(parts, platform = process.platform) {
+  return platform === 'win32' && parts.join(' ').length > 32000;
+}
+
+// The brief file every run's pointer prompt names: inside the worktree (the agent's tools reach
+// only there, L36/#501), deleted with the run's log files on success, kept and named on failure.
+export function briefFileName(title) {
+  return `.harness-brief-${title}.md`;
+}
+
 /**
- * Runs `opencode <args...> --title <title-token> <prompt>` in workDir, watched.
+ * Runs `opencode <args...> --title <title-token> <pointer prompt>` in workDir, watched. The
+ * prompt is written to `<workDir>/.harness-brief-<title>.md` and the command line carries only
+ * a short pointer to it (L60): the whole brief never passes through argv, which Windows caps at
+ * 32767 characters (IC2's T146/T148 were blocked by it) and Linux per argument at 128 KiB.
  * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent,
- *   permissionRejected, permissionHint, files, seconds }.
+ *   permissionRejected, permissionHint, files, briefFile, seconds }.
  * A non-zero exit is returned, not thrown: the caller decides.
  */
 export async function runOpenCodeWatched({
@@ -366,9 +381,14 @@ export async function runOpenCodeWatched({
   fs.mkdirSync(logDir, { recursive: true });
   const outFile = path.join(logDir, `${title}.out.txt`);
   const errFile = path.join(logDir, `${title}.err.txt`);
-  const files = [outFile, errFile];
-  const all = [...args, '--title', title, prompt];
-  if (process.platform === 'win32' && all.join(' ').length > 32000) {
+  const briefFile = path.join(workDir, briefFileName(title));
+  fs.writeFileSync(briefFile, prompt);
+  const files = [outFile, errFile, briefFile];
+  const pointer = `Your complete brief for this run is the file ${briefFileName(title)} at the root of this worktree.`
+    + ' Read that file first and follow it exactly; never edit, commit or delete it.';
+  const all = [...args, "--title", title, pointer];
+  if (commandLineTooLong(all)) {
+    fs.rmSync(briefFile, { force: true });
     throw new Error('The opencode command line exceeds what Windows allows (32767 characters). Shorten the brief.');
   }
 
@@ -405,6 +425,15 @@ export async function runOpenCodeWatched({
   };
   const fail = (reason, message) => new OpenCodeInfraError(reason,
     `${message}; files kept: ${files.join(', ')}. stderr tail:\n${tail(errFile)}`);
+  // The brief leaves the worktree when the run is not clean (L60): kept for diagnosis with the
+  // log files, but never left as untracked work a reset would save as the implementer's (#87).
+  const keptBrief = path.join(logDir, `${title}.brief.md`);
+  const shelveBrief = () => {
+    try {
+      fs.renameSync(briefFile, keptBrief);
+      files[files.indexOf(briefFile)] = keptBrief;
+    } catch { /* already gone */ }
+  };
   log(`opencode: pid ${child.pid}, session title ${title}, output ${outFile}`);
 
   try {
@@ -458,6 +487,7 @@ export async function runOpenCodeWatched({
     }
   } catch (e) {
     killTree(child);
+    shelveBrief();
     throw e;
   }
 
@@ -476,12 +506,16 @@ export async function runOpenCodeWatched({
   const permissionRejected = !record ? said : record.rejected ? said ?? 'a tool call (in the session record)' : null;
   const permissionHint = permissionRejected ? rejectionHint(`${stdout}\n${stderr}`) : null;
   if (exitCode === 0 && !permissionRejected) for (const f of files) fs.rmSync(f, { force: true });
-  else log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
+  else {
+    shelveBrief();
+    log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
+  }
   return {
     output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
     stdout, stderr, exitCode, sessionId: session.id, title,
     agentFallback, sessionAgent: recordedAgent, permissionRejected, permissionHint,
     files: exitCode === 0 && !permissionRejected ? [] : files,
+    briefFile: exitCode === 0 && !permissionRejected ? briefFile : keptBrief,
     seconds: Math.round(elapsed() / 1000),
   };
 }

@@ -31,6 +31,9 @@ how the run works.
   `git diff --name-only origin/main...HEAD`. The top level must be the worktree the brief names,
   HEAD must be the commit it names, and the diff must not be empty; otherwise you are in the wrong
   tree, so say so and stop. Every finding names a file from that diff.
+- When the run's first message names a `.harness-brief-*.md` file at the worktree root, that file
+  is your whole brief: read it in full before anything else and follow it exactly; never edit,
+  commit or delete it (L60).
 - Read-only: never edit, commit, push, merge, label or post. The script that runs you posts your
   review. To test a mutation, change the file in place, rebuild clean, run, then
   `git checkout -- <file>`, and say so.

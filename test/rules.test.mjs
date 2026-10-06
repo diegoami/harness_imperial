@@ -144,6 +144,13 @@ test('a task that would outlast one run, or whose Done-when is all or nothing, i
   assert.match(l, /A milestone's Done-when measures progress as a number \(the records matched, the first divergent minute\), committed with each push, so a resumed run starts from it\. The boundary sits where the evidence already has a number \(a count of matching records, a minute index\), not at an arbitrary half of the scope/m);
 });
 
+test('a brief passes by file in the worktree, never the command line (L60)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  const line = /When the run's first message names a `\.harness-brief-\*\.md` file at the worktree root, that file is your whole brief: read it in full before anything else and follow it exactly; never edit, commit or delete it \(L60\)\./;
+  for (const f of ['template/.opencode/agents/implementer.md', 'template/.opencode/agents/reviewer.md']) assert.match(flat(f), line, f);
+  assert.match(read('template/docs/lessons.md'), /^\| L60 \| A brief passes by file, never the command line: the runner writes the whole prompt to `\.harness-brief-<title>\.md` at the run worktree's root/m);
+});
+
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
 const ONE_PASS = `## Report every blocking finding in this one review
 

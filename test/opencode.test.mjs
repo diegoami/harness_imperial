@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
 import {
   runOpenCodeWatched, lookupSession, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
+  commandLineTooLong, briefFileName,
   openCodeHome, listedModels, loginHint, keyProblem, openCodeVersion, versionProblem,
 } from '../template/tools/harness/lib/opencode.mjs';
 
@@ -38,6 +39,40 @@ test('a normal run returns its output, exit code and session', async () => {
   assert.match(r.sessionId, /^ses_/);
   assert.equal(r.agentFallback, false);
   assert.deepEqual(r.files, []);
+});
+
+test('the brief rides a file in the worktree, not the command line (L60)', async () => {
+  const { dir, env } = setup('ok');
+  const r = await runOpenCodeWatched({
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
+    workDir: dir, title: 'test', opencode, env, logDir: path.join(dir, 'logs'),
+    pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+  });
+  // The command line carried only the pointer, and the file held the whole brief, byte-exact.
+  const [session] = readSessions(path.join(dir, 'state.json'));
+  assert.match(session.prompt, new RegExp(`Your complete brief for this run is the file \\.harness-brief-${r.title}\\.md at the root of this worktree\\.`));
+  assert.doesNotMatch(session.prompt, /line one/);
+  assert.equal(session.brief, 'line one\nline two');
+  // Success deleted the brief file with the log files.
+  assert.equal(fs.existsSync(path.join(dir, `.harness-brief-${r.title}.md`)), false);
+});
+
+test('a failed run shelves the brief into the log directory, out of the worktree (L60, #87)', async () => {
+  const { dir, env } = setup('exit2');
+  const r = await run('exit2', { workDir: dir, logDir: path.join(dir, 'logs') }, {});
+  assert.equal(r.exitCode, 2);
+  const kept = path.join(dir, 'logs', `${r.title}.brief.md`);
+  assert.ok(r.files.includes(kept), `kept files name the brief: ${r.files.join(', ')}`);
+  assert.equal(r.briefFile, kept);
+  assert.equal(fs.readFileSync(kept, 'utf8'), 'line one\nline two');
+  // The worktree is left clean: no untracked brief for a reset to save as the implementer's work.
+  assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false);
+});
+
+test('commandLineTooLong: the win32 tripwire, per platform', () => {
+  assert.equal(commandLineTooLong(['opencode', 'run', 'x'], 'win32'), false);
+  assert.equal(commandLineTooLong(['opencode', 'run', 'x'.repeat(33000)], 'win32'), true);
+  assert.equal(commandLineTooLong(['opencode', 'run', 'x'.repeat(33000)], 'linux'), false);
 });
 
 test('stdin is closed: a run that waits for stdin EOF still starts (IC2 #490)', async () => {
@@ -113,10 +148,11 @@ test('a session lookup that misses says why: the listing, its output, or the mat
   assert.deepEqual(await look(), { session: { id: 'ses_d', title: 't1', directory: dir, created: startedMs }, miss: null });
 });
 
-test('a non-zero exit is returned, not thrown, and its files are kept', async () => {
+test('a non-zero exit is returned, not thrown, and its files — the brief among them — are kept (L60)', async () => {
   const r = await run('exit2');
   assert.equal(r.exitCode, 2);
-  assert.equal(r.files.length, 2);
+  assert.equal(r.files.length, 3);
+  assert.ok(r.files.some((f) => f.endsWith('.brief.md')), 'the brief file is kept');
   for (const f of r.files) assert.ok(fs.existsSync(f));
 });
 
@@ -151,7 +187,7 @@ test('a run that exits 0 after OpenCode rejected a tool call reports it, and kee
   const r = await run('permission');
   assert.equal(r.exitCode, 0);
   assert.equal(r.permissionRejected, 'external_directory (/tmp/*)');
-  assert.equal(r.files.length, 2);
+  assert.equal(r.files.length, 3);   // out, err and the brief file (L60)
 });
 
 test('a model quoting the rejection line is not a rejection', async () => {

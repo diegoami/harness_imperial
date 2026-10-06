@@ -112,7 +112,7 @@ test('every reviewer is told a proven bypass of what the task protects is blocki
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
-  const prompt = session.prompt.replace(/\s+/g, ' ');
+  const prompt = session.brief.replace(/\s+/g, " ");
   assert.match(prompt, /A finding you proved that lets a forbidden action or a wrong result past what the task protects is blocking, and blocks an approve: never "follow-up hardening" or "outside the threat model" unless the task's text says so \(L47\)\./);
   const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(instructions, /A proven bypass of the task's own guard is blocking even when it looks like an edge case/);
@@ -131,8 +131,8 @@ test('the reviewer runs git in its worktree and is never asked to type its path 
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
-  assert.match(session.prompt, /it is already your working directory\. Run git\n {2}there without -C, and never type that path/);
-  assert.doesNotMatch(session.prompt, /git -C/);
+  assert.match(session.brief, /it is already your working directory\. Run git\n {2}there without -C, and never type that path/);
+  assert.doesNotMatch(session.brief, /git -C/);
   const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').split(/^---$/m).slice(2).join('');
   assert.doesNotMatch(instructions, /git -C/);
   assert.match(instructions, /git rev-parse --show-toplevel/);
@@ -154,7 +154,7 @@ test('an approve without a DW line for every Done-when line is posted, not appli
   assert.match(s.comments[0].body, /\n\nT07 review \(luna\)\napprove\n\nDW1: ran node a\.js → 1/);
   assert.equal(s.issueLabels['12'], undefined);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
-  assert.match(session.prompt, /The task has 3 Done-when lines\. Right after the verdict line, account for each/);
+  assert.match(session.brief, /The task has 3 Done-when lines\. Right after the verdict line, account for each/);
 });
 
 test('an approve with every DW line is applied; one "not run" is not (L32)', posix, () => {
