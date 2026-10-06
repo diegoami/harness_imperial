@@ -29,4 +29,8 @@ for (const agent of ['implementer', 'reviewer']) {
   test(`the ${agent} gives OpenCode's file tools paths relative to the worktree root, never absolute (L36)`, () => {
     assert.match(body(`.opencode/agents/${agent}.md`), /paths? relative to the worktree root too \(`[^`]+`\), never an absolute path/);
   });
+  test(`the ${agent} reads a granted outside path with grep/sed -n, never cd or cat (L59)`, () => {
+    assert.match(body(`.opencode/agents/${agent}.md`), /A path this file's `external_directory` grants outside the worktree is read with `grep`, `sed -n`, `head`, `ls` and `sha256sum`, giving each file's path quoted when it has spaces, exactly as the grant writes it; never `cd` into or toward that folder and never `cat` a file in it — `cd` and `cat` paths are permission-checked as raw command text, and a quoted path fails the match, ending the run \(L59\)\. Use `sed -n '1,120p' <file>` instead of `cat`\./);
+    assert.match(fs.readFileSync(path.join(repo, 'template/docs/lessons.md'), 'utf8'), /^\| L59 \| A granted outside path is read with/m);
+  });
 }

@@ -41,6 +41,11 @@ the run works.
   Give the read, edit and write tools paths relative to the worktree root too (`src/a.cs`), never
   an absolute path: OpenCode resolves a relative path there, although the tools' descriptions ask
   for an absolute one, and a guessed absolute path is rejected and ends the run (L36).
+- A path this file's `external_directory` grants outside the worktree is read with `grep`,
+  `sed -n`, `head`, `ls` and `sha256sum`, giving each file's path quoted when it has spaces,
+  exactly as the grant writes it; never `cd` into or toward that folder and never `cat` a file in
+  it — `cd` and `cat` paths are permission-checked as raw command text, and a quoted path fails
+  the match, ending the run (L59). Use `sed -n '1,120p' <file>` instead of `cat`.
 - The Done-when lines are binding as written. One you cannot satisfy means you **stop and report
   why**: never weaken an assertion, skip a test, or edit the task file. A defect in code outside
   your task is reported, never patched.
