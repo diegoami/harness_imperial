@@ -201,7 +201,10 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
   "DW<k>: not run — <reason>". An approve with one missing, or one not run, is not applied.` : ''} A review that does not end with its verdict, or that has a
   finding after it, is posted flagged and acted on by no one until the main session reads it.
 - Your worktree is ${worktree} at ${headSha}, and it is already your working directory. Run git
-  there without -C, and never type that path: a mistyped path ends the run.
+  there without -C, and never type that path: a mistyped path ends the run. This rule is about
+  your own worktree only (L61): a Done-when line may send git at a pinned repository outside it
+  (git -C <path> show <pin>:<file>); run that exactly as written — OpenCode does not path-check
+  git -C — and read a granted outside path only with the L59 recipe.
 `;
       newTree();
       const watch = watchLine(m, model);

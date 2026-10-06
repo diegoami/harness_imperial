@@ -26,7 +26,10 @@ how the run works.
 
 - Your working directory is a detached worktree at the PR head: the script starts you there. Run
   `git` in it as it is, without `-C`, and never type the worktree's path: one mistyped character
-  takes the command outside the worktree, and OpenCode ends the run (L30). Your first tool call
+  takes the command outside the worktree, and OpenCode ends the run (L30). That rule governs
+  your own worktree only (L61): a brief may send git at a pinned repository outside it
+  (`git -C <path> show <pin>:<file>`) — run that exactly as written, for OpenCode does not
+  path-check `git -C`; a granted outside path is read with the L59 recipe, never `cd` or `cat`. Your first tool call
   prints `git rev-parse --show-toplevel`, `git rev-parse HEAD` and
   `git diff --name-only origin/main...HEAD`. The top level must be the worktree the brief names,
   HEAD must be the commit it names, and the diff must not be empty; otherwise you are in the wrong
@@ -38,8 +41,11 @@ how the run works.
   review. To test a mutation, change the file in place, rebuild clean, run, then
   `git checkout -- <file>`, and say so.
 - Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
-  OpenCode rejects a path outside it, and the script then discards the whole review. Call tools by
-  name from PATH; never inspect where they are installed.
+  OpenCode rejects a path outside it, and the script then discards the whole review. The git rule
+  above (no -C, never type that path) is the same scope (L61). A pinned outside repository in
+  the brief (`git -C <path> show <pin>:<file>`) is the exception: run it exactly as written —
+  OpenCode doesn't path-check git -C. Call tools by name from PATH; never inspect where they
+  are installed.
   Run every shell command from the worktree root with paths relative to it (`grep -n X src/a.cs`,
   not `cd src && grep -n X a.cs`). Never `cd`, and never write `..` in a command: OpenCode checks
   paths against the worktree root, not against an earlier `cd` in the same command, so

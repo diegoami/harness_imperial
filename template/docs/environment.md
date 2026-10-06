@@ -74,6 +74,10 @@ Check it before choosing, recommending or delegating to a model (L50). It is rea
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one (alibaba's and zai's carry a
   `pricing` object the chooser's `readPricing` also reads);
+- OpenCode's `external_directory` is a coarse guard, not a sandbox (L61, the owner accepted
+  2026-10-06): it path-checks the agent's file tools and, as raw command text, `cd` and `cat`
+  (L59) — not `git -C` or grep/sed/head/ls, so an agent with bash allowed can read any directory.
+  Secrets are the credential jail's business; a grant is for deliberate reads (L59's recipe).
 - `curl -s localhost:8765/best`: the providers with quota left, most headroom first;
 - `curl -s localhost:8765/avoid`: the providers out of quota, with when each is usable again.
 

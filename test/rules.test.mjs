@@ -144,6 +144,25 @@ test('a task that would outlast one run, or whose Done-when is all or nothing, i
   assert.match(l, /A milestone's Done-when measures progress as a number \(the records matched, the first divergent minute\), committed with each push, so a resumed run starts from it\. The boundary sits where the evidence already has a number \(a count of matching records, a minute index\), not at an arbitrary half of the scope/m);
 });
 
+test('the git run rule is scoped to the reviewer\'s own worktree; a pinned outside repo is git -C exactly as written (L61)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  for (const f of ['template/.opencode/agents/reviewer.md']) {
+    assert.match(flat(f), /That rule governs your own worktree only \(L61\): a brief may send git at a pinned repository outside it \(`git -C <path> show <pin>:<file>`\) — run that exactly as written, for OpenCode does not path-check `git -C`/);
+  }
+  assert.match(read('template/docs/lessons.md'), /^\| L61 \| A reviewer's "run git without -C, and never type that path" rule governs its own worktree only/m);
+  assert.match(read('template/.opencode/agents/reviewer.md'), /A pinned outside repository in\s+the brief/);
+  // The contradiction Luna flagged (round 2 R2): the worktree rule no longer says "no ... other
+  // worktree" without the git-C exception — the L61 clause must be the same scope, with a
+  // explicit reference to a pinned outside repository as the exception.
+  const flatR = read("template/.opencode/agents/reviewer.md").replace(/\s+/g, " ");
+  assert.match(flatR, /The git rule above .no -C, never type that path. is the same scope \(L61\)/);
+  // .gitignore must hide .bak files: a plain status of a real .claude/*.bak shows nothing.
+  // .gitignore must hide .bak files: a plain status of a real .claude/*.bak shows nothing.
+  const gi = fs.existsSync(path.join(repo, ".gitignore")) ? fs.readFileSync(path.join(repo, ".gitignore"), "utf8") : "";
+  assert.match(gi, /^\.claude\/\*\.bak$/m);
+  assert.match(read('template/docs/lessons.md'), /external_directory` is a coarse guard, not a sandbox/m);
+});
+
 test('a brief passes by file in the worktree, never the command line (L60)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   const line = /When the run's first message names a `\.harness-brief-\*\.md` file at the worktree root, that file is your whole brief: read it in full before anything else and follow it exactly; never edit, commit or delete it \(L60\)\./;
