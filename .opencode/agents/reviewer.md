@@ -26,7 +26,10 @@ how the run works.
 
 - Your working directory is a detached worktree at the PR head: the script starts you there. Run
   `git` in it as it is, without `-C`, and never type the worktree's path: one mistyped character
-  takes the command outside the worktree, and OpenCode ends the run (L30). Your first tool call
+  takes the command outside the worktree, and OpenCode ends the run (L30). That rule governs
+  your own worktree only (L61): a brief may send git at a pinned repository outside it
+  (`git -C <path> show <pin>:<file>`) — run that exactly as written, for OpenCode does not
+  path-check `git -C`; a granted outside path is read with the L59 recipe, never `cd` or `cat`. Your first tool call
   prints `git rev-parse --show-toplevel`, `git rev-parse HEAD` and
   `git diff --name-only origin/main...HEAD`. The top level must be the worktree the brief names,
   HEAD must be the commit it names, and the diff must not be empty; otherwise you are in the wrong
