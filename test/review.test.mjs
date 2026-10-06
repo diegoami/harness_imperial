@@ -505,7 +505,7 @@ test('OpenCode missing says the same as any other failure: the owner, or a Claud
   assert.match(c.stderr, /OpenCode unavailable: .*use a Claude reviewer \(opus\)/);
 });
 
-// --hard (L39, L41): GLM-5.3, then DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
+// --hard (L39, L41): GLM-5.3, then MiniMax-M3, DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
 const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'minimax/MiniMax-M3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
 const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'minimax/MiniMax-M3': m[2] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[3] ?? 'review-ok', 'openai/gpt-5.6-luna': m[4] ?? 'review-ok' });
 
