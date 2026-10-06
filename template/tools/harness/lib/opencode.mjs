@@ -537,8 +537,13 @@ export async function runOpenCodeWatched({
   } catch (e) {
     shelveBrief();
     if (child) { try { killTree(child); } catch { /* already dead */ } }
-    // The failure was worded before the brief moved (R3): name where it actually is.
+    // The failure was worded before shelving moved or dropped the brief: name where it actually is.
     if (briefKeptPath && e.message && e.message.includes(briefFile)) e.message = e.message.split(briefFile).join(briefKeptPath);
+    // ...and rebuild the kept-files list itself, which the hopeless fallback shortens (round-2 R1).
+    const seg = /files kept: (.*?)\. stderr tail:/s.exec(e.message ?? '');
+    if (seg && seg[1] !== files.join(', ')) {
+      e.message = e.message.replace(`files kept: ${seg[1]}.`, () => `files kept: ${files.join(', ')}.`);
+    }
     throw e;
 }
 }

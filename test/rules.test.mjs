@@ -149,6 +149,7 @@ test('a brief passes by file in the worktree, never the command line (L60)', () 
   const line = /When the run's first message names a `\.harness-brief-\*\.md` file at the worktree root, that file is your whole brief: read it in full before anything else and follow it exactly; never edit, commit or delete it \(L60\)\./;
   for (const f of ['template/.opencode/agents/implementer.md', 'template/.opencode/agents/reviewer.md']) assert.match(flat(f), line, f);
   assert.match(read('template/docs/lessons.md'), /^\| L60 \| A brief passes by file, never the command line: the runner writes the whole prompt to `\.harness-brief-<title>\.md` at the run worktree's root/m);
+  assert.match(read('template/docs/lessons.md'), /on failure moved into the log directory as `<title>\.brief\.md` and named among the kept files — discarded, never left in the worktree, if neither rename nor copy can keep it/m);
 });
 
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).

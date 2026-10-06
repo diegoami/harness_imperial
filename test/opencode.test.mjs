@@ -416,3 +416,25 @@ test('a thrown watch failure names the shelved brief, and every kept path it nam
   assert.ok(kept.some((f) => f.endsWith('.brief.md')), `kept list names the shelved brief: ${kept.join(', ')}`);
   for (const f of kept) assert.ok(fs.existsSync(f), `named path exists: ${f}`);
 });
+
+test('a hopeless shelve on a thrown failure names no path that does not exist (L60, round-2 R1)', async () => {
+  const realRename = fs.renameSync; const realCopy = fs.copyFileSync;
+  fs.renameSync = () => { throw Object.assign(new Error('cross-device link'), { code: 'EXDEV' }); };
+  fs.copyFileSync = () => { throw new Error('no space left on device'); };
+  let error = null; let dir = null;
+  try {
+    ({ dir, env: globalThis.__unused } = { dir: null });
+    const s = setup('no-session'); dir = s.dir;
+    await runOpenCodeWatched({
+      args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
+      workDir: dir, title: 'hopeless-throw', opencode, env: s.env, logDir: path.join(dir, 'logs'),
+      pollMs: 50, startupTimeoutMs: 400, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+    }).catch((e) => { error = e; });
+    assert.ok(error, 'the run threw');
+    assert.doesNotMatch(error.message, /\.harness-brief-/, `no stale worktree path: ${error.message}`);
+    const kept = /files kept: (.*?)\. stderr tail:/s.exec(error.message)?.[1].split(',').map((x) => x.trim()) ?? [];
+    assert.ok(!kept.some((f) => f.includes('brief')), `dropped brief not listed: ${kept.join(', ')}`);
+    for (const f of kept) assert.ok(fs.existsSync(f), `named path exists: ${f}`);
+    assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false, 'worktree cleared');
+  } finally { fs.renameSync = realRename; fs.copyFileSync = realCopy; }
+});
