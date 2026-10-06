@@ -27,7 +27,9 @@ export function familyOf(id) {
 // A dated suffix is the same model, not a release: deepseek-v4-pro-0813 (the only Alibaba id with
 // the night discount) is the named DeepSeek V4 Pro.
 // Qwen 3.8 Max is the heavy model of Alibaba's Token Plan (the owner, 2026-10-05).
-const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)qwen3\.8-max$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
+// MiniMax-M3 is the heavy model of the MiniMax Token Plan (the owner, 2026-10-06); its ladder
+// is none/thinking, not the effort ladder, so its entry pins `thinking` itself.
+const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)qwen3\.8-max$/, /(^|\/)minimax-m3$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
 export const isHeavy = (id) => HEAVY.some((re) => re.test(modelPart(id)));
 const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 

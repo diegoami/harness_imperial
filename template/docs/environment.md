@@ -113,6 +113,7 @@ The models per provider, heavy and light:
 | alibaba (DeepSeek) | `opencode -m alibaba-token-plan/deepseek-v4-pro-0813` (only the dated id gets the night discount) | `opencode -m alibaba-token-plan/deepseek-v4.1-flash` |
 | alibaba (Qwen) | `opencode -m alibaba-token-plan/qwen3.8-max` | `opencode -m alibaba-token-plan/qwen3.8-flash` |
 | alibaba (GLM) | `opencode -m alibaba-token-plan/glm-5.3` | none on alibaba (zai has `glm-5.3-flash`) |
+| minimax | `opencode -m minimax/MiniMax-M3` | `opencode -m minimax/MiniMax-M2.7` |
 
 Alibaba's Token Plan has one credit pool for every model on it, in a single `month` window (no
 5-hour or weekly windows); its entry also has `plan` and `subscription_ends_at`. Its quota comes
@@ -131,6 +132,14 @@ The owner's plan is the Personal edition: the Kimi and MiniMax models OpenCode l
 provider are Team-only and fail. From 22:00 to 08:00 UTC+8, DeepSeek models use 50% fewer credits
 and Qwen models 60% fewer. A quick check that the key works:
 `opencode run -m alibaba-token-plan/qwen3.8-flash "Reply with just: ok"`.
+
+MiniMax (Token Plan, `minimax-token-plan`'s models above) works the same way: its key comes only
+from the environment variable `MINIMAX_API_KEY` (same sources as Alibaba's), never
+`opencode auth login`; "Provider not found: minimax" means the variable is missing from the
+environment — restart the shell, and tell the owner if it is still missing. Its quota is a 5-hour
+and a weekly window (`/quota/minimax`); MiniMax-M3 offers only `none` and `thinking` (the heavy
+one, run at `thinking`), MiniMax-M2.7 no variants. A quick check that the key works:
+`opencode run -m minimax/MiniMax-M2.7 "Reply with just: ok"`.
 
 The tracker also keeps the usage history: `curl -s 'localhost:8765/usage?since=7d'` gives, per
 provider, the models called with their `calls`, `sessions`, `tokens` and `effort` (OpenCode's
