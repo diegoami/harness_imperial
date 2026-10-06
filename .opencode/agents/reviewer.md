@@ -41,8 +41,11 @@ how the run works.
   review. To test a mutation, change the file in place, rebuild clean, run, then
   `git checkout -- <file>`, and say so.
 - Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
-  OpenCode rejects a path outside it, and the script then discards the whole review. Call tools by
-  name from PATH; never inspect where they are installed.
+  OpenCode rejects a path outside it, and the script then discards the whole review. The git rule
+  above (no -C, never type that path) is the same scope (L61). A pinned outside repository in
+  the brief (`git -C <path> show <pin>:<file>`) is the exception: run it exactly as written —
+  OpenCode doesn't path-check git -C. Call tools by name from PATH; never inspect where they
+  are installed.
   Run every shell command from the worktree root with paths relative to it (`grep -n X src/a.cs`,
   not `cd src && grep -n X a.cs`). Never `cd`, and never write `..` in a command: OpenCode checks
   paths against the worktree root, not against an earlier `cd` in the same command, so

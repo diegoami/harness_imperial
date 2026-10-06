@@ -150,6 +150,16 @@ test('the git run rule is scoped to the reviewer\'s own worktree; a pinned outsi
     assert.match(flat(f), /That rule governs your own worktree only \(L61\): a brief may send git at a pinned repository outside it \(`git -C <path> show <pin>:<file>`\) — run that exactly as written, for OpenCode does not path-check `git -C`/);
   }
   assert.match(read('template/docs/lessons.md'), /^\| L61 \| A reviewer's "run git without -C, and never type that path" rule governs its own worktree only/m);
+  assert.match(read('template/.opencode/agents/reviewer.md'), /A pinned outside repository in\s+the brief/);
+  // The contradiction Luna flagged (round 2 R2): the worktree rule no longer says "no ... other
+  // worktree" without the git-C exception — the L61 clause must be the same scope, with a
+  // explicit reference to a pinned outside repository as the exception.
+  const flatR = read("template/.opencode/agents/reviewer.md").replace(/\s+/g, " ");
+  assert.match(flatR, /The git rule above .no -C, never type that path. is the same scope \(L61\)/);
+  // .gitignore must hide .bak files: a plain status of a real .claude/*.bak shows nothing.
+  // .gitignore must hide .bak files: a plain status of a real .claude/*.bak shows nothing.
+  const gi = fs.existsSync(path.join(repo, ".gitignore")) ? fs.readFileSync(path.join(repo, ".gitignore"), "utf8") : "";
+  assert.match(gi, /^\.claude\/\*\.bak$/m);
   assert.match(read('template/docs/lessons.md'), /external_directory` is a coarse guard, not a sandbox/m);
 });
 
