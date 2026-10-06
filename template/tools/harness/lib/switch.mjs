@@ -67,7 +67,9 @@ export function nameOf(config, id) {
  * family is checked either way.
  * Returns { config, name, entry, before, after, conflict } or throws with the reason.
  */
-export function planSwitch(config, { role, id, variant = 'high', name, family, fallback, force = false }) {
+export function planSwitch(config, { role, id, variant, name, family, fallback, force = false }) {
+  // `variant` has no default: a model that offers no variants (MiniMax-M2.7) must switch without
+  // one, not inherit 'high' (Luna's round-2 R1, PR 115). Callers pass defaultVariant's answer.
   if (!ROLES.includes(role)) throw new Error(`--role must be one of ${ROLES.join(', ')}; got ${role}`);
   if (!/^[\w.-]+\/[\w./-]+$/.test(String(id ?? ''))) throw new Error(`--model must be a provider/model id, e.g. opencode-go/deepseek-v4.1-flash; got ${id}`);
   if (variant === 'max') throw new Error('Effort max is never used: it was slower with no gain (L27). Use high.');
@@ -79,7 +81,7 @@ export function planSwitch(config, { role, id, variant = 'high', name, family, f
   if (family && known && family !== known && !force) {
     throw new Error(`Refused: --family ${family} contradicts ${id}, whose vendor is ${known}; the family rule compares vendors. Drop --family, or pass --force.`);
   }
-  const entry = { id, ...(variant ? { variant } : {}), family: family ?? existing?.family ?? familyOf(id), ...(existing?.watch ? { watch: existing.watch } : {}) };
+  const entry = { id, ...(variant !== undefined && variant !== null ? { variant } : {}), family: family ?? existing?.family ?? familyOf(id), ...(existing?.watch ? { watch: existing.watch } : {}) };
   const other = ROLES.find((r) => r !== role);
   const otherFamilies = (config[other]?.chain ?? []).map((m) => config.models?.[m]?.family ?? m);
   const clash = [entry.family, known].find((f) => f && otherFamilies.includes(f));

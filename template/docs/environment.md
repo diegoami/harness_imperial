@@ -68,7 +68,8 @@ the plan.
 Where the machine runs quota-tracker, a local service, it reports how much subscription quota is
 left on each provider: `claude` (the main session and Claude agents), `openai` (Sol and Luna, via
 OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit) and
-`alibaba` (Alibaba's Token Plan: DeepSeek, Qwen, GLM, Kimi and MiniMax, one monthly pool).
+`alibaba` (Alibaba's Token Plan: DeepSeek, Qwen and GLM, one monthly pool; its Kimi and MiniMax
+models are Team-edition only and unused) and `minimax` (the MiniMax Token Plan's own pool).
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one;
@@ -133,7 +134,7 @@ provider are Team-only and fail. From 22:00 to 08:00 UTC+8, DeepSeek models use 
 and Qwen models 60% fewer. A quick check that the key works:
 `opencode run -m alibaba-token-plan/qwen3.8-flash "Reply with just: ok"`.
 
-MiniMax (Token Plan, `minimax-token-plan`'s models above) works the same way: its key comes only
+The MiniMax Token Plan (the `minimax` provider's models above) is separate from Alibaba's pool: its key comes only
 from the environment variable `MINIMAX_API_KEY` (same sources as Alibaba's), never
 `opencode auth login`; "Provider not found: minimax" means the variable is missing from the
 environment — restart the shell, and tell the owner if it is still missing. Its quota is a 5-hour

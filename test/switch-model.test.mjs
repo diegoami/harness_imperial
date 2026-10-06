@@ -32,7 +32,7 @@ test('the name is the existing entry\'s for a known id, else the id\'s model par
 });
 
 test('a switch makes the model the role\'s one model, at high, and keeps every other model', () => {
-  const p = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3' });
+  const p = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', variant: 'high' }); // explicit: omitted no longer defaults to high (PR 115 R1)
   assert.deepEqual(p.config.reviewer.chain, ['kimi-k3']);
   assert.deepEqual(p.config.models['kimi-k3'], { id: 'opencode-go/kimi-k3', variant: 'high', family: 'kimi' });
   assert.equal(p.config.reviewer.claudeFallback, 'opus');
@@ -83,6 +83,9 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
   assert.equal(defaultVariant('openai/gpt-6.1-sol', ['none', 'high', 'max']), 'high');        // never none, never max
   assert.equal(defaultVariant('minimax/MiniMax-M3', ['none', 'thinking']), 'thinking');       // off the effort ladder: its own variant (Luna's R2, PR 115)
   assert.equal(defaultVariant('minimax/MiniMax-M2.7', []), undefined);                        // offers none at all
+  const mm = planSwitch(template(), { role: 'implementer', id: 'minimax/MiniMax-M2.7' });
+  assert.equal(mm.entry.variant, undefined, 'a switch without --variant writes no variant for a model that offers none (Luna round-2 R1)');
+  assert.equal('variant' in mm.entry, false);
   assert.equal(defaultVariant('alibaba-token-plan/qwen3.8-flash', ['low', 'medium', 'xhigh']), 'medium');  // light, no plain high: nearest below
   assert.equal(defaultVariant('openai/gpt-6.1-sol', null), 'low');                          // not known
 });
