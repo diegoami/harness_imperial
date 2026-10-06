@@ -134,6 +134,16 @@ test('a delegated run\'s final message is read before it is retried, re-routed o
   assert.match(read('template/docs/lessons.md'), /^\| L55 \| Before a delegated run is retried, re-routed to another model, or called a failure, its final message is read/m);
 });
 
+test('a task that would outlast one run, or whose Done-when is all or nothing, is split into milestones (L58)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  const p = flat('template/docs/process.md');
+  assert.match(p, /a task likely to outlast one implementer run \(about an hour\), or whose Done-when is all or nothing \(an exact match, a whole model\), is split into tasks that each merge on their own: the static reading, any tool that produces ground truth, then the deliverable piece by piece\. A milestone's Done-when measures progress as a number \(records matched, first divergent minute\), committed with each push, so a resumed run starts from it; the boundary sits where the evidence already has a number, not at an arbitrary half of the scope\. \(L58\)/);
+  assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A task likely to outlast one implementer run \(about an hour\), or whose Done-when is all or nothing \(an exact match, a whole model\), is split into milestone tasks first, each merging on its own with a Done-when that measures a number \(L58\)/);
+  const l = read('template/docs/lessons.md');
+  assert.match(l, /^\| L58 \| A task likely to outlast one implementer run \(about an hour\), or whose Done-when is all or nothing \(an exact match, a whole model\), is split into tasks that each merge on their own: the static reading \(a finding's first part\), any tool that produces ground truth, then the deliverable piece by piece\./m);
+  assert.match(l, /A milestone's Done-when measures progress as a number \(the records matched, the first divergent minute\), committed with each push, so a resumed run starts from it\. The boundary sits where the evidence already has a number \(a count of matching records, a minute index\), not at an arbitrary half of the scope/m);
+});
+
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).
 const ONE_PASS = `## Report every blocking finding in this one review
 

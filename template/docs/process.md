@@ -4,14 +4,10 @@
 
 ## 0. Order of work
 
-1. **Evidence first** (for a rebuild): decode, decompile, and write the design with every claim
-   tagged `[confirmed]`, `[derived]` or `[designed]`.
-2. **A walking skeleton before the fan-out**: scaffolding, the seams the rules plug into, one rule
-   end to end, a CLI, and a thin screen a person can use. (L1)
+1. **Evidence first** (for a rebuild): decode, decompile, and write the design with every claim tagged `[confirmed]`, `[derived]` or `[designed]`.
+2. **A walking skeleton before the fan-out**: scaffolding, the seams the rules plug into, one rule end to end, a CLI, and a thin screen a person can use. (L1)
 3. **The fan-out**: rules behind the seams, best-evidenced first.
-4. **The first playable build**: once the skeleton exists, the UI chain goes before more rules.
-   Until it ships, only a bug that breaks play is scheduled (crash, stall, unwinnable game, save
-   that will not load, order that can never succeed). (L1)
+4. **The first playable build**: once the skeleton exists, the UI chain goes before more rules. Until it ships, only a bug that breaks play is scheduled (crash, stall, unwinnable game, save that will not load, order that can never succeed). (L1)
 
 Tag capability jumps, not phases. Release notes come from GitHub when the tag is cut.
 
@@ -36,6 +32,12 @@ It watches each background job (start, end, no output for 10 min), never with `p
 Scope, Done when, Hazards, Implementer, Reviewer, Merge after. Rules:
 - **Owns** names directories or files. Go finer only when two tasks run at once in one file: function-level Owns made one project open 27 PRs that only widened a list. (L5)
 - **Done when**: each line is one check a command can run. The main session runs each line before dispatch: it fails on `main` and passes on a mock fix. (L45)
+- **Milestones**: a task likely to outlast one implementer run (about an hour), or whose Done-when is
+  all or nothing (an exact match, a whole model), is split into tasks that each merge on their own:
+  the static reading, any tool that produces ground truth, then the deliverable piece by piece. A
+  milestone's Done-when measures progress as a number (records matched, first divergent minute),
+  committed with each push, so a resumed run starts from it; the boundary sits where the evidence
+  already has a number, not at an arbitrary half of the scope. (L58)
 - The main session edits task files directly on `main`, the reason in the commit; the reviewer sees it. (L6)
 
 ## 3. The loop
@@ -49,8 +51,7 @@ What the implementer script guarantees, and why:
 - OpenCode starts with stdin closed; without it a run hangs before it starts. (L10)
 - No session in 180 s, no progress in 900 s, or no exit in 3 h kills the run's process tree. (L10)
 - The agent is checked on OpenCode's session record (L11); a rejected tool call fails the run. (L26)
-- Each OpenCode model runs at effort high, in the scripts' own data directory (L27, L29). The chain
-  moves on only after an infrastructure failure that left no work. (L12)
+- Each OpenCode model runs at effort high, in the scripts' own data directory (L27, L29). The chain moves on only after an infrastructure failure that left no work. (L12)
 - Exit 0: a PR is open. 1: the main session reads the log (a stop and report, or an early end).
   3: OpenCode unavailable, its model not listed, or not logged in; Claude Sonnet takes the task.
 
@@ -135,8 +136,7 @@ run, or the owner's decision with its basis. Plausible rules without either stay
 
 ## 11. For a reverse-engineering project
 
-- Transcribe every number from the research into one fixtures corpus with provenance, and assert
-  against it: each re-read of a report is another chance to misread it. (L15)
+- Transcribe every number from the research into one fixtures corpus with provenance, and assert against it: each re-read of a report is another chance to misread it. (L15)
 - New evidence runs in two stages: findings to the research repository, then a check of every
   document claim it touches. Each finding is a doc fix, a bug, a task-file edit, or a question for the user; research never decides design. (L16)
 - The original files never enter the repository. CI fetches them from a private fixtures
