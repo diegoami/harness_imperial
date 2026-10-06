@@ -505,9 +505,9 @@ test('OpenCode missing says the same as any other failure: the owner, or a Claud
   assert.match(c.stderr, /OpenCode unavailable: .*use a Claude reviewer \(opus\)/);
 });
 
-// --hard (L39, L41): GLM-5.3, then DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
-const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
-const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[2] ?? 'review-ok', 'openai/gpt-5.6-luna': m[3] ?? 'review-ok' });
+// --hard (L39, L41): GLM-5.3, then MiniMax-M3, DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
+const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'minimax/MiniMax-M3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
+const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'minimax/MiniMax-M3': m[2] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[3] ?? 'review-ok', 'openai/gpt-5.6-luna': m[4] ?? 'review-ok' });
 
 test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM cannot run, saying so (L39, L41)', posix, () => {
   const p = project();
@@ -515,10 +515,14 @@ test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM c
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(glm\)\napprove/);
   assert.doesNotMatch(r.stdout, /attempt: sol/);
-  const q = project();                                                           // GLM out of quota: DeepSeek V4 Pro reviews
+  const q = project();                                                           // GLM fails: MiniMax-M3 reviews
   const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2']) }, '--exclude', 'claude', '--hard');
   assert.equal(s.status, 0, s.stderr + s.stdout);
-  assert.match(gh(q).comments[0].body, /^T07 review \(deepseek-pro; glm failed: exit 2\)\napprove/);
+  assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; glm failed: exit 2\)\napprove/);
+  const w = project();                                                           // MiniMax-M3 fails differently: DeepSeek V4 Pro reviews
+  const t = review(w, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2', 'permission']) }, '--exclude', 'claude', '--hard');
+  assert.equal(t.status, 0, t.stderr + t.stdout);
+  assert.match(gh(w).comments[0].body, /^T07 review \(deepseek-pro; glm failed: exit 2; mm-m3 failed: permission rejected: external_directory \(\/tmp\/\*\)\)\napprove/);
 });
 
 test('an Alibaba reviewer refused for its key says which data directory\'s auth.json to check, and nothing is posted', posix, () => {
@@ -548,7 +552,7 @@ test('a reviewer whose provider is out of quota is skipped before it runs, sayin
     assert.match(r.stdout, /quota: checked \(zai exhausted, openai ok, opencode_go ok\)/);
     assert.match(r.stdout, /glm: skipped, out of quota: zai is exhausted until it is usable again in 2h08m \(quota-tracker, L50\)/);
     assert.doesNotMatch(r.stdout, /attempt: glm/);
-    assert.match(gh(p).comments[0].body, /^T07 review \(deepseek-pro; glm not available\)\napprove/);
+    assert.match(gh(p).comments[0].body, /^T07 review \(mm-m3; glm not available\)\napprove/);
   } finally { s.stop(); }
   const q = project();                                                           // no service: GLM runs
   const r = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'claude', '--hard');
@@ -590,16 +594,16 @@ test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s 
   assert.match(gh(q).comments[0].body, /^T07 review \(luna\)\napprove/);
 });
 
-test('--hard skips the implementer\'s family: a GLM implementer gets DeepSeek V4 Pro, after Sol with --sol (L39, L41)', posix, () => {
+test('--hard skips the implementer\'s family: a GLM implementer gets MiniMax-M3, then DeepSeek V4 Pro, after Sol with --sol (L39, L41)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'glm', '--hard');
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(gh(p).comments[0].body, /^T07 review \(deepseek-pro\)/);
+  assert.match(gh(p).comments[0].body, /^T07 review \(mm-m3\)/);
   assert.doesNotMatch(r.stdout, /attempt: (glm|sol)/);
   const q = project();
   const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2']) }, '--exclude', 'glm', '--hard', '--sol');
   assert.equal(s.status, 0, s.stderr + s.stdout);
-  assert.match(gh(q).comments[0].body, /^T07 review \(deepseek-pro; sol-6\.1 failed: exit 2\)/);
+  assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; sol-6\.1 failed: exit 2\)/);
   assert.doesNotMatch(s.stdout, /attempt: glm\b/);
 });
 

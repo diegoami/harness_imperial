@@ -170,7 +170,8 @@ Each role runs its OpenCode models, then Claude, by the owner's decisions of 202
   needs `opencode auth login`.
 
 Each runs at effort `high`, never `max`, except GPT-6.1 Sol: used sparingly, at `low` (`medium` at
-most). A hard task's review runs `review.mjs --hard`: GLM-5.3, then DeepSeek V4 Pro and Luna, so one
+most). A hard task's review runs `review.mjs --hard`: GLM-5.3, then MiniMax-M3, DeepSeek V4 Pro
+and Luna, so one
 provider's quota never blocks it (L39). Sol reviews first only with `--hard --sol`: a guard task and
 a hard task's last round (L41).
 - Candidates are registered on watch, outside the default chains (L35): GPT-6 Sol and GPT-6.1 Sol
