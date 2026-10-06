@@ -63,6 +63,11 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
 **Pricing by time of day** (the owner, 2026-10-06; Alibaba's numbers marked limited-time by the
 vendor). Long batch runs: on weekday mornings (Central Europe) prefer Alibaba or OpenCode Go over
 Z.AI's GLM; in the afternoon and evening Alibaba's Qwen and DeepSeek are at their cheapest.
+quota-tracker exposes this live: `curl -s localhost:8765/quota/alibaba | jq .pricing` answers
+`discount_now` and `next_change_at`, `/quota/zai`'s `peak_now` — check it before a long run on an
+`ali-qwen-*`/`ali-deepseek-*` entry or Z.AI's `glm` (ali-glm has no discount, so time doesn't matter
+for it); when the discount or off-peak window is not on, prefer another entry or schedule after
+`next_change_at`. If the tracker doesn't answer, run as usual; don't block on it.
 - **Alibaba Token Plan**: one monthly credit pool for all its models (quota-tracker's
   `/quota/alibaba`). From 22:00 to 08:00 UTC+8 — 16:00–02:00 Central Europe in summer time,
   15:00–01:00 in winter — `qwen3.8-max` and `qwen3.8-flash` use 60% fewer credits, and
