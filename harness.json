@@ -45,6 +45,36 @@
       "variant": "high",
       "family": "glm",
       "watch": "Back on Z.AI's plan (L35) after going 900 s without a step and ending runs early (L27), and missing a must-fix as a reviewer: look for an idle timeout, exit 0 with no commit, and an approve with no DW evidence (L32)."
+    },
+    "ali-deepseek-pro": {
+      "id": "alibaba-token-plan/deepseek-v4-pro-0813",
+      "variant": "high",
+      "family": "deepseek",
+      "watch": "A candidate, probed only (2026-10-06, L35): the dated -0813 id gets Alibaba's night discount; it offers only high and max, like deepseek-pro on Go. Compare with deepseek-flash on the same kind of task."
+    },
+    "ali-deepseek-flash": {
+      "id": "alibaba-token-plan/deepseek-v4.1-flash",
+      "variant": "high",
+      "family": "deepseek",
+      "watch": "A candidate, probed only (2026-10-06, L35): the same model as deepseek-flash, on Alibaba's route instead of Go. Compare with deepseek-flash on the same kind of task."
+    },
+    "ali-qwen-max": {
+      "id": "alibaba-token-plan/qwen3.8-max",
+      "variant": "low",
+      "family": "qwen",
+      "watch": "A candidate, probed only (2026-10-06, L35): Alibaba's heavy model (switch.mjs), at low like every heavy one (L54). Not yet run on a task or review."
+    },
+    "ali-qwen-flash": {
+      "id": "alibaba-token-plan/qwen3.8-flash",
+      "variant": "medium",
+      "family": "qwen",
+      "watch": "A candidate, probed only (2026-10-06, L35): light, but it offers no plain high (only low, medium, xhigh), so it runs at medium. Not yet run on a task or review."
+    },
+    "ali-glm": {
+      "id": "alibaba-token-plan/glm-5.3",
+      "variant": "low",
+      "family": "glm",
+      "watch": "A candidate, probed only (2026-10-06, L35): the same GLM-5.3 as glm, on Alibaba's route — no Z.AI peak multiplier, and no night discount. Not yet run on a task or review."
     }
   },
   "implementer": {

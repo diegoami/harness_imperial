@@ -84,7 +84,7 @@ test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
     'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
     'reviewer: luna = openai/gpt-5.6-luna (high, family openai), then Claude opus',
-    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash',
+    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-deepseek-pro = alibaba-token-plan/deepseek-v4-pro-0813, ali-deepseek-flash = alibaba-token-plan/deepseek-v4.1-flash, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash, ali-glm = alibaba-token-plan/glm-5.3',
   ].join('\n'));
 });
 

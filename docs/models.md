@@ -26,6 +26,11 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
 | `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | on watch; not in a pair |
 | `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | **hard reviewer**, first in `--hard` (L41); on watch |
+| `ali-deepseek-pro` | DeepSeek V4 Pro (0813), `alibaba-token-plan/deepseek-v4-pro-0813`, Alibaba's Token Plan; only the dated id gets the night discount | DeepSeek | on watch; probed only, not in a pair |
+| `ali-deepseek-flash` | DeepSeek V4.1 Flash, `alibaba-token-plan/deepseek-v4.1-flash`, Alibaba's Token Plan | DeepSeek | on watch; probed only, not in a pair |
+| `ali-qwen-max` | Qwen 3.8 Max, `alibaba-token-plan/qwen3.8-max`, effort `low` (heavy, L54) | Qwen | on watch; probed only, not in a pair |
+| `ali-qwen-flash` | Qwen 3.8 Flash, `alibaba-token-plan/qwen3.8-flash`, effort `medium` (it offers no plain `high`) | Qwen | on watch; probed only, not in a pair |
+| `ali-glm` | GLM-5.3, `alibaba-token-plan/glm-5.3`, Alibaba's route: no Z.AI peak multiplier, no night discount | GLM | on watch; probed only, not in a pair |
 | (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
 | (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
 
@@ -43,9 +48,23 @@ Every model runs at effort `high`, never `max` (L27), except Sol: it runs sparin
   clear of it.
 
 **Routes:**
-- GLM runs only on the Z.AI Coding Plan (`zai-coding-plan/…`).
-- DeepSeek runs on OpenCode Go.
+- GLM runs on the Z.AI Coding Plan (`zai-coding-plan/…`) and, as `ali-glm`, on Alibaba's Token Plan.
+- DeepSeek runs on OpenCode Go and, as `ali-deepseek-pro`/`ali-deepseek-flash`, on Alibaba's Token
+  Plan; Qwen runs only on Alibaba's.
 - Luna and Sol run on the direct OpenAI route.
+
+**Pricing by time of day** (the owner, 2026-10-06; Alibaba's numbers marked limited-time by the
+vendor). Long batch runs: on weekday mornings (Central Europe) prefer Alibaba or OpenCode Go over
+Z.AI's GLM; in the afternoon and evening Alibaba's Qwen and DeepSeek are at their cheapest.
+- **Alibaba Token Plan**: one monthly credit pool for all its models (quota-tracker's
+  `/quota/alibaba`). From 22:00 to 08:00 UTC+8 — 16:00–02:00 Central Europe in summer time,
+  15:00–01:00 in winter — `qwen3.8-max` and `qwen3.8-flash` use 60% fewer credits, and
+  `deepseek-v4-pro-0813` and `deepseek-v4.1-flash` 50% fewer (only the dated pro id gets it).
+  `glm-5.3` has no discount.
+- **Z.AI GLM Coding Plan**: peak hours are Monday to Friday, 14:00–18:00 UTC+8 (08:00–12:00
+  Central European summer time). In peak hours `glm-5.3` uses 3× quota (1× off-peak) and
+  `glm-5.3-flash` 1.2× (0.4× off-peak); weekends are off-peak all day. A promotion bills everything
+  at off-peak rates until 7 October 2026; from 8 October the peak rate applies.
 
 **Free OpenRouter models** (`…:free`; the list and cautions are in `template/docs/environment.md`):
 a supplement for small tasks and extra second opinions, never the main model for important work.
