@@ -86,9 +86,15 @@ const agentFile = (() => {
   return dirs.map((d) => path.join(d, 'agents', `${agent}.md`)).filter((f) => fs.existsSync(f)).at(-1) ?? null;
 })();
 let mine = null;
+// The pointer prompt names the brief file (L60); read its content so the session record and the
+// review modes below carry what the agent actually receives, not only the pointer.
+const pointer = rest.at(-1);
+const named = pointer.match(/\.harness-brief-([\w.-]+)\.md/);
+const briefFile = named ? path.join(arg('--dir') ?? '.', `.harness-brief-${named[1]}.md`) : null;
+const brief = briefFile && fs.existsSync(briefFile) ? fs.readFileSync(briefFile, 'utf8') : null;
 const createSession = (recordedAgent = agent, extra = {}) => {
   mine = { ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
-    dataHome: process.env.XDG_DATA_HOME ?? null, prompt: rest.at(-1), agentFile,
+    dataHome: process.env.XDG_DATA_HOME ?? null, prompt: pointer, agentFile, brief,
     projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
     agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null };
   writeSession(stateFile, mine);
@@ -158,7 +164,7 @@ switch (mode) {
   case 'review-fixes':
   case 'review-decorated': {
     createSession();
-    const header = rest.at(-1).split('\n')[0];
+    const header = (brief ?? pointer).split('\n')[0];
     process.stdout.write({
       'review-ok': `reading the diff\n${header}\napprove\n\nR1: fine (not blocking)${process.env.FAKE_OC_REVIEW_EXTRA ? `\n${process.env.FAKE_OC_REVIEW_EXTRA}` : ''}\n\napprove\n`,
       'review-cut': `${header}\nrework\n\nR1: the loop in`,
@@ -183,7 +189,7 @@ switch (mode) {
     process.stderr.write(mode === 'permission-cd'
       ? '\x1b[31m✗\x1b[0m cd evidence/a && grep -n x README.md; cd ../b && ls failed\n'
       : '\x1b[31m✗\x1b[0m cat /tmp/notes.txt failed\n');
-    const header = rest.at(-1).split('\n')[0];
+    const header = (brief ?? pointer).split('\n')[0];
     process.stdout.write(mode !== 'permission-review' ? 'report: built nothing\n' : `${header}\napprove\n\nR1: fine\n\napprove\n`);
     process.exit(0);
     break;
@@ -194,7 +200,7 @@ switch (mode) {
     createSession();
     process.stderr.write('\x1b[0m$ \x1b[0mgh issue view 14\n');
     process.stderr.write('! permission requested: external_directory (<review-dir>/*); auto-rejecting\n✗ cd evidence/a && ls failed\n');
-    const header = rest.at(-1).split('\n')[0];
+    const header = (brief ?? pointer).split('\n')[0];
     process.stdout.write(`${header}\napprove\n\nR1: fine\n\napprove\n`);
     process.exit(0);
     break;

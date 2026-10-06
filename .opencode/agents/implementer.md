@@ -29,6 +29,9 @@ the run works.
   Pass `git -C <worktree>` explicitly on every git command. Your first tool call prints
   `git rev-parse --show-toplevel`, `git rev-parse --short HEAD` and
   `git diff --name-only origin/main...HEAD`; your final report repeats them.
+- When the run's first message names a `.harness-brief-*.md` file at the worktree root, that file
+  is your whole brief: read it in full before anything else and follow it exactly; never edit,
+  commit or delete it (L60).
 - Commit and push to your branch after every meaningful step. Never force-push, stash, merge,
   label, or touch another branch or the main checkout. (`git stash` is shared by every worktree.)
 - Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
