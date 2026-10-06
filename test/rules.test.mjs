@@ -150,6 +150,8 @@ test('a brief passes by file in the worktree, never the command line (L60)', () 
   for (const f of ['template/.opencode/agents/implementer.md', 'template/.opencode/agents/reviewer.md']) assert.match(flat(f), line, f);
   assert.match(read('template/docs/lessons.md'), /^\| L60 \| A brief passes by file, never the command line: the runner writes the whole prompt to `\.harness-brief-<title>\.md` at the run worktree's root/m);
   assert.match(read('template/docs/lessons.md'), /on failure moved into the log directory as `<title>\.brief\.md` and named among the kept files — discarded, never left in the worktree, if neither rename nor copy can keep it/m);
+  // environment.md keeps Alibaba's pool and the MiniMax Token Plan's apart (Luna's round-2 R2, PR 115).
+  assert.match(read('template/docs/environment.md'), /alibaba` \(Alibaba's Token Plan: DeepSeek, Qwen and GLM, one monthly pool; its Kimi and MiniMax\s+models are Team-edition only and unused\) and `minimax` \(the MiniMax Token Plan's own pool\)/m);
 });
 
 // The owner's section, verbatim (2026-10-04); every brief carries it in full (L49).

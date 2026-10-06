@@ -27,19 +27,29 @@ export function familyOf(id) {
 // A dated suffix is the same model, not a release: deepseek-v4-pro-0813 (the only Alibaba id with
 // the night discount) is the named DeepSeek V4 Pro.
 // Qwen 3.8 Max is the heavy model of Alibaba's Token Plan (the owner, 2026-10-05).
-const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)qwen3\.8-max$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
+// MiniMax-M3 is the heavy model of the MiniMax Token Plan (the owner, 2026-10-06); its ladder
+// is none/thinking, not the effort ladder, so its entry pins `thinking` itself.
+const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)qwen3\.8-max$/, /(^|\/)minimax-m3$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
 export const isHeavy = (id) => HEAVY.some((re) => re.test(modelPart(id)));
 const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 // The effort a switch writes when --variant is not given, from the efforts OpenCode offers for the
 // model (`offered`, from `opencode models --verbose`; null when unknown): a light model `high`; a
 // heavy one `low`, else `medium`, else its lowest effort (DeepSeek V4 Pro offers only high and max).
+// A model whose variants are not the effort ladder keeps its own (MiniMax-M3 offers none/thinking,
+// so it gets `thinking`); one that offers none at all (MiniMax-M2.7) gets no variant. A light model
+// that offers no plain `high` gets the nearest below it (Qwen 3.8 Flash: `medium`).
 export function defaultVariant(id, offered) {
-  if (!isHeavy(id)) return 'high';
-  if (!offered) return 'low';
+  if (!offered) return isHeavy(id) ? 'low' : 'high';
   // Ranked, not in the order OpenCode lists them (Sol's R1 on PR 94).
   const usable = EFFORTS.filter((v) => offered.includes(v) && v !== 'none' && v !== 'max');
-  return ['low', 'medium'].find((v) => usable.includes(v)) ?? usable[0] ?? 'high';
+  if (!usable.length) {
+    const own = offered.filter((v) => v !== 'none');
+    return own.length ? own[0] : undefined;
+  }
+  if (isHeavy(id)) return ['low', 'medium'].find((v) => usable.includes(v)) ?? usable[0];
+  const belowHigh = usable.filter((v) => EFFORTS.indexOf(v) < EFFORTS.indexOf('high'));
+  return usable.includes('high') ? 'high' : belowHigh.at(-1) ?? usable.at(-1);
 }
 
 // The harness.json name for an id: the existing entry's, else the id's model part.
@@ -57,7 +67,9 @@ export function nameOf(config, id) {
  * family is checked either way.
  * Returns { config, name, entry, before, after, conflict } or throws with the reason.
  */
-export function planSwitch(config, { role, id, variant = 'high', name, family, fallback, force = false }) {
+export function planSwitch(config, { role, id, variant, name, family, fallback, force = false }) {
+  // `variant` has no default: a model that offers no variants (MiniMax-M2.7) must switch without
+  // one, not inherit 'high' (Luna's round-2 R1, PR 115). Callers pass defaultVariant's answer.
   if (!ROLES.includes(role)) throw new Error(`--role must be one of ${ROLES.join(', ')}; got ${role}`);
   if (!/^[\w.-]+\/[\w./-]+$/.test(String(id ?? ''))) throw new Error(`--model must be a provider/model id, e.g. opencode-go/deepseek-v4.1-flash; got ${id}`);
   if (variant === 'max') throw new Error('Effort max is never used: it was slower with no gain (L27). Use high.');
@@ -69,7 +81,7 @@ export function planSwitch(config, { role, id, variant = 'high', name, family, f
   if (family && known && family !== known && !force) {
     throw new Error(`Refused: --family ${family} contradicts ${id}, whose vendor is ${known}; the family rule compares vendors. Drop --family, or pass --force.`);
   }
-  const entry = { id, ...(variant ? { variant } : {}), family: family ?? existing?.family ?? familyOf(id), ...(existing?.watch ? { watch: existing.watch } : {}) };
+  const entry = { id, ...(variant !== undefined && variant !== null ? { variant } : {}), family: family ?? existing?.family ?? familyOf(id), ...(existing?.watch ? { watch: existing.watch } : {}) };
   const other = ROLES.find((r) => r !== role);
   const otherFamilies = (config[other]?.chain ?? []).map((m) => config.models?.[m]?.family ?? m);
   const clash = [entry.family, known].find((f) => f && otherFamilies.includes(f));

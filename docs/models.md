@@ -31,6 +31,8 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | `ali-glm` | GLM-5.3, `alibaba-token-plan/glm-5.3`, Alibaba's route: no Z.AI peak multiplier, no night discount | GLM | on watch; probed only, not in a pair |
 | `ali-qwen-max` | Qwen 3.8 Max, `alibaba-token-plan/qwen3.8-max`, effort `low` (heavy, L54) | Qwen | on watch; probed only, not in a pair |
 | `ali-qwen-flash` | Qwen 3.8 Flash, `alibaba-token-plan/qwen3.8-flash`, effort `medium` (it offers no plain `high`) | Qwen | on watch; probed only, not in a pair |
+| `mm-m3` | MiniMax-M3, `minimax/MiniMax-M3`, variant `thinking` (it offers only `none` and `thinking`), heavy (L54, the owner 2026-10-06) | MiniMax | on watch; probed only — a new family, usable as an independent reviewer of GLM, DeepSeek, Qwen, OpenAI or Claude work |
+| `mm-m2.7` | MiniMax-M2.7, `minimax/MiniMax-M2.7`, no variants offered, light | MiniMax | on watch; probed only, not in a pair |
 | (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
 | (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
 
@@ -58,6 +60,9 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
 - GLM runs on the Z.AI Coding Plan (`zai-coding-plan/…`) and, as `ali-glm`, on Alibaba's Token Plan.
 - DeepSeek runs on OpenCode Go and, as `ali-deepseek-pro`/`ali-deepseek-flash`, on Alibaba's Token
   Plan; Qwen runs only on Alibaba's.
+- MiniMax runs on the MiniMax Token Plan (`minimax/…`), key from `MINIMAX_API_KEY` — a family of
+  its own, so it can review any of the others' work. Its quota is a 5-hour and a weekly window
+  (quota-tracker's `/quota/minimax`); no time-of-day pricing is known.
 - Luna and Sol run on the direct OpenAI route.
 
 **Pricing by time of day** (the owner, 2026-10-06; Alibaba's numbers marked limited-time by the

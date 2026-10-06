@@ -15,6 +15,7 @@ export const EXHAUSTED_PCT = 95;
 const PROVIDERS = {
   openai: 'openai', 'zai-coding-plan': 'zai', 'opencode-go': 'opencode_go', openrouter: 'openrouter', anthropic: 'claude',
   'alibaba-token-plan': 'alibaba',   // one monthly pool shared by every model on the plan
+  minimax: 'minimax',                // the MiniMax Token Plan: a 5-hour and a weekly window
 };
 export const providerOf = (id) => PROVIDERS[id.split('/')[0]] ?? null;
 

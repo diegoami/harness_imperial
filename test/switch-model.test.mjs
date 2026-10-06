@@ -32,7 +32,7 @@ test('the name is the existing entry\'s for a known id, else the id\'s model par
 });
 
 test('a switch makes the model the role\'s one model, at high, and keeps every other model', () => {
-  const p = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3' });
+  const p = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', variant: 'high' }); // explicit: omitted no longer defaults to high (PR 115 R1)
   assert.deepEqual(p.config.reviewer.chain, ['kimi-k3']);
   assert.deepEqual(p.config.models['kimi-k3'], { id: 'opencode-go/kimi-k3', variant: 'high', family: 'kimi' });
   assert.equal(p.config.reviewer.claudeFallback, 'opus');
@@ -75,10 +75,18 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
   assert.equal(defaultVariant('alibaba-token-plan/deepseek-v4-pro-0813', ['high', 'max']), 'high');   // heavy, but high is its lowest (as listed 2026-10-06)
   assert.ok(!isHeavy('alibaba-token-plan/qwen3.8-flash'));
   assert.ok(!isHeavy('alibaba-token-plan/deepseek-v4-pro-exp'));                              // only a dated suffix is the same model
+  assert.ok(isHeavy('minimax/MiniMax-M3'));                                                   // the MiniMax heavy (the owner, 2026-10-06)
+  assert.ok(!isHeavy('minimax/MiniMax-M2.7'));
   for (const id of ['zai-coding-plan/glm-4.7', 'zai-coding-plan/glm-6', 'opencode-go/deepseek-v5-pro']) {
     assert.ok(!isHeavy(id), id);                                                             // only the models named
   }
   assert.equal(defaultVariant('openai/gpt-6.1-sol', ['none', 'high', 'max']), 'high');        // never none, never max
+  assert.equal(defaultVariant('minimax/MiniMax-M3', ['none', 'thinking']), 'thinking');       // off the effort ladder: its own variant (Luna's R2, PR 115)
+  assert.equal(defaultVariant('minimax/MiniMax-M2.7', []), undefined);                        // offers none at all
+  const mm = planSwitch(template(), { role: 'implementer', id: 'minimax/MiniMax-M2.7' });
+  assert.equal(mm.entry.variant, undefined, 'a switch without --variant writes no variant for a model that offers none (Luna round-2 R1)');
+  assert.equal('variant' in mm.entry, false);
+  assert.equal(defaultVariant('alibaba-token-plan/qwen3.8-flash', ['low', 'medium', 'xhigh']), 'medium');  // light, no plain high: nearest below
   assert.equal(defaultVariant('openai/gpt-6.1-sol', null), 'low');                          // not known
 });
 
@@ -86,7 +94,7 @@ test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
     'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
     'reviewer: luna = openai/gpt-5.6-luna (high, family openai), then Claude opus',
-    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, ali-deepseek-pro = alibaba-token-plan/deepseek-v4-pro-0813, ali-deepseek-flash = alibaba-token-plan/deepseek-v4.1-flash, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash',
+    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, ali-deepseek-pro = alibaba-token-plan/deepseek-v4-pro-0813, ali-deepseek-flash = alibaba-token-plan/deepseek-v4.1-flash, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash, mm-m3 = minimax/MiniMax-M3, mm-m2.7 = minimax/MiniMax-M2.7',
   ].join('\n'));
 });
 

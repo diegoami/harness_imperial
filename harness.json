@@ -75,6 +75,17 @@
       "variant": "medium",
       "family": "qwen",
       "watch": "A candidate, probed only (2026-10-06, L35): light, but it offers no plain high (only low, medium, xhigh), so it runs at medium. Not yet run on a task or review."
+    },
+    "mm-m3": {
+      "id": "minimax/MiniMax-M3",
+      "variant": "thinking",
+      "family": "minimax",
+      "watch": "The heavy model of the MiniMax Token Plan (the owner, 2026-10-06); it offers only none and thinking, and runs at thinking. Probed only (2026-10-06, 4.7 s). Key from MINIMAX_API_KEY (~/.config/ai-keys.env; never opencode auth login). Quota: curl -s localhost:8765/quota/minimax (5-hour and weekly windows). A new family: an independent reviewer for GLM, DeepSeek, Qwen, OpenAI or Claude work."
+    },
+    "mm-m2.7": {
+      "id": "minimax/MiniMax-M2.7",
+      "family": "minimax",
+      "watch": "Light (the owner, 2026-10-06); it offers no variants, so no variant field. Probed only (2026-10-06, 4.2 s). Key and quota as mm-m3."
     }
   },
   "implementer": {

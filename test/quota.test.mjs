@@ -9,6 +9,8 @@ const of = (...entries) => ({ providers: new Map(entries.map((e) => [e.provider,
 test('each model id maps to its quota-tracker provider', () => {
   assert.equal(providerOf('openai/gpt-6.1-sol'), 'openai');
   assert.equal(providerOf('zai-coding-plan/glm-5.3-flash'), 'zai');
+  assert.equal(providerOf('minimax/MiniMax-M3'), 'minimax');                       // the gate must know it (Luna's R1, PR 115)
+  assert.equal(providerOf('alibaba-token-plan/qwen3.8-max'), 'alibaba');
   assert.equal(providerOf('opencode-go/deepseek-v4.1-flash'), 'opencode_go');
   assert.equal(providerOf('openrouter/deepseek/deepseek-v4-pro'), 'openrouter');
   assert.equal(providerOf('alibaba-token-plan/qwen3.8-max'), 'alibaba');
