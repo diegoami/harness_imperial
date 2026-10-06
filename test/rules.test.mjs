@@ -44,7 +44,7 @@ test('a heavy review moves the implementer up, in both profiles (L38)', () => {
 test('Sol runs at low or medium effort, never high, and only by --sol: the hard chain starts with GLM-5.3 (L39, L41)', () => {
   const c = JSON.parse(read('template/harness.json'));
   for (const m of ['sol', 'sol-6.1']) assert.ok(['low', 'medium'].includes(c.models[m].variant), `${m} at ${c.models[m].variant}`);
-  assert.deepEqual(c.reviewer.hard, ['glm', 'deepseek-pro', 'luna']);
+  assert.deepEqual(c.reviewer.hard, ['glm', 'mm-m3', 'deepseek-pro', 'luna']);   // mm-m3 second since 2026-10-06, the owner's call
   assert.equal(c.reviewer.sol, 'sol-6.1');
 });
 

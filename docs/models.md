@@ -31,7 +31,7 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | `ali-glm` | GLM-5.3, `alibaba-token-plan/glm-5.3`, Alibaba's route: no Z.AI peak multiplier, no night discount | GLM | on watch; probed only, not in a pair |
 | `ali-qwen-max` | Qwen 3.8 Max, `alibaba-token-plan/qwen3.8-max`, effort `low` (heavy, L54) | Qwen | on watch; probed only, not in a pair |
 | `ali-qwen-flash` | Qwen 3.8 Flash, `alibaba-token-plan/qwen3.8-flash`, effort `medium` (it offers no plain `high`) | Qwen | on watch; probed only, not in a pair |
-| `mm-m3` | MiniMax-M3, `minimax/MiniMax-M3`, variant `thinking` (it offers only `none` and `thinking`), heavy (L54, the owner 2026-10-06) | MiniMax | on watch; probed only — a new family, usable as an independent reviewer of GLM, DeepSeek, Qwen, OpenAI or Claude work |
+| `mm-m3` | MiniMax-M3, `minimax/MiniMax-M3`, variant `thinking` (it offers only `none` and `thinking`), heavy (L54, the owner 2026-10-06) | MiniMax | **second in `reviewer.hard`**, behind GLM-5.3 (the owner, 2026-10-06): a sixth family, so it reviews any implementer's work; on watch |
 | `mm-m2.7` | MiniMax-M2.7, `minimax/MiniMax-M2.7`, no variants offered, light | MiniMax | on watch; probed only, not in a pair |
 | (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
 | (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
@@ -100,7 +100,7 @@ follows the work's difficulty. Claude writes every PR here, so here only the rev
 The review always runs through `review.mjs` from the root, with `--exclude claude`.
 
 **Speedups: a hard review never waits for one provider (L39).** `--hard` runs `reviewer.hard`:
-GLM-5.3 (Z.AI), then DeepSeek V4 Pro (Go), then Luna. `--hard --sol` puts GPT-6.1 Sol
+GLM-5.3 (Z.AI), then MiniMax-M3 (the owner, 2026-10-06), then DeepSeek V4 Pro (Go), then Luna. `--hard --sol` puts GPT-6.1 Sol
 (`reviewer.sol`) before them. The next model runs only when one produced no review, such as when
 the OpenAI quota is used up (Isle Wars T08 lost Sol and Luna together that way). The implementer's
 family is skipped; the posted header names each model that failed or could not run before the one

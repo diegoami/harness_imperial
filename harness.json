@@ -110,6 +110,7 @@
     "totalTimeoutSec": 3600,
     "hard": [
       "glm",
+      "mm-m3",
       "deepseek-pro",
       "luna"
     ],
