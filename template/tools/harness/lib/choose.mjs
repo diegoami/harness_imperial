@@ -46,8 +46,9 @@ function bandOf(p) {
 function tierOf(provider, pricing) {
   const p = pricing?.get?.(provider);
   if (!p) return { tier: 0, note: null };
-  if (p.discount_now === true) return { tier: -1, note: `discount on until ${p.next_change_at ?? 'the next change'}` };
-  if (p.peak_now === true) return { tier: 1, note: `peak now until ${p.next_change_at ?? 'the next change'}` };
+  const until = typeof p.next_change_at === 'number' ? new Date(p.next_change_at * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'the next change';
+  if (p.discount_now === true) return { tier: -1, note: `discount on until ${until}` };
+  if (p.peak_now === true) return { tier: 1, note: `peak now until ${until}` };
   return { tier: 0, note: null };
 }
 

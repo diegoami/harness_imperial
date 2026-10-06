@@ -72,7 +72,8 @@ OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrou
 models are Team-edition only and unused) and `minimax` (the MiniMax Token Plan's own pool).
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
-- `curl -s localhost:8765/quota`, or `/quota/<provider>` for one;
+- `curl -s localhost:8765/quota`, or `/quota/<provider>` for one (alibaba's and zai's carry a
+  `pricing` object the chooser's `readPricing` also reads);
 - `curl -s localhost:8765/best`: the providers with quota left, most headroom first;
 - `curl -s localhost:8765/avoid`: the providers out of quota, with when each is usable again.
 
