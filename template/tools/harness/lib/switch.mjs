@@ -24,8 +24,10 @@ export function familyOf(id) {
 // Heavy models run at `low`, or `medium` at most; light ones at `high` (L54, #83). Heavy: Sol, GLM-5.3
 // (not Flash), DeepSeek V4 Pro, Opus, wherever they are served from.
 // Exactly the models the rule names (Sol's R2 on PR 94): another GLM or DeepSeek release is not heavy.
+// A dated suffix is the same model, not a release: deepseek-v4-pro-0813 (the only Alibaba id with
+// the night discount) is the named DeepSeek V4 Pro.
 // Qwen 3.8 Max is the heavy model of Alibaba's Token Plan (the owner, 2026-10-05).
-const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro$/, /(^|\/)qwen3\.8-max$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
+const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)qwen3\.8-max$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
 export const isHeavy = (id) => HEAVY.some((re) => re.test(modelPart(id)));
 const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
