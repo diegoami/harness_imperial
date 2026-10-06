@@ -36,12 +36,20 @@ const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 // The effort a switch writes when --variant is not given, from the efforts OpenCode offers for the
 // model (`offered`, from `opencode models --verbose`; null when unknown): a light model `high`; a
 // heavy one `low`, else `medium`, else its lowest effort (DeepSeek V4 Pro offers only high and max).
+// A model whose variants are not the effort ladder keeps its own (MiniMax-M3 offers none/thinking,
+// so it gets `thinking`); one that offers none at all (MiniMax-M2.7) gets no variant. A light model
+// that offers no plain `high` gets the nearest below it (Qwen 3.8 Flash: `medium`).
 export function defaultVariant(id, offered) {
-  if (!isHeavy(id)) return 'high';
-  if (!offered) return 'low';
+  if (!offered) return isHeavy(id) ? 'low' : 'high';
   // Ranked, not in the order OpenCode lists them (Sol's R1 on PR 94).
   const usable = EFFORTS.filter((v) => offered.includes(v) && v !== 'none' && v !== 'max');
-  return ['low', 'medium'].find((v) => usable.includes(v)) ?? usable[0] ?? 'high';
+  if (!usable.length) {
+    const own = offered.filter((v) => v !== 'none');
+    return own.length ? own[0] : undefined;
+  }
+  if (isHeavy(id)) return ['low', 'medium'].find((v) => usable.includes(v)) ?? usable[0];
+  const belowHigh = usable.filter((v) => EFFORTS.indexOf(v) < EFFORTS.indexOf('high'));
+  return usable.includes('high') ? 'high' : belowHigh.at(-1) ?? usable.at(-1);
 }
 
 // The harness.json name for an id: the existing entry's, else the id's model part.

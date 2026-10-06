@@ -81,6 +81,9 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
     assert.ok(!isHeavy(id), id);                                                             // only the models named
   }
   assert.equal(defaultVariant('openai/gpt-6.1-sol', ['none', 'high', 'max']), 'high');        // never none, never max
+  assert.equal(defaultVariant('minimax/MiniMax-M3', ['none', 'thinking']), 'thinking');       // off the effort ladder: its own variant (Luna's R2, PR 115)
+  assert.equal(defaultVariant('minimax/MiniMax-M2.7', []), undefined);                        // offers none at all
+  assert.equal(defaultVariant('alibaba-token-plan/qwen3.8-flash', ['low', 'medium', 'xhigh']), 'medium');  // light, no plain high: nearest below
   assert.equal(defaultVariant('openai/gpt-6.1-sol', null), 'low');                          // not known
 });
 

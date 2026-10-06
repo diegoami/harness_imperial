@@ -62,7 +62,7 @@
       "id": "alibaba-token-plan/glm-5.3",
       "variant": "low",
       "family": "glm",
-      "watch": "A candidate, probed only (2026-10-06, L35): the same GLM-5.3 as glm, on Alibaba's route \u2014 no Z.AI peak multiplier, and no night discount. Not yet run on a task or review."
+      "watch": "A candidate, probed only (2026-10-06, L35): the same GLM-5.3 as glm, on Alibaba's route — no Z.AI peak multiplier, and no night discount. Not yet run on a task or review."
     },
     "ali-qwen-max": {
       "id": "alibaba-token-plan/qwen3.8-max",
