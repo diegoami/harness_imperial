@@ -71,8 +71,10 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
   assert.equal(defaultVariant('openai/gpt-6.1-sol', ['medium', 'high']), 'medium');
   assert.equal(defaultVariant('opencode-go/deepseek-v4-pro', ['high', 'max']), 'high');      // its lowest
   assert.equal(defaultVariant('opencode-go/deepseek-v4-pro', ['xhigh', 'high', 'max']), 'high');  // by rank, not order
-  for (const id of ['alibaba-token-plan/qwen3.8-max', 'alibaba-token-plan/deepseek-v4-pro', 'alibaba-token-plan/glm-5.3']) assert.ok(isHeavy(id), id);
+  for (const id of ['alibaba-token-plan/qwen3.8-max', 'alibaba-token-plan/deepseek-v4-pro', 'alibaba-token-plan/deepseek-v4-pro-0813', 'alibaba-token-plan/glm-5.3']) assert.ok(isHeavy(id), id);
+  assert.equal(defaultVariant('alibaba-token-plan/deepseek-v4-pro-0813', ['high', 'max']), 'high');   // heavy, but high is its lowest (as listed 2026-10-06)
   assert.ok(!isHeavy('alibaba-token-plan/qwen3.8-flash'));
+  assert.ok(!isHeavy('alibaba-token-plan/deepseek-v4-pro-exp'));                              // only a dated suffix is the same model
   for (const id of ['zai-coding-plan/glm-4.7', 'zai-coding-plan/glm-6', 'opencode-go/deepseek-v5-pro']) {
     assert.ok(!isHeavy(id), id);                                                             // only the models named
   }
@@ -84,7 +86,7 @@ test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
     'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
     'reviewer: luna = openai/gpt-5.6-luna (high, family openai), then Claude opus',
-    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash',
+    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, ali-deepseek-pro = alibaba-token-plan/deepseek-v4-pro-0813, ali-deepseek-flash = alibaba-token-plan/deepseek-v4.1-flash, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash',
   ].join('\n'));
 });
 
