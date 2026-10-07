@@ -43,7 +43,10 @@ export const VERDICTS = ['approve after named fixes', 'approve', 'rework', 'user
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A line without its Markdown decoration (a quote mark, heading marks, emphasis, backticks).
-const undecorate = (line) => line.replace(/[*`]/g, '').replace(/^\s*(?:>\s*)*#*\s*/, '').trim();
+// Heading marks (`#`..`######`) are stripped only when they are followed by whitespace or end of
+// line: a brief or a comment may lead with `#105`, and that # is a GitHub issue number, not a
+// Markdown heading (#108, PR 107 round 1).
+const undecorate = (line) => line.replace(/[*`]/g, '').replace(/^\s*(?:>\s*)*#{1,6}(?=\s|$)\s*/, '').trim();
 const key = (line) => undecorate(line).replace(/[.:!]+$/, '').replace(/\s+/g, ' ').toLowerCase();
 // The verdict a line states, or null: decoration, a "Verdict:" prefix and trailing punctuation
 // are allowed, and nothing else.

@@ -173,13 +173,22 @@ export const SAMPLES = [
   },
   { name: 'tool chatter only', out: 'reading a.js\nrunning npm test\n', kind: 'none' },
   { name: 'nothing', out: '', kind: 'none' },
+  {
+    // PR 107 round 1 (#108): the brief was headed `#105 review (luna)` because tasks are issues;
+    // undecorate that strips every leading `#` (any count) would have hidden the issue number.
+    name: 'a header with a leading GitHub issue number, not a Markdown heading',
+    out: `**#105 review (luna)**\nrework\n\n${FINDINGS}\n\nrework`,
+    kind: 'ok',
+    review: `#105 review (luna)\nrework\n\n${FINDINGS}\n\nrework`,
+    header: '#105 review (luna)',
+  },
 ];
 
 // Returns one line per failed sample (empty when all pass).
 export function selfTest() {
   const failures = [];
   for (const s of SAMPLES) {
-    const r = readReview(s.out, H);
+    const r = readReview(s.out, s.header ?? H);
     const fail = (why) => failures.push(`${s.name}: ${why}\n  got ${JSON.stringify(r)}`);
     if (r.kind !== s.kind) { fail(`kind ${r.kind}, expected ${s.kind}`); continue; }
     if (s.kind === 'ok' && r.review !== s.review) fail('the posted text differs');
