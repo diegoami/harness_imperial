@@ -90,13 +90,27 @@ if (fs.existsSync(worktree)) {
   sh('git', ['-C', worktree, 'push', '-q', '-u', 'origin', branch]);
 }
 if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${branch}`]);
-// A copied file's folder may be untracked or ignored, so absent from a fresh worktree (#90). A path
-// that leaves the main checkout or the worktree is refused (Luna's R1 on PR 91).
+// A copied file's folder may be untracked or ignored, so absent from a fresh worktree (#90). A
+// path that leaves the main checkout or the worktree is refused (Luna's R1 on PR 91). A
+// symlinked path component that escapes the checkout or the worktree is refused too: the
+// lexical check above is fooled by a tracked symlink whose target is outside, but mkdirSync and
+// copyFileSync follow symlinks, so the script would otherwise create the destination outside
+// the worktree (Luna's R2 on PR 91).
 for (const f of a.copy) {
-  const inside = (root) => { const r = path.relative(root, path.resolve(root, f)); return r && !r.startsWith('..') && !path.isAbsolute(r); };
-  if (!inside(mainRoot) || !inside(worktree)) die(2, `--copy takes a path inside the checkout; got ${f}`);
-  fs.mkdirSync(path.dirname(path.join(worktree, f)), { recursive: true });
-  fs.copyFileSync(path.join(mainRoot, f), path.join(worktree, f));
+  let realF;
+  try { realF = fs.realpathSync(path.resolve(mainRoot, f)); }
+  catch (e) { die(2, `--copy: cannot resolve ${f}: ${e.code ?? e.message}`); }
+  // The resolved source must lie inside the main checkout. (A symlink whose target escapes
+  // would otherwise let mkdirSync / copyFileSync read or write outside; the destination's
+  // parent in the worktree can also be a tracked symlink, which the script does not check
+  // itself — Luna's R2 on PR 91.)
+  const rel = path.relative(mainRoot, realF);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy takes a path inside the checkout; got ${f}`);
+  // The destination mirrors the resolved source's position relative to mainRoot: a symlink
+  // chain that lands inside mainRoot is copied to the same relative position in the worktree.
+  const dest = path.join(worktree, rel);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(realF, dest);
 }
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);
