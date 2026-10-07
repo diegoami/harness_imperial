@@ -76,11 +76,15 @@ export function applyLabel({ label, issue, top, say }) {
   }
 }
 
-export function withdrawApproval({ issue, top }) {
+export function withdrawApproval({ issue, top, say }) {
   try {
     sh('gh', ['issue', 'edit', String(issue), '--remove-label', 'status:approved']);
-  } catch {
-    // A repository without status:approved is the same case as applyLabel's label failure.
+  } catch (err) {
+    // A repository without status:approved is the same case as applyLabel's label failure: the
+    // earlier approval, if any, is not removed, and the next applyLabel can still overwrite
+    // it. The warning names the failed label so the caller can read the verdict and decide
+    // (#108, Luna's R1 on PR 121).
+    if (say) say(`label error: ${err.message}; status:approved was not removed, and the next applyLabel can still overwrite it.`);
   }
 }
 
