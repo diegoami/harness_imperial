@@ -98,37 +98,39 @@ if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${
 // destination outside the worktree (Luna's R2 on PR 91, both sides).
 for (const f of a.copy) {
   // 1. Lexical gate (cheap, no I/O): the path leaves the checkout or the worktree lexically.
-  // Run before realpathSync so a lexical escape gets the original error text and a missing
-  // source falls through to copyFileSync's own ENOENT (Luna's R2 on PR 91).
+  // Required (not best-effort) so a swap with the realpath gate changes the error text on
+  // the path-escape tests: `../newdir/escaped.sav` would otherwise hit ENOENT and emit
+  // "cannot resolve" instead of the lexical "inside the checkout" — Luna's R3 on round 5.
   const lexInside = (root) => { const r = path.relative(root, path.resolve(root, f)); return r && !r.startsWith('..') && !path.isAbsolute(r); };
   if (!lexInside(mainRoot) || !lexInside(worktree)) die(2, `--copy takes a path inside the checkout; got ${f}`);
   // 2. Source-side realpath: a tracked symlink whose target escapes the checkout would
   // otherwise let copyFileSync read or write outside (the file's path through the symlink).
+  // Required so the source-side gate is provably exercised by the source-side test —
+  // removing it leaves the dest-side walk to catch, which is not what the test claims to prove.
   let realF;
   try { realF = fs.realpathSync(path.resolve(mainRoot, f)); }
-  catch { /* realpath failed; the file tools below will surface ENOENT */ }
-  if (realF) {
-    const rel = path.relative(mainRoot, realF);
-    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy takes a path inside the checkout; got ${f}`);
-  }
-  // 3. Destination-side realpath: walk up dest's parent and refuse if any existing
-  // component is a symlink whose target lands outside the worktree. Walk past non-existent
-  // intermediates — mkdirSync's recursive option would otherwise follow an ancestor's
-  // symlink and create the directory outside the worktree (Luna's R1 on PR 91 round 4).
-  const dest = realF ? path.join(worktree, path.relative(mainRoot, realF)) : path.join(worktree, f);
-  for (let cur = path.dirname(dest); cur !== worktree; cur = path.dirname(cur)) {
+  catch (e) { die(2, `--copy: cannot resolve ${f}: ${e.code ?? e.message}`); }
+  const rel = path.relative(mainRoot, realF);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy takes a path inside the checkout; got ${f}`);
+  // 3. Destination-side realpath: walk up from dest (not just dirname(dest), because dest
+  // itself can be a tracked symlink to outside — copyFileSync would write to it) and refuse
+  // if any existing component is a symlink whose target lands outside the worktree. Walk
+  // past non-existent intermediates — mkdirSync's recursive option would otherwise follow an
+  // ancestor's symlink and create the directory outside the worktree (Luna's R1 on round 4
+  // and R1 on round 5).
+  const dest = path.join(worktree, rel);
+  for (let cur = dest; cur !== worktree; cur = path.dirname(cur)) {
     if (!cur.startsWith(worktree + path.sep)) break;
     let lstat;
     try { lstat = fs.lstatSync(cur); } catch { continue; }   // cur doesn't exist yet, walk up
-    if (lstat.isSymbolicLink()) {
-      const realCur = (() => { try { return fs.realpathSync(cur); } catch { return cur; } })();
-      const rel = path.relative(worktree, realCur);
-      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy: destination path escapes the worktree via a symlink; got ${f}`);
-      break;
-    }
+    if (!lstat.isSymbolicLink()) break;                     // regular file/dir; safe
+    const realCur = (() => { try { return fs.realpathSync(cur); } catch { return cur; } })();
+    const r = path.relative(worktree, realCur);
+    if (r === '' || r.startsWith('..') || path.isAbsolute(r)) die(2, `--copy: destination path escapes the worktree via a symlink; got ${f}`);
+    break;                                                  // symlink inside worktree; safe
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(realF ?? path.join(mainRoot, f), dest);
+  fs.copyFileSync(realF, dest);
 }
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);

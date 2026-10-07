@@ -92,40 +92,29 @@ test('--copy brings an untracked file into the worktree, its folders created (#9
   }
 });
 
-test('--copy refuses a path whose realpath resolves outside the worktree (PR 91 R2: symlink escape)', posix, async () => {
+test('--copy refuses a path whose source-side realpath resolves outside the checkout (PR 91 R2: source-side symlink escape)', posix, async () => {
   // PR 91 round 2: a tracked symlink whose target is outside the checkout passed the lexical
-  // check; mkdirSync and copyFileSync follow symlinks, so the script wrote a real file at the
-  // external target. The new check resolves f through fs.realpathSync and refuses if the
-  // resolved path is outside the checkout (source side) or walks the destination's parent for
-  // a tracked symlink that lands outside the worktree (destination side — Luna's R1 on
-  // PR 91 round 3).
+  // check; mkdirSync and copyFileSync follow symlinks, so the script wrote a real file at
+  // the external target. The source-side realpath gate catches this. The worktree does
+  // NOT have the symlink (we don't push a symlink commit to origin/task/T07-calendar) so
+  // only the source-side gate can fire — the test exercises it uniquely (Luna's R2 on
+  // PR 91 round 5).
   const p = project();
-  // External target outside the main checkout, with a file inside.
   const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-symlink-'));
   fs.writeFileSync(path.join(ext, 'leaked.sav'), 'leaked\n');
-  // Build a tracked symlink on the task branch implement.mjs uses — `task/T07-calendar`,
-  // per `task/${task}-${slug}` in implement.mjs. project() makes the local `task/T07-x`
-  // branch and pushes it as refs/pull/7/head only; we add the symlink commit on top of
-  // `main` and push to origin/task/T07-calendar so the worktree checks it out.
-  git(p.main, 'checkout', '-q', '-b', 'task/T07-calendar');
-  fs.symlinkSync(ext, path.join(p.main, 'link'));
-  git(p.main, 'add', 'link');
-  spawnSync('git', ['-C', p.main, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'symlink'], { stdio: 'ignore' });
-  git(p.main, 'push', '-q', 'origin', 'task/T07-calendar');
-  git(p.main, 'checkout', '-q', 'main');
-  // mainRoot needs the same symlink locally so the source resolves through it. The lexical
-  // gate lets it pass; the new realpath gate (and the destination-side walk) must refuse.
+  // Source: a local symlink in mainRoot pointing outside. The lexical gate lets it pass;
+  // the source-side realpath gate must refuse.
   fs.symlinkSync(ext, path.join(p.main, 'link'));
   const r = implement(p, { FAKE_OC_MODE: 'implement' }, '--copy', 'link/leaked.sav');
   assert.equal(r.status, 2, r.stderr + r.stdout);
-  assert.match(r.stderr, /--copy takes a path inside the checkout|--copy: destination path escapes the worktree via a symlink/);
+  assert.match(r.stderr, /--copy takes a path inside the checkout/);
 });
 
 test('--copy refuses a destination whose parent is a tracked symlink that lands outside the worktree (PR 91 R4)', posix, async () => {
   // PR 91 round 4 (Luna's R1): the source-side realpath gate alone is not enough — the
   // destination's parent in the worktree can itself be a tracked symlink to outside, and
   // mkdirSync (recursive) + copyFileSync follow it. Here the source is a regular file in
-  // mainRoot (no source-side escape), but the worktree has `subdir` as a tracked symlink
+  // mainRoot (no source-side escape), but the worktree has `sub` as a tracked symlink
   // pointing outside. The destination-side walk must refuse.
   const p = project();
   const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-dest-symlink-'));
