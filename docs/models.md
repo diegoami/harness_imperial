@@ -68,8 +68,8 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
 **Pricing by time of day** (the owner, 2026-10-06; Alibaba's numbers marked limited-time by the
 vendor). Long batch runs: on weekday mornings (Central Europe) prefer Alibaba or OpenCode Go over
 Z.AI's GLM; in the afternoon and evening Alibaba's Qwen and DeepSeek are at their cheapest — but
-Alibaba's pool is small and unmonitored (its Token Plan entry, below), and an ali-* run is not for
-a long loop.
+quota-tracker no longer reports on Alibaba (its Token Plan entry, below), so the pool's state is
+unknown and an ali-* run is not for a long loop.
 quota-tracker exposes this live: `curl -s localhost:8765/quota/alibaba | jq .pricing` answers
 `discount_now` and `next_change_at`; `/quota/alibaba` returns `not_monitored` (Alibaba flagged the
 tracker as unusual activity), so only `pricing` is reported. `/quota/zai`'s `peak_now` covers Z.AI.
