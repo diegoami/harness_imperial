@@ -170,8 +170,11 @@ test('a brief passes by file in the worktree, never the command line (L60)', () 
   assert.match(read('template/docs/lessons.md'), /^\| L60 \| A brief passes by file, never the command line: the runner writes the whole prompt to `\.harness-brief-<title>\.md` at the run worktree's root/m);
   assert.match(read('template/docs/lessons.md'), /on failure moved into the log directory as `<title>\.brief\.md` and named among the kept files — discarded, never left in the worktree, if neither rename nor copy can keep it/m);
   // environment.md keeps Alibaba's pool and the MiniMax Token Plan's apart (Luna's round-2 R2, PR 115;
-  // 2026-10-07: Alibaba's pool is unmonitored, but the two are still described separately).
+  // 2026-10-07: Alibaba's pool is unmonitored, but the two are still described separately, and the
+  // section actually says so — otherwise reverting the new sentence to the old "one credit pool …"
+  // one would still pass).
   assert.match(read('template/docs/environment.md'), /Alibaba's Token Plan \(DeepSeek, Qwen and GLM;\s+its Kimi and MiniMax models are Team-edition only and unused\)/);
+  assert.match(read('template/docs/environment.md'), /Alibaba's Token Plan is no longer in quota-tracker/);
   assert.match(read('template/docs/environment.md'), /`minimax` \(the MiniMax Token Plan's own pool\)/);
 });
 

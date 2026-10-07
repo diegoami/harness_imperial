@@ -69,9 +69,10 @@ Where the machine runs quota-tracker, a local service, it reports how much subsc
 left on each provider: `claude` (the main session and Claude agents), `openai` (Sol and Luna, via
 OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit)
 and `minimax` (the MiniMax Token Plan's own pool). Alibaba's Token Plan (DeepSeek, Qwen and GLM;
-its Kimi and MiniMax models are Team-edition only and unused) is no longer in quota-tracker
-because Alibaba flagged the console checks as unusual activity — `/quota/alibaba` returns
-`not_monitored` with `pricing` only, and Alibaba does not appear in `/quota`, `/best` or `/avoid`.
+its Kimi and MiniMax models are Team-edition only and unused) is one of those, and it is missing
+from this list: quota-tracker stopped checking it (Alibaba flagged the console checks as unusual
+activity), so `/quota/alibaba` returns `not_monitored` with `pricing` only — see the Alibaba
+Token Plan section below for what this means and how to use those models.
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one (alibaba's still carries a
@@ -127,8 +128,7 @@ The models per provider, heavy and light:
 Alibaba's Token Plan is no longer in quota-tracker: `/quota/alibaba` returns `not_monitored` with
 `pricing` only — there is no `month` window, and Alibaba is absent from `/quota`, `/best` and
 `/avoid`. Use Alibaba only as a supplement or an extra reviewer, not as a main or default model,
-and not in long loops; the monthly pool is small and shared by all its models. `bl auth login` is
-no longer needed. OpenCode's key for it comes only from the environment variable
+and not in long loops. OpenCode's key for it comes only from the environment variable
 `ALIBABA_TOKEN_PLAN_API_KEY` (in WSL from `~/.config/ai-keys.env`, which `~/.bashrc` and
 `~/.profile` load, and through WSLENV for commands started from Windows; on Windows a user
 variable), so it works in every OpenCode data directory, the scripts' own included. Never add it
