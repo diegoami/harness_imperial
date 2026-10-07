@@ -67,17 +67,25 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
 
 **Pricing by time of day** (the owner, 2026-10-06; Alibaba's numbers marked limited-time by the
 vendor). Long batch runs: on weekday mornings (Central Europe) prefer Alibaba or OpenCode Go over
-Z.AI's GLM; in the afternoon and evening Alibaba's Qwen and DeepSeek are at their cheapest.
+Z.AI's GLM; in the afternoon and evening Alibaba's Qwen and DeepSeek are at their cheapest — but
+Alibaba's pool is small and unmonitored (its Token Plan entry, below), and an ali-* run is not for
+a long loop.
 quota-tracker exposes this live: `curl -s localhost:8765/quota/alibaba | jq .pricing` answers
-`discount_now` and `next_change_at`, `/quota/zai`'s `peak_now` — check it before a long run on an
-`ali-qwen-*`/`ali-deepseek-*` entry or Z.AI's `glm` (ali-glm has no discount, so time doesn't matter
-for it); when the discount or off-peak window is not on, prefer another entry or schedule after
-`next_change_at`. If the tracker doesn't answer, run as usual; don't block on it.
-- **Alibaba Token Plan**: one monthly credit pool for all its models (quota-tracker's
-  `/quota/alibaba`). From 22:00 to 08:00 UTC+8 — 16:00–02:00 Central Europe in summer time,
-  15:00–01:00 in winter — `qwen3.8-max` and `qwen3.8-flash` use 60% fewer credits, and
-  `deepseek-v4-pro-0813` and `deepseek-v4.1-flash` 50% fewer (only the dated pro id gets it).
-  `glm-5.3` has no discount.
+`discount_now` and `next_change_at`; `/quota/alibaba` returns `not_monitored` (Alibaba flagged the
+tracker as unusual activity), so only `pricing` is reported. `/quota/zai`'s `peak_now` covers Z.AI.
+Check it before a long run on an `ali-qwen-*`/`ali-deepseek-*` entry or Z.AI's `glm` (ali-glm has
+no discount, so time doesn't matter for it); when the discount or off-peak window is not on, prefer
+another entry or schedule after `next_change_at`. If the tracker doesn't answer, run as usual;
+don't block on it.
+- **Alibaba Token Plan**: quota-tracker no longer checks it (Alibaba flagged the console checks
+  as unusual activity), so `/quota/alibaba` returns `not_monitored` with `pricing` only — no
+  `month` window, and Alibaba is absent from `/quota`, `/best` and `/avoid`. Use Alibaba only as
+  a supplement or an extra reviewer, not as a main or default model, and not in long loops. On a
+  quota or rate error, stop using Alibaba until the next day and report it; do not retry.
+  `bl auth login` is no longer needed.
+  From 22:00 to 08:00 UTC+8 — 16:00–02:00 Central Europe in summer time, 15:00–01:00 in winter
+  — `qwen3.8-max` and `qwen3.8-flash` use 60% fewer credits, and `deepseek-v4-pro-0813` and
+  `deepseek-v4.1-flash` 50% fewer (only the dated pro id gets it). `glm-5.3` has no discount.
 - **Z.AI GLM Coding Plan**: peak hours are Monday to Friday, 14:00–18:00 UTC+8 (08:00–12:00
   Central European summer time). In peak hours `glm-5.3` uses 3× quota (1× off-peak) and
   `glm-5.3-flash` 1.2× (0.4× off-peak); weekends are off-peak all day. A promotion bills everything
