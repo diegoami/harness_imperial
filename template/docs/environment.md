@@ -67,13 +67,17 @@ the plan.
 
 Where the machine runs quota-tracker, a local service, it reports how much subscription quota is
 left on each provider: `claude` (the main session and Claude agents), `openai` (Sol and Luna, via
-OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit) and
-`alibaba` (Alibaba's Token Plan: DeepSeek, Qwen and GLM, one monthly pool; its Kimi and MiniMax
-models are Team-edition only and unused) and `minimax` (the MiniMax Token Plan's own pool).
+OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit)
+and `minimax` (the MiniMax Token Plan's own pool). Alibaba's Token Plan (DeepSeek, Qwen and GLM;
+its Kimi and MiniMax models are Team-edition only and unused) is one of those, and it is missing
+from this list: quota-tracker stopped checking it (Alibaba flagged the console checks as unusual
+activity), so `/quota/alibaba` returns `not_monitored` with `pricing` only — see the Alibaba
+Token Plan section below for what this means and how to use those models.
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
-- `curl -s localhost:8765/quota`, or `/quota/<provider>` for one (alibaba's and zai's carry a
-  `pricing` object the chooser's `readPricing` also reads);
+- `curl -s localhost:8765/quota`, or `/quota/<provider>` for one (alibaba's still carries a
+  `pricing` object, even though the rest of its entry is empty, and the chooser's `readPricing`
+  reads it; zai's carries `pricing` too);
 - OpenCode's `external_directory` is a coarse guard, not a sandbox (L61, the owner accepted
   2026-10-06): it path-checks the agent's file tools and, as raw command text, `cd` and `cat`
   (L59) — not `git -C` or grep/sed/head/ls, so an agent with bash allowed can read any directory.
@@ -121,15 +125,16 @@ The models per provider, heavy and light:
 | alibaba (GLM) | `opencode -m alibaba-token-plan/glm-5.3` | none on alibaba (zai has `glm-5.3-flash`) |
 | minimax | `opencode -m minimax/MiniMax-M3` | `opencode -m minimax/MiniMax-M2.7` |
 
-Alibaba's Token Plan has one credit pool for every model on it, in a single `month` window (no
-5-hour or weekly windows); its entry also has `plan` and `subscription_ends_at`. Its quota comes
-from an Alibaba console login: a `not_configured` or login error goes to the owner, who runs
-`bl auth login --console --console-site international`. OpenCode's key for it comes only from the
-environment variable `ALIBABA_TOKEN_PLAN_API_KEY` (in WSL from `~/.config/ai-keys.env`, which
-`~/.bashrc` and `~/.profile` load, and through WSLENV for commands started from Windows; on Windows
-a user variable), so it works in every OpenCode data directory, the scripts' own included. Never add it
+Alibaba's Token Plan is no longer in quota-tracker: `/quota/alibaba` returns `not_monitored` with
+`pricing` only — there is no `month` window, and Alibaba is absent from `/quota`, `/best` and
+`/avoid`. Use Alibaba only as a supplement or an extra reviewer, not as a main or default model,
+and not in long loops. OpenCode's key for it comes only from the environment variable
+`ALIBABA_TOKEN_PLAN_API_KEY` (in WSL from `~/.config/ai-keys.env`, which `~/.bashrc` and
+`~/.profile` load, and through WSLENV for commands started from Windows; on Windows a user
+variable), so it works in every OpenCode data directory, the scripts' own included. Never add it
 with `opencode auth login`: an `auth.json` entry overrides the variable, and a bad one breaks the
 provider for that directory. Never print, copy or edit the key or an `auth.json`. If a call fails:
+- a quota or rate error: stop using Alibaba until the next day and tell the owner; do not retry.
 - "Provider not found: alibaba-token-plan": the variable is not in this environment. Restart the
   session or shell so it picks it up; if it is still missing, tell the owner. Do not retry.
 - "Invalid API-key": the data directory's `auth.json` may hold a stale Alibaba entry (the scripts
