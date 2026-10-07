@@ -92,25 +92,44 @@ if (fs.existsSync(worktree)) {
 if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${branch}`]);
 // A copied file's folder may be untracked or ignored, so absent from a fresh worktree (#90). A
 // path that leaves the main checkout or the worktree is refused (Luna's R1 on PR 91). A
-// symlinked path component that escapes the checkout or the worktree is refused too: the
-// lexical check above is fooled by a tracked symlink whose target is outside, but mkdirSync and
-// copyFileSync follow symlinks, so the script would otherwise create the destination outside
-// the worktree (Luna's R2 on PR 91).
+// symlinked path component on the source or the destination side that escapes either root is
+// refused too: the lexical check above is fooled by a tracked symlink whose target is outside,
+// but mkdirSync and copyFileSync follow symlinks, so the script would otherwise create the
+// destination outside the worktree (Luna's R2 on PR 91, both sides).
 for (const f of a.copy) {
+  // 1. Lexical gate (cheap, no I/O): the path leaves the checkout or the worktree lexically.
+  // Run before realpathSync so a lexical escape gets the original error text and a missing
+  // source falls through to copyFileSync's own ENOENT (Luna's R2 on PR 91).
+  const lexInside = (root) => { const r = path.relative(root, path.resolve(root, f)); return r && !r.startsWith('..') && !path.isAbsolute(r); };
+  if (!lexInside(mainRoot) || !lexInside(worktree)) die(2, `--copy takes a path inside the checkout; got ${f}`);
+  // 2. Source-side realpath: a tracked symlink whose target escapes the checkout would
+  // otherwise let copyFileSync read or write outside (the file's path through the symlink).
   let realF;
   try { realF = fs.realpathSync(path.resolve(mainRoot, f)); }
-  catch (e) { die(2, `--copy: cannot resolve ${f}: ${e.code ?? e.message}`); }
-  // The resolved source must lie inside the main checkout. (A symlink whose target escapes
-  // would otherwise let mkdirSync / copyFileSync read or write outside; the destination's
-  // parent in the worktree can also be a tracked symlink, which the script does not check
-  // itself — Luna's R2 on PR 91.)
-  const rel = path.relative(mainRoot, realF);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy takes a path inside the checkout; got ${f}`);
-  // The destination mirrors the resolved source's position relative to mainRoot: a symlink
-  // chain that lands inside mainRoot is copied to the same relative position in the worktree.
-  const dest = path.join(worktree, rel);
+  catch { /* realpath failed; the file tools below will surface ENOENT */ }
+  if (realF) {
+    const rel = path.relative(mainRoot, realF);
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy takes a path inside the checkout; got ${f}`);
+  }
+  // 3. Destination-side realpath: walk up dest's parent and refuse if any existing
+  // component is a symlink whose target lands outside the worktree (mkdirSync and
+  // copyFileSync follow symlinks; a tracked symlink in the worktree's path would otherwise
+  // create the file outside — Luna's R1 on PR 91 round 3).
+  const dest = realF ? path.join(worktree, path.relative(mainRoot, realF)) : path.join(worktree, f);
+  for (let cur = path.dirname(dest); cur !== worktree && cur.startsWith(worktree + path.sep) || cur === worktree; ) {
+    let lstat;
+    try { lstat = fs.lstatSync(cur); } catch { break; }
+    if (lstat.isSymbolicLink()) {
+      const realCur = (() => { try { return fs.realpathSync(cur); } catch { return cur; } })();
+      const rel = path.relative(worktree, realCur);
+      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy: destination path escapes the worktree via a symlink; got ${f}`);
+      break;
+    }
+    if (cur === worktree) break;
+    cur = path.dirname(cur);
+  }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(realF, dest);
+  fs.copyFileSync(realF ?? path.join(mainRoot, f), dest);
 }
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);
