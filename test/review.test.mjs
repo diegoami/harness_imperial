@@ -175,6 +175,43 @@ test('an approve with every DW line is applied; one "not run" is not (L32)', pos
   assert.equal(gh(q).issueLabels['12'], undefined);
 });
 
+test('a label failure after a successful post is exit 0 with a warning, not exit 1 (#108, PR 107 round 1)', posix, () => {
+  // PR 107 round 1: the review was posted, then `gh issue edit --add-label status:rework` failed
+  // because the repository does not have status:* labels. The script exited 1, which /run-task
+  // reads as "no review was posted" — a caller following the skill would re-run the reviewer and
+  // post a duplicate paid review.
+  const p = project();
+  withTask(p);
+  const all = ['DW1: ran node a.js → 1', 'DW2: ran node b.js → 2', 'DW3: ran npm test → 9 pass'];
+  const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: reviewWith('approve', all), FAKE_GH_FAIL_LABELS: '1' }, '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);                          // review is posted; the script exits 0
+  assert.match(r.stdout, /label error:[\s\S]*status:approved[\s\S]*no label was applied/);
+  assert.match(r.stdout, /posted: T07 review \(luna\) \/ approve/);
+  // The PR comment is the review itself, posted whole, exactly as the harness says.
+  const s = gh(p);
+  assert.equal(s.comments.length, 1);
+  assert.match(s.comments[0].body, /^T07 review \(luna\)\napprove\n\nDW1/);
+  assert.equal(s.issueLabels['12'], undefined);                            // the label never landed
+});
+
+test('withdrawApproval warns on label-edit failure, not silently (PR 121, Luna\'s R1)', posix, () => {
+  // PR 121 round 1 (Luna's R1): the second-opinion path's withdrawApproval had `catch {}` with no
+  // warning. A repository without status:approved leaves the approval in place; the caller has no
+  // signal that withdrawApproval did nothing, so a follow-up applyLabel can be misread as the
+  // first action.
+  const p = project(PROFILE);
+  // First review approves, second rewrites: outcome.label === 'status:rework' (not 'status:approved'),
+  // so withdrawApproval runs before applyLabel. Both label edits fail under FAKE_GH_FAIL_LABELS.
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'review-fixes']), FAKE_GH_FAIL_LABELS: '1' }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 0, r.stderr + r.stdout);                          // both reviews posted; no label landed, exit 0
+  // The withdrawApproval warning names status:approved and says it was not removed.
+  assert.match(r.stdout, /label error:[\s\S]*status:approved was not removed/);
+  // The applyLabel warning still names status:rework (or status:approved, depending on the
+  // outcome); the contract is the same.
+  assert.match(r.stdout, /label error:[\s\S]*no label was applied/);
+  assert.match(r.stdout, /second opinion: status:rework/);
+});
+
 test('a dry run of an unaccounted approve says it would apply no label and exit 4 (L32)', posix, () => {
   const p = project();
   withTask(p);

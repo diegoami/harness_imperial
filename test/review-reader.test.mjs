@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 for (const s of SAMPLES) {
   test(`${s.kind}: ${s.name}`, () => {
-    const r = readReview(s.out, H);
+    const r = readReview(s.out, s.header ?? H);
     assert.equal(r.kind, s.kind, JSON.stringify(r));
     if (s.kind === 'ok') assert.equal(r.review, s.review);
     if (s.kind === 'flagged') {
@@ -23,6 +23,23 @@ for (const s of SAMPLES) {
     if (s.kind === 'none') assert.equal(r.reason, 'no review in its output');
   });
 }
+
+test('a brief headed `#<issue> review (model)` is read; the leading # is a GitHub issue number, not Markdown (#108, PR 107 round 1)', () => {
+  // PR 107 round 1: the brief's first line was `#105 review (luna)`. readReview must find that
+  // header in the model's output; the issue number is the part that decides which PR the review
+  // is for, so it must not be stripped.
+  const out = `#105 review (luna)\nrework\n\nR1: a.js:1 is wrong (blocking).\n\nrework`;
+  const r = readReview(out, '#105 review (luna)');
+  assert.equal(r.kind, 'ok', JSON.stringify(r));
+  assert.equal(r.review, `#105 review (luna)\nrework\n\nR1: a.js:1 is wrong (blocking).\n\nrework`);
+  assert.equal(r.verdict, 'rework');
+  // The previous bug: with `/#*\\s*/`, undecorate stripped the leading `#` from `#105`, the line
+  // was `105 review (luna)`, and the regex (built from the brief) wanted `#105 review (luna)` —
+  // no match, kind 'none'. The test below is the regression check: a heading-shaped header is
+  // still read as one (existing samples cover that).
+  const h = readReview('## T07 review (luna)\nrework\n\nR1: x.\n\nrework', '#105 review (luna)');
+  assert.equal(h.kind, 'none');     // different header, different brief: no match
+});
 
 test('closing keywords lose their #, in a flagged review too, and every rewrite is listed', () => {
   const ok = readReview(`${H}\napprove\n\nR1: this fixes #551, Closes #3.\n\napprove`, H);

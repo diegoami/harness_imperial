@@ -274,7 +274,7 @@ for (const p of plans) {
   say(`posted: ${p.first} / ${p.kind === 'flagged' ? `flagged (${p.note})` : p.verdict}`);
 }
 // An approval from an earlier round never outlives two reviews that did not both approve (Sol's R3 on PR 41).
-if (a['apply-label'] && outcome.label !== 'status:approved') withdrawApproval({ issue: a.issue, top });
+if (a['apply-label'] && outcome.label !== 'status:approved') withdrawApproval({ issue: a.issue, top, say });
 if (outcome.code) die(outcome.code, `No label applied: ${outcome.why}. Read the reviews on PR ${a.pr} and decide.`);
 if (a['apply-label']) applyLabel({ label: outcome.label, issue: a.issue, top, say });
 say(`second opinion: ${outcome.label ?? 'no label'}${outcome.why ? ` (${outcome.why})` : ''}`);

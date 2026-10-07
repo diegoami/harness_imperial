@@ -66,13 +66,26 @@ export function postComment({ plan, pr, top }) {
 // A verdict's label replaces the other verdict's and status:in-review, so an issue never carries
 // both approved and rework (Sol's R3 on PR 41).
 export function applyLabel({ label, issue, top, say }) {
+  if (!label) { say('verdict "user decision" applies no label; the main session decides.'); return; }
   const stale = ['status:in-review', ...['status:approved', 'status:rework'].filter((l) => l !== label)].join(',');
-  if (label) sh('gh', ['issue', 'edit', String(issue), '--add-label', label, '--remove-label', stale], { cwd: top });
-  else say('verdict "user decision" applies no label; the main session decides.');
+  try {
+    sh('gh', ['issue', 'edit', String(issue), '--add-label', label, '--remove-label', stale], { cwd: top });
+  } catch (err) {
+    say(`label error: ${err.message}; the review is posted as ${label}, but no label was applied. ` +
+      'Read the verdict and apply it manually if needed.');
+  }
 }
 
-export function withdrawApproval({ issue, top }) {
-  sh('gh', ['issue', 'edit', String(issue), '--remove-label', 'status:approved'], { cwd: top });
+export function withdrawApproval({ issue, top, say }) {
+  try {
+    sh('gh', ['issue', 'edit', String(issue), '--remove-label', 'status:approved']);
+  } catch (err) {
+    // A repository without status:approved is the same case as applyLabel's label failure: the
+    // earlier approval, if any, is not removed, and the next applyLabel can still overwrite
+    // it. The warning names the failed label so the caller can read the verdict and decide
+    // (#108, Luna's R1 on PR 121).
+    if (say) say(`label error: ${err.message}; status:approved was not removed, and the next applyLabel can still overwrite it.`);
+  }
 }
 
 // Posts a planned review as one PR comment and applies its label; or, with dryRun, prints both.

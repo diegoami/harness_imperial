@@ -25,6 +25,13 @@ if (noun === 'pr' && verb === 'list') {
   state.comments.push({ pr: id, body: fs.readFileSync(opt('--body-file'), 'utf8') });
   save();
 } else if (noun === 'issue' && verb === 'edit') {
+  // FAKE_GH_FAIL_LABELS simulates a repository that does not have status:* labels (the #108
+  // case): every label edit fails with a 1, the way `gh` does on an unknown label. The harness's
+  // applyLabel must catch it and warn, not exit 1 as if nothing was posted.
+  if (process.env.FAKE_GH_FAIL_LABELS) {
+    console.error(`fake gh: ${args.join(' ')} failed (1): label not found (FAKE_GH_FAIL_LABELS)`);
+    process.exit(1);
+  }
   const removed = (opt('--remove-label') ?? '').split(',');
   state.issueLabels[id] = [...(state.issueLabels[id] ?? []).filter((l) => !removed.includes(l)), ...(opt('--add-label') ? [opt('--add-label')] : [])];
   save();
