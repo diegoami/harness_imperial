@@ -121,6 +121,38 @@ test('--copy refuses a path whose realpath resolves outside the worktree (PR 91 
   assert.match(r.stderr, /--copy takes a path inside the checkout|--copy: destination path escapes the worktree via a symlink/);
 });
 
+test('--copy refuses a destination whose parent is a tracked symlink that lands outside the worktree (PR 91 R4)', posix, async () => {
+  // PR 91 round 4 (Luna's R1): the source-side realpath gate alone is not enough — the
+  // destination's parent in the worktree can itself be a tracked symlink to outside, and
+  // mkdirSync (recursive) + copyFileSync follow it. Here the source is a regular file in
+  // mainRoot (no source-side escape), but the worktree has `subdir` as a tracked symlink
+  // pointing outside. The destination-side walk must refuse.
+  const p = project();
+  const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-dest-symlink-'));
+  fs.mkdirSync(path.join(ext, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(ext, 'sub', 'file.txt'), 'leaked\n');
+  // Source: a regular file inside mainRoot (no symlinks involved on the source side).
+  fs.mkdirSync(path.join(p.main, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(p.main, 'sub', 'file.txt'), 'kept\n');
+  // Destination: push a commit to origin/task/T07-calendar that adds `sub` as a symlink to ext.
+  // (The destination-side walk hits worktree/sub as an existing symlink and refuses.)
+  git(p.main, 'checkout', '-q', '-b', 'task/T07-calendar');
+  fs.rmSync(path.join(p.main, 'sub'), { recursive: true, force: true });
+  fs.symlinkSync(ext, path.join(p.main, 'sub'));
+  git(p.main, 'add', 'sub');
+  spawnSync('git', ['-C', p.main, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'sub-symlink'], { stdio: 'ignore' });
+  git(p.main, 'push', '-q', 'origin', 'task/T07-calendar');
+  git(p.main, 'checkout', '-q', 'main');
+  fs.mkdirSync(path.join(p.main, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(p.main, 'sub', 'file.txt'), 'kept\n');
+  const r = implement(p, { FAKE_OC_MODE: 'implement' }, '--copy', 'sub/file.txt');
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.match(r.stderr, /--copy: destination path escapes the worktree via a symlink/);
+  // The script rejected before mkdirSync / copyFileSync ran; nothing was written outside
+  // the worktree through the symlink.
+  assert.ok(!fs.existsSync(path.join(ext, 'sub', 'proj-work', 'T07-calendar', 'sub', 'file.txt')));
+});
+
 test('a task runs to an open PR, in its own worktree, with the agent kept out of git', posix, async () => {
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement' });

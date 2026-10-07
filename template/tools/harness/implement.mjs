@@ -112,21 +112,20 @@ for (const f of a.copy) {
     if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy takes a path inside the checkout; got ${f}`);
   }
   // 3. Destination-side realpath: walk up dest's parent and refuse if any existing
-  // component is a symlink whose target lands outside the worktree (mkdirSync and
-  // copyFileSync follow symlinks; a tracked symlink in the worktree's path would otherwise
-  // create the file outside — Luna's R1 on PR 91 round 3).
+  // component is a symlink whose target lands outside the worktree. Walk past non-existent
+  // intermediates — mkdirSync's recursive option would otherwise follow an ancestor's
+  // symlink and create the directory outside the worktree (Luna's R1 on PR 91 round 4).
   const dest = realF ? path.join(worktree, path.relative(mainRoot, realF)) : path.join(worktree, f);
-  for (let cur = path.dirname(dest); cur !== worktree && cur.startsWith(worktree + path.sep) || cur === worktree; ) {
+  for (let cur = path.dirname(dest); cur !== worktree; cur = path.dirname(cur)) {
+    if (!cur.startsWith(worktree + path.sep)) break;
     let lstat;
-    try { lstat = fs.lstatSync(cur); } catch { break; }
+    try { lstat = fs.lstatSync(cur); } catch { continue; }   // cur doesn't exist yet, walk up
     if (lstat.isSymbolicLink()) {
       const realCur = (() => { try { return fs.realpathSync(cur); } catch { return cur; } })();
       const rel = path.relative(worktree, realCur);
       if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) die(2, `--copy: destination path escapes the worktree via a symlink; got ${f}`);
       break;
     }
-    if (cur === worktree) break;
-    cur = path.dirname(cur);
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.copyFileSync(realF ?? path.join(mainRoot, f), dest);
