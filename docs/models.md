@@ -193,7 +193,8 @@ Pro)". A number measured for another game is a target to measure, not a promise.
 
 - **The chooser ranks, the runners skip** (2026-10-06). `choose.mjs` is the ranked form of the
   quota check: `node tools/harness/choose.mjs --role implementer --difficulty easy [--pick]`
-  ranks the registered models by headroom band (≥50% left, 20–49%, <20%), then the pricing tier
+  ranks the registered models by headroom band (≥50% left, 20–49%, <20%, then quota unknown —
+  unchecked, or not monitored like Alibaba, so it never outranks a monitored pool; #125), then the pricing tier
   within the band (a discount on promotes, a peak demotes — the rules above), then the
   `chooser` block's preference order (an absent block falls back to the chains). **Headroom
   outranks pricing** (the owner): a discounted pool that is nearly burnt loses to a fresh one.

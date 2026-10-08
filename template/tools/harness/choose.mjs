@@ -8,9 +8,9 @@
 //   node tools/harness/choose.mjs --role reviewer --difficulty hard --implemented-by claude
 //   node tools/harness/choose.mjs --role implementer --difficulty easy --pick
 //
-// Order: headroom band first (≥50% left, 20–49%, <20%), then the pricing tier within the band
-// (a discount on now promotes, a peak on now demotes — the owner's rule, docs/models.md), then
-// the preference index. Headroom outranks pricing: a discounted pool that is nearly burnt loses
+// Order: headroom band first (≥50% left, 20–49%, <20%, then quota unknown: unchecked or not
+// monitored, #125), then the pricing tier within the band (a discount on now promotes, a peak on
+// now demotes — the owner's rule, docs/models.md), then the preference index. Headroom outranks pricing: a discounted pool that is nearly burnt loses
 // to a fresh one (the owner, 2026-10-06). A reviewer never shares the implementer's family; an
 // exhausted provider's models rank last with the reason. A tracker that does not answer ranks
 // by preference alone and says so; it never blocks.

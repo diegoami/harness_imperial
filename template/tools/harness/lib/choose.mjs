@@ -30,11 +30,12 @@ export function chooserOrder(config, { role, difficulty }) {
   return difficulty === 'easy' ? [...(rev.chain ?? [])] : [...(rev.hard ?? rev.chain ?? [])];
 }
 
-// Headroom band: 0 means half the window or more is left, 1 a fifth to a half (or low, or a
-// provider the tracker could not check), 2 under a fifth. A provider the tracker could not
-// check blocks nothing (quotaBlock) and lands in band 1, noted.
+// Headroom band: 0 means half the window or more is left, 1 a fifth to a half (or low), 2 under
+// a fifth, 3 unknown: a provider the tracker could not check, or does not monitor (Alibaba, #119).
+// Unknown blocks nothing (quotaBlock) but ranks after every monitored provider with quota left,
+// so its pricing only reorders it among the unknown (#125).
 function bandOf(p) {
-  if (!p || p.status === 'error' || p.status === 'not_configured') return { band: 1, unknown: true };
+  if (!p || p.status === 'error' || p.status === 'not_configured' || p.status === 'not_monitored') return { band: 3, unknown: true };
   const h = typeof p.headroom_pct === 'number' ? p.headroom_pct : null;
   if (h === null) return { band: p.status === 'low' ? 1 : 0, unknown: false };
   return { band: h >= 50 ? 0 : h >= 20 ? 1 : 2, unknown: false };
