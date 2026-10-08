@@ -123,6 +123,12 @@ test('the scripts skip an exhausted provider themselves, and no chain is edited 
   assert.match(read('template/docs/lessons.md'), /^\| L52 \| `implement\.mjs` and `review\.mjs` check quota themselves/m);
 });
 
+test('a guard\'s tests are pushed to the task branch before dispatch, one Done-when line per constraint (L64)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/docs/process.md'), /For a guard \(a gate, check or tool whose failure lets a protected rule be bypassed\), each constraint it enforces is its own numbered line, and the main session pushes the guard's tests to the task branch before dispatch, one mutation test per bypass class the design predicts, failing until the guard lands\. \(L64\)/);
+  assert.match(read('template/docs/lessons.md'), /^\| L64 \| For a guard \(a gate, check or tool whose failure lets a protected rule be bypassed\)/m);
+});
+
 test('a delegated run\'s final message is read before it is retried, re-routed or called a failure (L55)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   assert.match(flat('template/CLAUDE.md'), /8\. Relay review findings in full\. Read a run's final message before you retry or re-route it \(L55\)\./);
