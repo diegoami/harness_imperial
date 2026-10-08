@@ -25,7 +25,7 @@ const run = (mode, opts = {}, extra = {}) => {
   const { dir, env } = setup(mode, extra);
   return runOpenCodeWatched({
     args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
-    workDir: dir, title: 'test', opencode, env, logDir: path.join(dir, 'logs'),
+    workDir: dir, title: 'test', opencode, env, logDir: path.join(dir, 'logs'), scratchRoot: path.join(dir, 'tmp'),
     pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000, ...opts,
   });
 };
@@ -437,4 +437,59 @@ test('a hopeless shelve on a thrown failure names no path that does not exist (L
     for (const f of kept) assert.ok(fs.existsSync(f), `named path exists: ${f}`);
     assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false, 'worktree cleared');
   } finally { fs.renameSync = realRename; fs.copyFileSync = realCopy; }
+});
+
+test('a run gets its own scratch folder as TMPDIR/TEMP, named in the pointer; removed after a clean run, kept after a failed one (L66)', async () => {
+  const { dir, env } = setup('ok');
+  const root = path.join(dir, 'tmp');
+  const r = await runOpenCodeWatched({
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'p', workDir: dir, title: 'test', opencode, env,
+    logDir: path.join(dir, 'logs'), scratchRoot: root, pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+  });
+  const [session] = readSessions(path.join(dir, 'state.json'));
+  const scratch = path.join(root, `harness-run-${r.title}`);
+  assert.equal(session.tmpdir, scratch);
+  assert.equal(session.temp, scratch);
+  assert.ok(session.prompt.includes(`Your scratch folder for this run is ${scratch} (also $TMPDIR)`));
+  assert.equal(fs.existsSync(scratch), false);
+  assert.equal(r.scratch, null);
+  const bad = await run('permission');
+  assert.ok(bad.scratch && fs.existsSync(bad.scratch), 'kept after a rejection');
+  assert.match(path.basename(bad.scratch), /^harness-run-test-[0-9a-f]{12}$/);
+});
+
+test('the scratch folder defaults to /tmp on POSIX, never the caller\'s TMPDIR (the agent files allow /tmp/harness-run-*)', { skip: process.platform === 'win32' }, async () => {
+  const { dir, env } = setup('ok');
+  // The caller's own TMPDIR (a Claude session's scratchpad), which os.tmpdir() would follow.
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = path.join(dir, 'callers-tmp');
+  fs.mkdirSync(process.env.TMPDIR);
+  let r;
+  try {
+    r = await runOpenCodeWatched({
+      args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'p', workDir: dir, title: 'test', opencode,
+      env: { ...env, TMPDIR: process.env.TMPDIR }, logDir: path.join(dir, 'logs'),
+      pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+    });
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+  }
+  const [session] = readSessions(path.join(dir, 'state.json'));
+  assert.equal(session.tmpdir, `/tmp/harness-run-${r.title}`);
+});
+
+test('a rejection is appended to the rejection log with the rejected call; a clean run writes nothing (L66)', async () => {
+  const { dir } = setup('ok');
+  const log = path.join(dir, 'work', 'permission-rejections.jsonl');
+  await run('ok', { rejectionLog: log, script: 'implement' });
+  assert.equal(fs.existsSync(log), false);
+  const r = await run('permission', { rejectionLog: log, script: 'implement' });
+  const lines = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(lines.length, 1);
+  const [e] = lines;
+  assert.equal(e.permission, 'external_directory (/tmp/*)');
+  assert.deepEqual(e.calls, [{ tool: 'bash', input: 'cat /tmp/notes.txt' }]);
+  assert.equal(e.script, 'implement'); assert.equal(e.model, 'opencode-go/x'); assert.equal(e.agent, 'reviewer');
+  assert.equal(e.title, r.title);
+  assert.ok(!Number.isNaN(Date.parse(e.at)));
 });

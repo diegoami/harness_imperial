@@ -20,7 +20,13 @@
 //      run with exit 0, so it looks like a clean finish. It is read from the session record, and
 //      reported as `permissionRejected` with what OpenCode's warning line says was rejected (IC2
 //      #501: three runs in one day, on TEMP and on tools' install directories). The line decides
-//      alone only when the record cannot be read: a tool's output can quote it (PR 35).
+//      alone only when the record cannot be read: a tool's output can quote it (PR 35). Each
+//      rejection is appended to `rejectionLog` (one JSON line: what, the rejected calls, the run),
+//      which `tools/harness/rejections.mjs` summarizes for triage (L66).
+//   8. The run gets a scratch folder of its own outside the worktree, harness-run-<title> under
+//      /tmp (the user's TEMP on Windows), as TMPDIR, TEMP and TMP; the agent files allow exactly
+//      that pattern, and the pointer names the folder. It is removed after a clean run and kept
+//      after a failed one (L66).
 //
 // Every failure of OpenCode itself throws an OpenCodeInfraError with a short `reason`; a fallback
 // chain may move past it. Anything else thrown is a defect of the caller.
@@ -329,15 +335,20 @@ export async function lookupSession(cmd, { workDir, title, startedMs, timeoutMs,
 // The agent OpenCode recorded for the session (`opencode export <id>`: .info.agent), or null.
 // What the session record says: the agent that ran (L11), and whether OpenCode rejected a tool
 // call, which it records as the tool's error "The user rejected permission to use this specific
-// tool call." (OpenCode 1.18.34). Null when the export cannot be read.
+// tool call." (OpenCode 1.18.34), with each rejected call's tool and input (the command or path,
+// cut to 300 characters) for the rejection log. Null when the export cannot be read.
 export async function sessionRecord(cmd, { workDir, sessionId, outFile, timeoutMs = 30000, env }) {
   const res = await execBounded(cmd, ['export', sessionId], { cwd: workDir, timeoutMs, env, outFile });
   if (!res || res.code !== 0) return null;
   try {
     const j = JSON.parse(res.stdout.slice(res.stdout.indexOf('{')));
     const parts = (j.messages ?? []).flatMap((m) => m.parts ?? []);
-    const rejected = parts.some((p) => p.type === 'tool' && p.state?.status === 'error' && /rejected permission/i.test(String(p.state.error ?? '')));
-    return { agent: j.info?.agent ?? null, rejected };
+    const hits = parts.filter((p) => p.type === 'tool' && p.state?.status === 'error' && /rejected permission/i.test(String(p.state.error ?? '')));
+    const rejections = hits.map((p) => {
+      const i = p.state?.input ?? {};
+      return { tool: p.tool ?? null, input: String(i.command ?? i.filePath ?? i.path ?? JSON.stringify(i)).slice(0, 300) };
+    });
+    return { agent: j.info?.agent ?? null, rejected: hits.length > 0, rejections };
   } catch { return null; }
 }
 
@@ -373,6 +384,7 @@ export async function runOpenCodeWatched({
   args, prompt, workDir, title,
   startupTimeoutMs = 180_000, totalTimeoutMs = 3_600_000, idleTimeoutMs = 600_000, pollMs = 10_000,
   logDir = path.join(os.tmpdir(), 'harness-opencode'), opencode, env = process.env, log = () => {},
+  rejectionLog = null, script = null, scratchRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp',
 }) {
   if (args[0] !== 'run') throw new Error(`runOpenCodeWatched runs 'opencode run'; got '${args[0]}'.`);
   const cmd = opencode ?? resolveOpenCode(env);
@@ -384,8 +396,14 @@ export async function runOpenCodeWatched({
   const briefFile = path.join(workDir, briefFileName(title));
   fs.writeFileSync(briefFile, prompt);
   const files = [outFile, errFile, briefFile];
+  // Not os.tmpdir() on POSIX: a caller's TMPDIR (a Claude session's scratchpad) would move the
+  // folder off the pattern the agent files allow.
+  const scratch = path.join(scratchRoot, `harness-run-${title}`);
+  fs.mkdirSync(scratch, { recursive: true });
+  const runEnv = { ...env, TMPDIR: scratch, TEMP: scratch, TMP: scratch };
   const pointer = `Your complete brief for this run is the file ${briefFileName(title)} at the root of this worktree.`
-    + ' Read that file first and follow it exactly; never edit, commit or delete it.';
+    + ' Read that file first and follow it exactly; never edit, commit or delete it.'
+    + ` Your scratch folder for this run is ${scratch} (also $TMPDIR): temporary files go there, never anywhere else outside this worktree.`;
   const all = [...args, '--title', title, pointer];
   // The brief leaves the worktree when the run is not clean (L60): kept for diagnosis with the
   // log files, but never left as untracked work a reset would save as the implementer's (#87).
@@ -422,7 +440,7 @@ export async function runOpenCodeWatched({
     const errFd = fs.openSync(errFile, 'w');
     const startedMs = Date.now();
     try {
-      child = spawnDetached(cmd, all, { cwd: workDir, env, stdio: ['ignore', outFd, errFd] });
+      child = spawnDetached(cmd, all, { cwd: workDir, env: runEnv, stdio: ['ignore', outFd, errFd] });
     } finally {
       fs.closeSync(outFd);
       fs.closeSync(errFd);
@@ -521,16 +539,29 @@ export async function runOpenCodeWatched({
     const said = permissionRejection(`${stdout}\n${stderr}`);
     const permissionRejected = !record ? said : record.rejected ? said ?? 'a tool call (in the session record)' : null;
     const permissionHint = permissionRejected ? rejectionHint(`${stdout}\n${stderr}`) : null;
-    if (exitCode === 0 && !permissionRejected) for (const f of files) fs.rmSync(f, { force: true });
-    else {
+    if (permissionRejected && rejectionLog) {
+      const modelIdx = args.indexOf('--model');
+      const entry = { at: new Date().toISOString(), script, title, model: modelIdx >= 0 ? args[modelIdx + 1] : null,
+        agent: requestedAgent, permission: permissionRejected, calls: record?.rejections ?? [], hint: permissionHint, worktree: workDir };
+      try {
+        fs.mkdirSync(path.dirname(rejectionLog), { recursive: true });
+        fs.appendFileSync(rejectionLog, `${JSON.stringify(entry)}\n`);
+      } catch (err) { log(`opencode: the rejection was not recorded in ${rejectionLog}: ${err.message}`); }
+    }
+    const clean = exitCode === 0 && !permissionRejected;
+    if (clean) {
+      for (const f of files) fs.rmSync(f, { force: true });
+      fs.rmSync(scratch, { recursive: true, force: true });
+    } else {
       shelveBrief();
-      log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
+      log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}; scratch kept: ${scratch}`);
     }
     return {
       output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
       stdout, stderr, exitCode, sessionId: session.id, title,
       agentFallback, sessionAgent: recordedAgent, permissionRejected, permissionHint,
       files: exitCode === 0 && !permissionRejected ? [] : files,
+      scratch: clean ? null : scratch,
       briefFile: exitCode === 0 && !permissionRejected ? briefFile : briefKeptPath,
       seconds: Math.round(elapsed() / 1000),
     };

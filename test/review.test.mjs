@@ -123,7 +123,7 @@ test('every reviewer is told a proven bypass of what the task protects is blocki
   for (const f of ['docs/review-brief.md', '../profiles/review/docs/review.md']) {
     assert.match(fs.readFileSync(path.join(root, f), 'utf8').replace(/\s+/g, ' '), /When unsure, say how likely the problem is\. Rate it blocking only if it is likely and would get past what the task protects; otherwise it is a follow-up\. \(L53\)/, f);
   }
-  assert.match(instructions, /Scratch output goes to a file in the worktree root .* never `\/tmp`\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
+  assert.match(instructions, /Scratch output goes to your scratch folder, the one the brief's pointer names \(also \$TMPDIR\): .* never another `\/tmp` path \(L66\)\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
 });
 
 test('the reviewer runs git in its worktree and is never asked to type its path (L30)', posix, () => {

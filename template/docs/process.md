@@ -103,7 +103,7 @@ always with the PR number: a bare invocation from an agent reviews the wrong tre
 ## 6. Bugs, fixes, triage
 
 Bugs and non-blocking review findings are filed with `triage:needed`: one `T<nn> follow-up` issue
-per merge. Triage decides one of:
+per merge. Triage also reads `node tools/harness/rejections.mjs`, the permission rejections the runs logged: the project's own data or a harmless system path gets an allow in `.opencode/agents/*.md` in a reviewed PR, a scratch or main-checkout path gets the brief fixed, and anything else goes to the user. (L66) Triage decides one of:
 - **fix**: no ruleset value, fixture value, seeded measurement or golden line changes outside the
   bug's own reproduction. The bug issue is the contract; its Done-when is its reproduction as a
   failing-then-passing test; one review round. (L4)
