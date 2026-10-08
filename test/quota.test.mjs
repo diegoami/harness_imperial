@@ -25,18 +25,20 @@ test('an exhausted provider blocks its models, saying until when; ok, low, error
   assert.equal(quotaBlock('someone/else', of(entry('openai', 'exhausted'))), null);
 });
 
-test('a model with its own window is judged by it: GPT-5.6 Luna runs while it is under 95%, even when OpenAI is exhausted', () => {
-  const openai = (luna) => of(entry('openai', 'exhausted', [{ name: '7d', used_pct: 100 }, { name: 'gpt-5.6-luna:7d', used_pct: luna, resets_in: '6d' }]));
-  assert.equal(quotaBlock('openai/gpt-5.6-luna', openai(94.9)), null);
-  assert.equal(quotaBlock('openai/gpt-5.6-luna', openai(95)), 'its own gpt-5.6-luna:7d window is 95% used, resets in 6d');
-  assert.match(quotaBlock('openai/gpt-6.1-sol', openai(0)), /openai is exhausted/);                 // Sol has no window of its own
-  const lunaOut = of(entry('openai', 'ok', [{ name: '7d', used_pct: 10 }, { name: 'gpt-5.6-luna:7d', used_pct: 99 }]));
-  assert.match(quotaBlock('openai/gpt-5.6-luna', lunaOut), /99% used/);
-  assert.equal(quotaBlock('openai/gpt-6.1-sol', lunaOut), null);
-  // error and not_configured block nothing, even with a full window of the model's own (Sol's R2 on PR 77).
-  for (const status of ['error', 'not_configured']) {
-    assert.equal(quotaBlock('openai/gpt-5.6-luna', of(entry('openai', status, [{ name: 'gpt-5.6-luna:7d', used_pct: 97 }]))), null, status);
+test('every model is judged on the main quota; an exhausted provider still runs only what when_exhausted.usable_models names (L65)', () => {
+  const out = (extra) => of(entry('openai', 'exhausted', [{ name: '7d', used_pct: 100, resets_in: '5d' }], { available_in: '5d', ...extra }));
+  // OpenAI exhausted and naming Luna: Luna alone runs; Sol does not.
+  const named = out({ when_exhausted: { usable_models: ['gpt-5.6-luna'] } });
+  assert.equal(quotaBlock('openai/gpt-5.6-luna', named), null);
+  assert.match(quotaBlock('openai/gpt-6.1-sol', named), /openai is exhausted/);
+  // Exhausted without the field (or naming nothing): Luna is blocked like Sol.
+  for (const extra of [{}, { when_exhausted: null }, { when_exhausted: { usable_models: [] } }]) {
+    assert.match(quotaBlock('openai/gpt-5.6-luna', out(extra)), /openai is exhausted until it is usable again in 5d/, JSON.stringify(extra));
   }
+  // Not exhausted: Luna runs, judged on the main window; a stale model window no longer counts.
+  assert.equal(quotaBlock('openai/gpt-5.6-luna', of(entry('openai', 'ok', [{ name: '7d', used_pct: 40 }, { name: 'gpt-5.6-luna:7d', used_pct: 99 }]))), null);
+  // error and not_configured block nothing (Sol's R2 on PR 77).
+  for (const status of ['error', 'not_configured']) assert.equal(quotaBlock('openai/gpt-5.6-luna', of(entry('openai', status))), null, status);
 });
 
 test('a free OpenRouter model is judged by the daily allowance of free requests, not the credit', () => {
@@ -61,7 +63,10 @@ test('readQuota reads the service, and is off, saying why, when it does not answ
     [entry('openai', 'ok', [{ used_pct: 97 }])], [entry('openai', 'ok', [{ name: 'x', used_pct: '97' }])], [{ provider: 'openai' }],
     [entry('openai', 'ok', [{ name: 'gpt-5.6-luna:7d', used_pct: 97, resets_in: { toString: null } }])],
     [entry('zai', 'exhausted', [], { available_in: { toString: null } })],
-    [entry('openrouter', 'ok', [], { free_model_daily_requests: { remaining: '5', limit: 1000 } })]]) {
+    [entry('openrouter', 'ok', [], { free_model_daily_requests: { remaining: '5', limit: 1000 } })],
+    [entry('openai', 'exhausted', [], { when_exhausted: { usable_models: 'gpt-5.6-luna' } })],
+    [entry('openai', 'exhausted', [], { when_exhausted: { usable_models: [7] } })],
+    [entry('openai', 'exhausted', [], { when_exhausted: 'gpt-5.6-luna' })]]) {
     const bad = await quotaServer(body);
     try {
       assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/, JSON.stringify(body));

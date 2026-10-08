@@ -210,8 +210,8 @@ Pro)". A number measured for another game is a target to measure, not a promise.
   `exhausted` is skipped. Name the next model of the chain with quota (`--model`, `--reviewer`) and
   say so in the report. On 2026-10-04 Z.AI's 5-hour window and Go's week were both used up, which
   left OpenAI (Sol, Luna) as the only OpenCode route. GPT-5.6 Luna, the reviewer `luna` since that
-  day (L51), has a pool of its own, separate from the one Sol (and GPT-6 Luna, now `luna-6`) draw
-  on; the endpoint's windows show which pools exist.
+  day (L51), now draws on OpenAI's main quota like Sol; only with OpenAI `exhausted` does its own
+  limit count, when `/quota/openai`'s `when_exhausted.usable_models` lists it (L65).
 - **The review of a PR here.** Run it from the root, on `main`, in the background:
   `node template/tools/harness/review.mjs --pr <n> --brief <file> --exclude claude`.
   - The reviewer's agent and config come from the main checkout (L34). While a review runs, do

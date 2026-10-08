@@ -129,20 +129,15 @@ test('an exhausted provider ranks last with the reason; a reviewer never shares 
   assert.match(ranked.find((r) => r.name === 'glm').blocked, /implementer's family/);
 });
 
-test('a model whose own window is exhausted ranks last on fresh provider headroom (quota blocking, Sol\'s R1)', () => {
+test('OpenAI exhausted: the model when_exhausted names (Luna) ranks first, Sol last as blocked (L65)', () => {
   const c = config();
   c.models.sol = { id: 'openai/gpt-6.1-sol', variant: 'low', family: 'openai' };
-  c.chooser = { reviewer: { easy: ['luna', 'sol'] } };
-  // openai is fresh (70% left) but luna's own gpt-5.6-luna:7d window is exhausted: band sorting
-  // alone would put both in band 0 — only the blocked-first comparator separates them.
-  const quota = of(entry('openai', 'ok', [
-    { name: 'gpt-5.6-luna:7d', used_pct: 97, resets_in: '6d' },
-    { name: '7d', used_pct: 30, resets_in: '4d' },
-  ], { headroom_pct: 70 }));
+  c.chooser = { reviewer: { easy: ['sol', 'luna'] } };
+  const quota = of(entry('openai', 'exhausted', [{ name: '7d', used_pct: 100 }], { when_exhausted: { usable_models: ['gpt-5.6-luna'] } }));
   const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota, recommend: { rows: [] } });
-  assert.equal(ranked[0].name, 'sol');
-  assert.equal(ranked[ranked.length - 1].name, 'luna');
-  assert.match(ranked.find((r) => r.name === 'luna').blocked, /own gpt-5\.6-luna:7d window is 97% used/);
+  assert.deepEqual(ranked.map((r) => r.name), ['luna', 'sol']);
+  assert.equal(ranked[0].blocked, null);
+  assert.match(ranked[1].blocked, /openai is exhausted/);
 });
 
 test('with /recommend off every model is band 2, ranked by preference alone', () => {
