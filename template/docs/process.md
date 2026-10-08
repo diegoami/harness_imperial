@@ -31,7 +31,7 @@ It watches each background job (start, end, no output for 10 min), never with `p
 `docs/tasks/T<nn>.md`, 150–400 words, from `docs/tasks/TEMPLATE.md`: Kind, Evidence, Owns,
 Scope, Done when, Hazards, Implementer, Reviewer, Merge after. Rules:
 - **Owns** names directories or files. Go finer only when two tasks run at once in one file: function-level Owns made one project open 27 PRs that only widened a list. (L5)
-- **Done when**: each line is one check a command can run. The main session runs each line before dispatch: it fails on `main` and passes on a mock fix. (L45)
+- **Done when**: each line is one check a command can run. The main session runs each line before dispatch: it fails on `main` and passes on a mock fix. (L45) For a guard (a gate, check or tool whose failure lets a protected rule be bypassed), each constraint it enforces is its own numbered line, and the main session pushes the guard's tests to the task branch before dispatch, one mutation test per bypass class the design predicts, failing until the guard lands. (L64)
 - **Milestones**: a task likely to outlast one implementer run (about an hour), or whose Done-when is
   all or nothing (an exact match, a whole model), is split into tasks that each merge on their own:
   the static reading, any tool that produces ground truth, then the deliverable piece by piece. A
