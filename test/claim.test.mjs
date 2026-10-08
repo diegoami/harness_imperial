@@ -449,3 +449,17 @@ test('a plain comment on the issue extends the lease, and a takeover in the exte
     assert.equal((await r.run(take('box-p'), { HARNESS_NOW: at(45 * 60) })).code, 0);
   } finally { r.done(); }
 });
+
+test('a slow claimer of a released task, acting on its old read after another won, loses (supplementary R1)', async () => {
+  const r = repo();
+  try {
+    await r.run(claimArgs('box-a'));
+    await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a']);
+    // Both read the released ref; the first finishes its claim before the second moves (FAKE_GH_SEQ).
+    const res = await Promise.all(['b', 'c'].map((n) => r.run(claimArgs(n), { FAKE_GH_SEQ: '2' })));
+    assert.deepEqual(res.map((x) => x.code).sort(), [0, 3], res.map((x) => x.err).join('\n'));
+    const winner = ['b', 'c'][res.findIndex((x) => x.code === 0)];
+    assert.equal(holderOf(r), winner);
+    assert.equal((await status(r)).holder, winner);
+  } finally { r.done(); }
+});

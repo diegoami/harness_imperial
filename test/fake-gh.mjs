@@ -109,13 +109,18 @@ function api() {
   }
   // FAKE_GH_SEQ=N (the takeover race): N callers (claim.mjs processes, told apart by ppid) all read
   // the claim ref first, then write to it one at a time in the order they read, each finishing (a
-  // claim comment or a 422) before the next starts. So every later taker acts on a stale view: the
+  // 422, or its claim comment and the re-read of the ref after it) before the next starts. So every later taker acts on a stale view: the
   // case where a delete and re-create would let it delete the first taker's new ref.
   const claimRef = /^git\/ref\/heads\/claim\//.test(r) || /^git\/refs\/heads\/claim\//.test(r) || (r === 'git/refs' && /^refs\/heads\/claim\//.test(fields.ref ?? ''));
   if (process.env.FAKE_GH_SEQ && claimRef) {
     const seq = (state.seq ??= { readers: [], turn: 0, started: [] });
     const me = process.ppid;
-    if (method === 'GET') { if (!seq.readers.includes(me)) seq.readers.push(me); save(); }
+    seq.commented ??= []; seq.done ??= [];
+    if (method === 'GET') {
+      if (!seq.readers.includes(me)) seq.readers.push(me);
+      else if (seq.commented.includes(me) && !seq.done.includes(me)) { seq.done.push(me); seq.turn++; }
+      save();
+    }
     else if (!seq.started.includes(me)) {
       for (let i = 0; ; i++) {
         const q = state.seq;
@@ -164,7 +169,7 @@ function api() {
     const shift = Number(process.env.FAKE_GH_COMMENT_DELAY_MIN ?? 0) * 60e3;
     const c = { body: fields.body, created_at: new Date(Date.parse(nowIso()) + shift).toISOString().replace(/\.\d{3}Z$/, 'Z') };
     (state.issueComments[m[1]] ??= []).push(c);
-    if (process.env.FAKE_GH_SEQ && /^claim /.test(fields.body) && state.seq?.started.includes(process.ppid)) state.seq.turn++;
+    if (process.env.FAKE_GH_SEQ && /^claim /.test(fields.body) && state.seq?.started.includes(process.ppid)) (state.seq.commented ??= []).push(process.ppid);
     save(); return reply(201, c);
   }
   if ((m = /^issues\/(\d+)\/comments$/.exec(r))) {
