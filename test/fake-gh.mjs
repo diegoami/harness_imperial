@@ -172,9 +172,14 @@ function api() {
     process.exit(0);
   }
   if ((m = /^commits\?(.+)$/.exec(r))) {
+    // FAKE_GH_FAIL_COMMITS: GitHub cannot be read (503). A branch never pushed is GitHub's 404.
+    if (process.env.FAKE_GH_FAIL_COMMITS) return reply(503, { message: 'Service Unavailable' });
     const q = new URLSearchParams(m[1]);
+    if (!state.branchDates?.[q.get('sha')]) return reply(404, { message: `No commit found for SHA: ${q.get('sha')}` });
     const since = Date.parse(q.get('since') ?? '1970-01-01T00:00:00Z');
-    for (const d of [].concat(state.branchDates?.[q.get('sha')] ?? []).filter((x) => Date.parse(x) >= since).sort().reverse()) console.log(d);
+    const dates = [].concat(state.branchDates[q.get('sha')]).filter((x) => Date.parse(x) >= since).sort().reverse();
+    if (args.includes('--include')) return reply(200, dates.map((date) => ({ commit: { committer: { date } } })));
+    for (const d of dates) console.log(d);
     process.exit(0);
   }
   reply(404, { message: `fake gh: no route ${method} ${route}` });

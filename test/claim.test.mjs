@@ -43,10 +43,11 @@ test('claim: a 201 wins; the ref points at a claim commit on main; comment, labe
     assert.equal(x.out, `claim-api op=create status=201 ref=refs/heads/claim/T14 machine=box-a at=${T0}\n`);
     const s = r.read();
     const c = s.commits[s.refs['refs/heads/claim/T14']];
-    assert.match(c.message, new RegExp(`^claim T14 machine=box-a at=${T0} nonce=[0-9a-f]{12}$`));
+    assert.match(c.message, new RegExp(`^claim T14 machine=box-a at=${T0} issue=39 nonce=[0-9a-f]{12}$`));
+    const id = /nonce=(\S+)/.exec(c.message)[1];
     assert.equal(c.tree, 'tree0');
     assert.deepEqual(c.parents, ['m0']);
-    assert.deepEqual(s.issueComments[39].map((k) => k.body), [`claim T14 machine=box-a at=${T0} lease=24h preflight=gh:ok`]);
+    assert.deepEqual(s.issueComments[39].map((k) => k.body), [`claim T14 machine=box-a at=${T0} lease=24h preflight=gh:ok id=${id}`]);
     assert.deepEqual(s.issueLabels[39].sort(), ['machine:box-a', 'status:in-progress', 'task']);
     assert.ok(s.labelsCreated.includes('machine:box-a'));
   } finally { r.done(); }
@@ -105,7 +106,7 @@ test('claim: a failed claim comment gives the claim back (released); a label fai
     assert.match(x.out, /op=create status=201/);
     assert.match(x.out, /op=release status=200/);
     const s = r.read();
-    assert.match(s.commits[s.refs['refs/heads/claim/T14']].message, /^release T14 machine=box-a \S+ reason=claim-comment-failed /);
+    assert.match(s.commits[s.refs['refs/heads/claim/T14']].message, /^release T14 machine=box-a \S+ issue=39 reason=claim-comment-failed /);
     assert.equal((await status(r)).state, 'released');
     // A released ref is claimed by a compare-and-set move, not a create.
     const y = await r.run(claimArgs('box-a'), { FAKE_GH_FAIL_LABELS: '1' });
@@ -167,7 +168,7 @@ test('release: only the holder; the ref moves to a release commit, never deleted
     assert.equal(x.code, 0, x.err);
     assert.match(x.out, /^claim-api op=release status=200 /);
     const s = r.read();
-    assert.match(s.commits[s.refs['refs/heads/claim/T14']].message, /^release T14 machine=box-a at=\S+ reason=escalated nonce=/);
+    assert.match(s.commits[s.refs['refs/heads/claim/T14']].message, /^release T14 machine=box-a at=\S+ issue=39 reason=escalated nonce=/);
     assert.ok(!s.issueLabels[39].includes('machine:box-a'));
     assert.match(s.issueComments[39].at(-1).body, /^release T14 machine=box-a at=\S+ reason=escalated$/);
     assert.equal((await status(r)).state, 'released');
@@ -218,7 +219,7 @@ test('takeover: refused when not stale or without authority; the primary takes a
     assert.deepEqual(s.issueLabels[39].sort(), ['machine:box-p', 'status:in-progress', 'task']);
     const bodies = s.issueComments[39].map((k) => k.body);
     assert.match(bodies.at(-2), /^takeover T14 from=box-a by=box-p /);
-    assert.match(bodies.at(-1), /^claim T14 machine=box-p at=\S+ lease=24h preflight=gh:ok$/);
+    assert.match(bodies.at(-1), /^claim T14 machine=box-p at=\S+ lease=24h preflight=gh:ok id=[0-9a-f]{12}$/);
     const st = await status(r, late);
     assert.equal(st.holder, 'box-p'); assert.equal(st.stale, null);
   } finally { r.done(); }
@@ -366,5 +367,85 @@ test('of several machines claiming a released task at once, exactly one wins', a
     const res = await Promise.all(['b', 'c', 'd', 'e'].map((n) => r.run(claimArgs(n))));
     assert.deepEqual(res.map((x) => x.code).sort(), [0, 3, 3, 3], res.map((x) => x.err).join('\n'));
     assert.equal(holderOf(r), ['b', 'c', 'd', 'e'][res.findIndex((x) => x.code === 0)]);
+  } finally { r.done(); }
+});
+
+test('a renewer displaced while renewing does not report success (round 2, R1)', async () => {
+  const r = repo();
+  try {
+    await r.run(claimArgs('box-a'));
+    const x = await r.run(['renew', '--task', 'T14', '--issue', '39', '--machine', 'box-a'], hook('POST issues/39/comments', take('box-u', '--by-user', '--force')));
+    assert.equal(hookLog(r)[0].code, 0, hookLog(r)[0].err);
+    assert.equal(x.code, 3, x.err);
+    assert.match(x.err, /taken over while renewing/);
+    assert.equal(holderOf(r), 'box-u');
+  } finally { r.done(); }
+});
+
+test('renew refuses a claim whose claim comment is not there yet (round 2, R2)', async () => {
+  const r = repo();
+  try {
+    const x = await r.run(claimArgs('box-a'), { FAKE_GH_FAIL_COMMENT: '1', ...hook('POST issues/39/comments', ['renew', '--task', 'T14', '--issue', '39', '--machine', 'box-a']) });
+    assert.equal(hookLog(r)[0].code, 3, hookLog(r)[0].err);
+    assert.match(hookLog(r)[0].err, /no claim comment yet/);
+    assert.equal(x.code, 1, x.err);
+    assert.equal((await status(r)).state, 'released');      // the claimer's give-back went through
+  } finally { r.done(); }
+});
+
+test('a task branch that cannot be read makes the lease unknown, and no takeover acts on it (round 2, R3)', async () => {
+  const r = repo({ variables: { HARNESS_PRIMARY: 'box-p' }, branchDates: { 'task/T14-x': [at(23 * 60)] } });
+  try {
+    await r.run(claimArgs('box-a', '--branch', 'task/T14-x'));
+    const down = { HARNESS_NOW: at(25 * 60), FAKE_GH_FAIL_COMMITS: '1' };
+    const s = await status(r, down);
+    assert.equal(s.stale, null); assert.match(s.unknown, /could not be read/);
+    assert.equal((await r.run(take('box-p'), down)).code, 3);
+    assert.equal(holderOf(r), 'box-a');
+    // A branch never pushed (GitHub's 404) is no activity, not unknown.
+    const n = repo({ variables: { HARNESS_PRIMARY: 'box-p' } });
+    try {
+      await n.run(claimArgs('box-a', '--branch', 'task/T14-new'));
+      assert.equal((await status(n, { HARNESS_NOW: at(25 * 60) })).unknown, undefined);
+      assert.equal((await n.run(take('box-p'), { HARNESS_NOW: at(25 * 60) })).code, 0);
+    } finally { n.done(); }
+  } finally { r.done(); }
+});
+
+test('a claim is bound to its issue: naming another issue is refused before anything is written (round 2, R4)', async () => {
+  const r = repo({ variables: { HARNESS_PRIMARY: 'box-p' } });
+  try {
+    await r.run(claimArgs('box-a'));
+    const before = r.read();
+    const x = await r.run(['takeover', '--task', 'T14', '--issue', '40', '--machine', 'box-p'], { HARNESS_NOW: at(11) });
+    assert.equal(x.code, 2, x.err);
+    assert.match(x.err, /claim is on issue #39, not #40/);
+    assert.equal(x.out, '');
+    assert.deepEqual(r.read().refs, before.refs);
+    assert.deepEqual(r.read().issueComments, before.issueComments);
+  } finally { r.done(); }
+});
+
+test('an earlier claim\'s comment never stands in for a later claim in the same second (round 2, R5)', async () => {
+  const r = repo({ variables: { HARNESS_PRIMARY: 'box-p' }, branchDates: { 'task/new': [at(23 * 60)] } });
+  try {
+    assert.equal((await r.run(claimArgs('box-a', '--branch', 'task/old'))).code, 0);
+    assert.equal((await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a'])).code, 0);
+    assert.equal((await r.run(claimArgs('box-a', '--branch', 'task/new'))).code, 0);
+    const s = await status(r, { HARNESS_NOW: at(25 * 60) });
+    assert.equal(s.branch, 'task/new'); assert.equal(s.stale, null);
+    assert.equal((await r.run(take('box-p'), { HARNESS_NOW: at(25 * 60) })).code, 3);
+  } finally { r.done(); }
+});
+
+test('a plain comment on the issue extends the lease, and a takeover in the extended lease is refused (round 2, R6)', async () => {
+  const r = repo({ variables: { HARNESS_PRIMARY: 'box-p' } });
+  try {
+    await r.run(claimArgs('box-a'));
+    const st = r.read(); st.issueComments[39].push({ body: 'progress note', created_at: at(20 * 60) }); fs.writeFileSync(r.file, JSON.stringify(st));
+    const s = await status(r, { HARNESS_NOW: at(25 * 60) });
+    assert.equal(s.stale, null); assert.equal(s.expires, at(44 * 60));
+    assert.equal((await r.run(take('box-p'), { HARNESS_NOW: at(25 * 60) })).code, 3);
+    assert.equal((await r.run(take('box-p'), { HARNESS_NOW: at(45 * 60) })).code, 0);
   } finally { r.done(); }
 });

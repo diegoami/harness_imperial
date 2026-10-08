@@ -3,11 +3,13 @@
 //
 // The ref refs/heads/claim/T<nn> is the claim's whole state: the commit it points at says who holds
 // the task and since when (GitHub dates no ref). Its message is one of
-//   claim T<nn> machine=<id> at=<iso> nonce=<hex>                 held by <id>, claimed at <iso>
-//   renew T<nn> machine=<id> at=<iso> claimed=<iso> nonce=<hex>   held by <id>, lease renewed
-//   release T<nn> machine=<id> at=<iso> reason=<word> nonce=<hex> free (the task branch is the state)
-//   merged T<nn> machine=<id> at=<iso> nonce=<hex>                done; the ref is then deleted
-// and the nonce keeps two machines' commits apart even with equal text (a commit is its content).
+//   claim T<nn> machine=<id> at=<iso> issue=<n> nonce=<hex>                    held, claimed at <iso>
+//   renew T<nn> machine=<id> at=<iso> issue=<n> claimed=<iso> id=<hex> nonce=<hex>   lease renewed
+//   release T<nn> machine=<id> at=<iso> issue=<n> reason=<word> nonce=<hex>   free (the branch is the state)
+//   merged T<nn> machine=<id> at=<iso> issue=<n> nonce=<hex>                   done; the ref is then deleted
+// The nonce keeps two commits apart even with equal text (a commit is its content); a claim's nonce
+// is its id, which its claim comment and its renewals carry, so no other claim's comment can stand
+// in for it. `issue` binds the claim to its issue: a call naming another is refused.
 // The first claim is `POST git/refs`, which GitHub answers 422 "Reference already exists" for all
 // but one caller. Every later change (claim of a released ref, renew, release, takeover, merge)
 // is a non-forced PATCH to a child of the commit the caller read, which GitHub refuses (422 "not a
@@ -17,7 +19,8 @@
 // The lease: 24h from the claim comment (or the renewal), extended by each comment on the issue
 // and each commit on the task branch made before it ran out. Once run out it stays out (activity
 // after that revives nothing), so a takeover's stale read cannot be undone by a late comment; only
-// `renew`, which moves the ref, can beat the taker. A claim commit whose claim comment is missing
+// `renew`, which moves the ref, can beat the taker. A task branch that cannot be read leaves the
+// lease unknown, which no takeover but the user's --force acts on. A claim whose claim comment is missing
 // 10 minutes after its time is stale at once; a claimer that took 5 minutes to comment gives up.
 // A holder re-runs `status` before it acts on the claim (a merge, a push): a forced takeover by the
 // user can displace it at any time.
@@ -98,19 +101,21 @@ function stateCommit(env, message, parent) {
 
 // Moves the ref from `from` (the commit read) to a new child commit; { r, sha }. 422 not-a-fast-
 // forward means someone else moved it first.
-function move(env, io, op, task, machine, at, from, message) {
-  const sha = stateCommit(env, `${message} nonce=${nonce()}`, from);
+function move(env, io, op, task, machine, at, from, message, id = nonce()) {
+  const sha = stateCommit(env, `${message} nonce=${id}`, from);
   const r = api(env, 'PATCH', refRoute(task), { sha, force: 'false' });
   attempt(io, op, r, task, machine, at);
   if (r.status !== 200 && !notFastForward(r)) need(r, `move ${refName(task)}`, 200);
-  return { r, sha, moved: r.status === 200 };
+  return { r, sha, id, moved: r.status === 200 };
 }
 
 export function parseState(message) {
   const m = /^(claim|renew|release|merged) (T\d+) machine=(\S+) at=(\S+)(.*)$/.exec((message ?? '').split('\n')[0]);
   if (!m) return null;
   const field = (k) => new RegExp(` ${k}=(\\S+)`).exec(m[5])?.[1];
-  return { kind: m[1], task: m[2], machine: m[3], at: m[4], claimed: m[1] === 'renew' ? field('claimed') : m[1] === 'claim' ? m[4] : undefined, reason: field('reason') };
+  return { kind: m[1], task: m[2], machine: m[3], at: m[4], issue: field('issue'), reason: field('reason'),
+    claimed: m[1] === 'renew' ? field('claimed') : m[1] === 'claim' ? m[4] : undefined,
+    id: m[1] === 'renew' ? field('id') : field('nonce') };
 }
 
 function comments(env, issue) {
@@ -118,9 +123,16 @@ function comments(env, issue) {
   return out ? out.split('\n').map((l) => JSON.parse(l)) : [];
 }
 
+// The task branch's commit times since `since`; [] when the branch was never pushed (404), null
+// when GitHub could not be read: an unknown, never proof of no activity (Sol's round-2 R3).
 function branchDates(env, branch, since) {
-  const out = gh(env, ['api', '--paginate', `repos/{owner}/{repo}/commits?sha=${encodeURIComponent(branch)}&since=${since}`, '--jq', '.[].commit.committer.date'], { allowFail: true });
-  return out.ok && out.stdout ? out.stdout.split('\n').map((d) => Date.parse(d)) : [];
+  const route = `repos/{owner}/{repo}/commits?sha=${encodeURIComponent(branch)}&since=${since}`;
+  const probe = api(env, 'GET', `${route}&per_page=1`);
+  if (probe.status === 404) return [];
+  if (probe.status !== 200) return null;
+  const out = gh(env, ['api', '--paginate', route, '--jq', '.[].commit.committer.date'], { allowFail: true });
+  if (!out.ok) return null;
+  return out.stdout ? out.stdout.split('\n').map((d) => Date.parse(d)) : [];
 }
 
 // A comment through the API, so its time is GitHub's: { created_at }.
@@ -143,12 +155,13 @@ export function readClaim({ env, task, issue, branch }) {
   const commit = need(api(env, 'GET', `repos/{owner}/{repo}/git/commits/${sha}`), 'read the claim commit', 200);
   const s = parseState(commit.message);
   if (!s || s.task !== task) return { state: 'held', held: true, sha, holder: null, stale: 'the claim ref points at a commit that is not a claim' };
+  if (s.issue && s.issue !== String(issue)) throw usage(`${task}'s claim is on issue #${s.issue}, not #${issue}`);
   if (s.kind === 'release') return { state: 'released', held: false, sha, by: s.machine, at: s.at, reason: s.reason };
   if (s.kind === 'merged') return { state: 'merged', held: false, sha, by: s.machine, at: s.at };
-  const base = { state: 'held', held: true, sha, holder: s.machine, kind: s.kind, at: s.at, claimed: s.claimed };
+  const base = { state: 'held', held: true, sha, holder: s.machine, kind: s.kind, at: s.at, claimed: s.claimed, id: s.id, established: false };
   const t = now(env).getTime();
   const list = comments(env, issue);
-  const i = list.findIndex((c) => c.body.startsWith(`claim ${task} machine=${s.machine} at=${s.claimed} `));
+  const i = list.findIndex((c) => c.body.startsWith(`claim ${task} machine=${s.machine} at=${s.claimed} `) && c.body.split(' ').includes(`id=${s.id}`));
   if (i < 0) {
     const age = t - Date.parse(s.claimed);
     return { ...base, stale: age >= NO_COMMENT_MS ? `no claim comment ${Math.floor(age / 60e3)} min after the claim` : null, pending: age < NO_COMMENT_MS };
@@ -156,11 +169,14 @@ export function readClaim({ env, task, issue, branch }) {
   const lease = parseLease(/ lease=(\S+)/.exec(list[i].body)?.[1]);
   const b = branch ?? / branch=(\S+)/.exec(list[i].body)?.[1];
   const start = Math.max(Date.parse(list[i].created_at), s.kind === 'renew' ? Date.parse(s.at) : 0);
-  const events = [...list.slice(i + 1).map((c) => Date.parse(c.created_at)), ...(b ? branchDates(env, b, iso(start)) : [])].filter((e) => e > start).sort((x, y) => x - y);
+  const pushes = b ? branchDates(env, b, iso(start)) : [];
+  const events = [...list.slice(i + 1).map((c) => Date.parse(c.created_at)), ...(pushes ?? [])].filter((e) => e > start).sort((x, y) => x - y);
   let expires = start + lease;
   let last = start;
   for (const e of events) if (e < expires) { expires = e + lease; last = e; }
-  return { ...base, branch: b, lastActivity: iso(last), expires: iso(expires), stale: t >= expires ? `the lease ran out at ${iso(expires)} with no push and no comment before it` : null };
+  const out = { ...base, established: true, branch: b, lastActivity: iso(last), expires: iso(expires) };
+  if (pushes === null) return { ...out, stale: null, unknown: `the task branch ${b} could not be read, so the lease is unknown` };
+  return { ...out, stale: t >= expires ? `the lease ran out at ${iso(expires)} with no push and no comment before it` : null };
 }
 
 function labels(env, issue) {
@@ -186,21 +202,22 @@ const holderLabels = (env, issue, machine) => labels(env, issue).filter((l) =>
 
 // After the ref is ours: the claim comment, the time check, the labels, and a last read that the
 // ref is still ours. A failed comment or a slow one gives the claim back (compare-and-set).
-function establish({ env, io, task, issue, machine, at, sha, preflight, branch }) {
-  const body = `claim ${task} machine=${machine} at=${at} lease=24h preflight=${preflight}${branch ? ` branch=${branch}` : ''}`;
+function establish({ env, io, task, issue, machine, at, sha, id, preflight, branch }) {
+  const body = `claim ${task} machine=${machine} at=${at} lease=24h preflight=${preflight} id=${id}${branch ? ` branch=${branch}` : ''}`;
   let posted;
-  try { posted = comment(env, issue, body); } catch (err) { return giveBack(env, io, task, machine, sha, 'claim-comment-failed', `the claim comment failed (${err.message})`); }
+  try { posted = comment(env, issue, body); } catch (err) { return giveBack(env, io, task, issue, machine, sha, 'claim-comment-failed', `the claim comment failed (${err.message})`); }
   const took = Date.parse(posted.created_at) - Date.parse(at);
-  if (took >= GIVE_UP_MS) return giveBack(env, io, task, machine, sha, 'claim-too-slow', `the claim comment came ${Math.floor(took / 60e3)} min after the claim`);
+  if (took >= GIVE_UP_MS) return giveBack(env, io, task, issue, machine, sha, 'claim-too-slow', `the claim comment came ${Math.floor(took / 60e3)} min after the claim`);
   setLabels(env, io, issue, [`machine:${machine}`, 'status:in-progress'], holderLabels(env, issue, machine));
-  const ref = api(env, 'GET', `repos/{owner}/{repo}/git/ref/heads/claim/${task}`);
-  if (ref.body?.object?.sha !== sha) { io.err(`lost: ${refName(task)} moved away from this claim before it was established (a takeover). Stop.`); return 3; }
+  if (!stillOurs(env, task, sha)) { io.err(`lost: ${refName(task)} moved away from this claim before it was established (a takeover). Stop.`); return 3; }
   return 0;
 }
 
-function giveBack(env, io, task, machine, sha, reason, why) {
+const stillOurs = (env, task, sha) => api(env, 'GET', `repos/{owner}/{repo}/git/ref/heads/claim/${task}`).body?.object?.sha === sha;
+
+function giveBack(env, io, task, issue, machine, sha, reason, why) {
   const at = iso(now(env));
-  const m = move(env, io, 'release', task, machine, at, sha, `release ${task} machine=${machine} at=${at} reason=${reason}`);
+  const m = move(env, io, 'release', task, machine, at, sha, `release ${task} machine=${machine} at=${at} issue=${issue} reason=${reason}`);
   io.err(`${why}; the claim was ${m.moved ? 'given back (released)' : 'already moved by another machine, which holds it now'}.`);
   return 1;
 }
@@ -208,12 +225,13 @@ function giveBack(env, io, task, machine, sha, reason, why) {
 // Exit codes: 0 done, 1 defect or GitHub error, 2 usage, 3 held / lost / refused: the caller stops.
 export function claim({ env, io, task, issue, machine, preflight = 'not-run', branch }) {
   const at = iso(now(env));
-  const message = `claim ${task} machine=${machine} at=${at}`;
+  const message = `claim ${task} machine=${machine} at=${at} issue=${issue}`;
   let c = readClaim({ env, task, issue });
   if (c.state === 'merged') { io.err(`refused: ${task} is merged.`); return 3; }
   let sha;
+  let id = nonce();
   if (c.state !== 'released') {
-    sha = stateCommit(env, `${message} nonce=${nonce()}`);
+    sha = stateCommit(env, `${message} nonce=${id}`);
     const r = api(env, 'POST', 'repos/{owner}/{repo}/git/refs', { ref: refName(task), sha });
     attempt(io, 'create', r, task, machine, at);
     if (refExists(r)) {
@@ -226,9 +244,9 @@ export function claim({ env, io, task, issue, machine, preflight = 'not-run', br
   if (c.state === 'released') {
     const m = move(env, io, 'claim', task, machine, at, c.sha, message);
     if (!m.moved) { io.err(`held: another machine claimed ${task} first. Stop.`); return 3; }
-    sha = m.sha;
+    ({ sha, id } = m);
   }
-  const code = establish({ env, io, task, issue, machine, at, sha, preflight, branch });
+  const code = establish({ env, io, task, issue, machine, at, sha, id, preflight, branch });
   if (code === 0) io.err(`won: ${task} is claimed by ${machine} at ${at}.`);
   return code;
 }
@@ -242,10 +260,13 @@ const notHolder = (io, c, machine, task) => {
 export function renew({ env, io, task, issue, machine }) {
   const c = readClaim({ env, task, issue });
   if (notHolder(io, c, machine, task)) return 3;
+  // A claim not yet established (its claim comment pending) has nothing to renew (round-2 R2).
+  if (!c.established) { io.err(`refused: ${task}'s claim by ${machine} has no claim comment yet; nothing to renew.`); return 3; }
   const at = iso(now(env));
-  const m = move(env, io, 'renew', task, machine, at, c.sha, `renew ${task} machine=${machine} at=${at} claimed=${c.claimed}`);
+  const m = move(env, io, 'renew', task, machine, at, c.sha, `renew ${task} machine=${machine} at=${at} issue=${issue} claimed=${c.claimed} id=${c.id}`);
   if (!m.moved) { io.err(`lost: ${refName(task)} was moved by another machine. Stop.`); return 3; }
   try { comment(env, issue, `renew ${task} machine=${machine} at=${at}`); } catch (err) { io.err(`renewed, but the renew comment failed (${err.message}).`); }
+  if (!stillOurs(env, task, m.sha)) { io.err(`lost: ${refName(task)} was taken over while renewing. Stop.`); return 3; }
   io.err(`renewed: ${task} by ${machine}${c.stale ? ` (it was stale: ${c.stale})` : ''}.`);
   return 0;
 }
@@ -257,7 +278,7 @@ export function release({ env, io, task, issue, machine, reason = 'released', me
   const c = readClaim({ env, task, issue });
   if (notHolder(io, c, machine, task)) return 3;
   const at = iso(now(env));
-  const msg = merged ? `merged ${task} machine=${machine} at=${at}` : `release ${task} machine=${machine} at=${at} reason=${reason}`;
+  const msg = merged ? `merged ${task} machine=${machine} at=${at} issue=${issue}` : `release ${task} machine=${machine} at=${at} issue=${issue} reason=${reason}`;
   const m = move(env, io, merged ? 'merged' : 'release', task, machine, at, c.sha, msg);
   if (!m.moved) { io.err(`lost: ${refName(task)} was moved by another machine, which holds it now. Stop.`); return 3; }
   comment(env, issue, `release ${task} machine=${machine} at=${at} reason=${merged ? 'merged' : reason}`);
@@ -285,14 +306,14 @@ export function takeover({ env, io, task, issue, machine, byUser = false, force 
   }
   const c = readClaim({ env, task, issue, branch });
   if (!c.held) { io.err(`${task} is ${c.state}, not held: ${c.state === 'merged' ? 'nothing to take' : 'claim it instead'}.`); return 3; }
-  if (!c.stale && !force) { io.err(`refused: ${task}'s claim by ${c.holder} is not stale (${c.pending ? 'its claim comment is pending' : `lease until ${c.expires}`}).`); return 3; }
+  if (!c.stale && !force) { io.err(`refused: ${task}'s claim by ${c.holder} is not stale (${c.unknown ?? (c.pending ? 'its claim comment is pending' : `lease until ${c.expires}`)}).`); return 3; }
   if (c.holder === machine && !force) { io.err(`${machine} already holds ${task}: renew it instead.`); return 3; }
   const at = iso(now(env));
   const old = c.holder ?? 'unknown';
   comment(env, issue, `takeover ${task} from=${old} by=${machine} at=${at} ${c.stale ? `stale=${JSON.stringify(c.stale)}` : 'forced-by-user'}`);
-  const m = move(env, io, 'takeover', task, machine, at, c.sha, `claim ${task} machine=${machine} at=${at}`);
+  const m = move(env, io, 'takeover', task, machine, at, c.sha, `claim ${task} machine=${machine} at=${at} issue=${issue}`);
   if (!m.moved) { io.err(`lost: another machine moved ${refName(task)} first (a taker, or the holder renewing). Stop.`); return 3; }
-  const code = establish({ env, io, task, issue, machine, at, sha: m.sha, preflight, branch: branch ?? c.branch });
+  const code = establish({ env, io, task, issue, machine, at, sha: m.sha, id: m.id, preflight, branch: branch ?? c.branch });
   if (code === 0) io.err(`taken over: ${task} from ${old} by ${machine} at ${at}. Resume the pushed task branch; never recreate it.`);
   return code;
 }
