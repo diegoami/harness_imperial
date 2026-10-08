@@ -603,12 +603,12 @@ test('a reviewer whose provider is out of quota is skipped before it runs, sayin
 });
 
 test('every reviewer out of quota: exit 3 before any run, naming why (L50)', posix, async () => {
-  const s = await quotaServer([entry('openai', 'exhausted', [{ name: '7d', used_pct: 100 }, { name: 'gpt-5.6-luna:7d', used_pct: 97 }])]);
+  const s = await quotaServer([entry('openai', 'exhausted', [{ name: '7d', used_pct: 100 }], { when_exhausted: { usable_models: [] } })]);
   try {
     const p = project();
     const r = review(p, { FAKE_OC_MODE: 'review-ok', HARNESS_QUOTA_URL: s.url }, '--exclude', 'claude');
     assert.equal(r.status, 3, r.stderr + r.stdout);
-    assert.match(r.stderr, /luna: skipped, out of quota: its own gpt-5\.6-luna:7d window is 97% used/);
+    assert.match(r.stderr, /luna: skipped, out of quota: openai is exhausted/);
     assert.equal(gh(p).comments.length, 0);
     assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   } finally { s.stop(); }

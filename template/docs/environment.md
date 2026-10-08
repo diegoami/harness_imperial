@@ -96,10 +96,11 @@ Each provider has a `status`: `ok` (under 80% used), `low` (80% or more), `exhau
 more: do not use it until `available_at` / `available_in`), `error` (it could not be checked;
 `error` says why) or `not_configured`. `headroom_pct` is the percent left on its most-used window;
 `windows[]` lists every limit with `used_pct` and when it resets. OpenRouter is prepaid: its
-windows never reset, and `remaining_usd` is the balance. A model with a pool of its own has its
-own window, named after it: today GPT-5.6 Luna (`gpt-5.6-luna:7d`), which can be usable while
-OpenAI's main `7d` window, the one GPT-6 Luna and Sol draw on, is exhausted. Read which pools exist
-from the windows the endpoint returns, not from this page.
+windows never reset, and `remaining_usd` is the balance. Every model is judged on its
+provider's main window, GPT-5.6 Luna included: it draws on OpenAI's main quota like Sol. Only when a
+provider is `exhausted` can a model still run on a limit of its own, and then the provider's
+`when_exhausted.usable_models` names it (today `gpt-5.6-luna` on OpenAI; L65). Read which pools
+exist from the windows the endpoint returns, not from this page.
 
 Free models on OpenRouter are a supplement, for smaller tasks and additional reviews (a second
 opinion next to a regular model), never the main model for important work (the owner, 2026-10-06):
@@ -166,9 +167,9 @@ provider, the models called with their `calls`, `sessions`, `tokens` and `effort
 them (`title`, `project`, `tool`, `data_dir`, `launched_by`). `since` takes `90m`, `24h`, `7d`, `4w`
 or `all`. Use it to check that heavy models ran at the effort L54 asks for.
 
-GPT-5.6 Luna, the reviewer (L51), has its own weekly limit: for light work OpenAI is usable while
-the `gpt-5.6-luna:7d` window in `/quota/openai` is under 95%, even when OpenAI's main window is
-exhausted.
+GPT-5.6 Luna, the reviewer (L51), uses OpenAI's main quota like Sol. When OpenAI is `exhausted`,
+Luna alone can still run while `/quota/openai`'s `when_exhausted.usable_models` lists
+`gpt-5.6-luna` (L65).
 
 If `curl -sf localhost:8765/health` fails where the service is installed:
 1. `systemctl --user restart quota-tracker`, wait a few seconds, and check `/health` again.
@@ -179,9 +180,8 @@ If `curl -sf localhost:8765/health` fails where the service is installed:
    in the background (it stops when the session ends).
 
 `implement.mjs` and `review.mjs` ask the service themselves before their chain runs (`lib/quota.mjs`,
-L52): a model with a window of its own (GPT-5.6 Luna's `gpt-5.6-luna:7d`) is judged by that window
-alone, skipped at 95% or more even when its provider is not exhausted, and run under 95% even when
-it is; any other model is skipped when its provider is `exhausted`. A provider in `error` or
+L52): a model is skipped when its provider is `exhausted`, unless the provider's
+`when_exhausted.usable_models` names it (L65). A provider in `error` or
 `not_configured` skips nothing. Each skip is logged with its reason, and with none left the script
 exits 3. `HARNESS_QUOTA_URL` names another
 address. Where the service does not answer, they skip nothing and log `quota: not checked`.

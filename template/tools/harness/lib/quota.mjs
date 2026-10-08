@@ -1,8 +1,8 @@
 // The providers' quota, from quota-tracker where the machine runs it (L50, docs/environment.md):
 // before a chain runs, a model whose provider is exhausted is skipped, with the reason, instead of
-// being tried and failing. A model with a pool of its own (a window named after it, such as
-// `gpt-5.6-luna:7d`) is judged by that window: it stays usable while it is under 95%, even when its
-// provider's main window is exhausted.
+// being tried and failing. Every model is judged on its provider's main quota; GPT-5.6 Luna too
+// (it has no window of its own any more). Only an exhausted provider's `when_exhausted.usable_models`
+// names a model that still runs on its own limit: today Luna alone (the owner, 2026-10-09; L65).
 //
 // HARNESS_QUOTA_URL names the service (default http://localhost:8765). A service that does not
 // answer within a few seconds, or answers with something unreadable, checks nothing: every model
@@ -34,8 +34,12 @@ export async function readQuota(env = process.env, { timeoutMs = 3000 } = {}) {
     const window = (w) => w && typeof w.name === 'string' && typeof w.used_pct === 'number' && text(w.resets_in);
     const num = (v) => typeof v === 'number';
     const free = (f) => f === undefined || f === null || (typeof f === 'object' && num(f.remaining) && num(f.limit));
+    // when_exhausted, when present, is an object carrying usable_models, an array of strings
+    // (Luna's R1 on PR 136: {} and [] must not pass).
+    const whenOut = (w) => w === undefined || w === null || (typeof w === 'object' && !Array.isArray(w)
+      && Array.isArray(w.usable_models) && w.usable_models.every((m) => typeof m === 'string'));
     const readable = (p) => p && typeof p.provider === 'string' && typeof p.status === 'string' && text(p.available_in)
-      && free(p.free_model_daily_requests)
+      && free(p.free_model_daily_requests) && whenOut(p.when_exhausted)
       && (p.windows === undefined || (Array.isArray(p.windows) && p.windows.every(window)));
     if (!list.every(readable)) return { off: `${url} answered something unreadable` };
     return { providers: new Map(list.map((p) => [p.provider, p])) };
@@ -56,9 +60,9 @@ export function quotaBlock(id, quota) {
     if (!f) return null;
     return f.remaining > 0 ? null : `the free models' daily allowance is used up (${f.used ?? f.limit} of ${f.limit} requests)`;
   }
-  const own = (p.windows ?? []).find((w) => w.name.split(':')[0] === id.split('/').slice(1).join('/'));
-  if (own) return own.used_pct >= EXHAUSTED_PCT ? `its own ${own.name} window is ${own.used_pct}% used${own.resets_in ? `, resets in ${own.resets_in}` : ''}` : null;
   if (p.status !== 'exhausted') return null;
+  // An exhausted provider still serves the models it names here, each on its own limit (L65).
+  if ((p.when_exhausted?.usable_models ?? []).includes(id.split('/').slice(1).join('/'))) return null;
   return `${p.provider} is exhausted${p.available_in ? ` until it is usable again in ${p.available_in}` : ''}`;
 }
 
