@@ -135,7 +135,9 @@ test('the reviewer runs git in its worktree and is never asked to type its path 
   // L61: the rule scopes itself to the reviewer's own worktree; a brief may send git at a
   // pinned outside repository with git -C, which OpenCode does not path-check.
   assert.match(session.brief, /This rule is about\n {2}your own worktree only \(L61\)/);
-  const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8').split(/^---$/m).slice(2).join('');
+  const instructions = fs.readFileSync(path.join(root, '.opencode/agents/reviewer.md'), 'utf8')
+    .replace(/\r\n/g, '\n')   // CRLF→LF: Windows git checkouts would otherwise fail this assertion
+    .split(/^---$/m).slice(2).join('');
   assert.doesNotMatch(instructions, /worktree's path: one mistyped character[^.]*\. Run git -C/);   // never for its own worktree
   assert.match(instructions, /governs\n {2}your own worktree only \(L61\)/);
   assert.match(instructions, /git rev-parse --show-toplevel/);
