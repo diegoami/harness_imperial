@@ -1,6 +1,9 @@
 # T<nn> <Title>
 
-- **Kind**: feature | correction (of T<nn>, bug #<n>) | slice | infrastructure
+- **Kind**: feature | correction (of T<nn>, bug #<n>) | slice | infrastructure | model-driven
+  (a task that runs the original under a named, gated carve-out; the carve-out's letters
+  A–G are the reviewer's line-by-line checklist; preconditions and gate are named in
+  Scope)
 - **Issue**: #<n> · **Branch**: `task/T<nn>-<slug>` · **Merge after**: T<nn>, …
 - **Implementer**: opencode (the default, `glm-flash`, then `deepseek-flash`; or `<model>` from harness.json) · **Claude fallback**: sonnet | opus. A model heavier than the default: the reason here (L46)
 - **Reviewer**: opencode (the default, `luna`: GPT-5.6 Luna on OpenAI), then claude opus | claude (opus | sonnet); never the implementer's family
