@@ -128,16 +128,41 @@ test('quota off means preference alone, even with pricing reachable (Sol\'s R2)'
   }
 });
 
-test('a provider the tracker could not check is band 1, unknown, blocking nothing', () => {
+test('a provider the tracker could not check is band 3, unknown, blocking nothing', () => {
   const quota = of(entry('openai', 'error', [], { headroom_pct: null }));
   const c = config();
   c.chooser = { implementer: { easy: ['deepseek-flash', 'ali-qwen-flash'] } };
   const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota,
     pricing: { pricing: new Map() } });
   const ds = ranked.find((r) => r.name === 'deepseek-flash');
-  assert.equal(ds.band, 1);            // opencode_go absent from the tracker: unknown, not blocked
+  assert.equal(ds.band, 3);            // opencode_go absent from the tracker: unknown, not blocked
   assert.equal(ds.blocked, null);
   assert.equal(ds.status, 'unknown');
+});
+
+test('an unmonitored discounted provider ranks after every monitored one with quota left (#125)', () => {
+  // game-archaeologist's T16: Alibaba is absent from /quota (#119) yet, discounted, ranked above
+  // zai at 23% left. Unknown headroom is the last band; its discount reorders it only there.
+  const c = config();
+  c.models['ali-glm'] = { id: 'alibaba-token-plan/glm-5.3', variant: 'low', family: 'glm' };
+  c.chooser = { reviewer: { hard: ['ali-glm', 'ali-qwen-flash', 'glm', 'deepseek-flash', 'luna'] } };
+  const quota = of(
+    entry('openai', 'ok', [], { headroom_pct: 90 }),
+    entry('zai', 'ok', [], { headroom_pct: 23 }),
+    entry('opencode_go', 'low', [], { headroom_pct: 12 }),
+  );
+  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'hard', quota,
+    pricing: pricing({ alibaba: { discount_now: true } }) });
+  assert.deepEqual(ranked.map((r) => r.name), ['luna', 'glm', 'deepseek-flash', 'ali-glm', 'ali-qwen-flash']);
+  assert.equal(ranked.find((r) => r.name === 'ali-glm').band, 3);
+  assert.equal(ranked.find((r) => r.name === 'ali-glm').tier, -1);
+  assert.equal(ranked.find((r) => r.name === 'ali-glm').blocked, null);
+  // status not_monitored, if the tracker lists it, is unknown too.
+  const listed = of(entry('zai', 'ok', [], { headroom_pct: 23 }), entry('alibaba', 'not_monitored', [], { headroom_pct: null }));
+  const r2 = rankCandidates({ config: c, role: 'reviewer', difficulty: 'hard', quota: listed,
+    pricing: pricing({ alibaba: { discount_now: true } }) });
+  assert.equal(r2.find((r) => r.name === 'ali-glm').band, 3);
+  assert.ok(r2.findIndex((r) => r.name === 'glm') < r2.findIndex((r) => r.name === 'ali-glm'));
 });
 
 test('readPricing: present, absent without blocking, and off when the service is down', async () => {
