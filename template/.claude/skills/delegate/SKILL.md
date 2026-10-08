@@ -80,4 +80,5 @@ When a project's `CLAUDE.md` loosens a rule by carve-out, three changes merge be
 task that uses it: the known-good table in a finding, the gate in `tools/` that checks every
 record against it, and the task file for the first run, which names the carve-out's lettered
 preconditions as Done-when lines. Delegate a `model-driven` task only once the gate accepts the
-implementer's run records; such a run corroborates the owner's runs, never replaces them. (L63)
+implementer's run records; such a run corroborates the owner's runs, never replaces them, and its
+results amend the wording one claim at a time, never in bulk. (L63)

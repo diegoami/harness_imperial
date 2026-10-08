@@ -140,7 +140,7 @@ run, or the owner's decision with its basis. Plausible rules without either stay
 - New evidence runs in two stages: findings to the research repository, then a check of every
   document claim it touches. Each finding is a doc fix, a bug, a task-file edit, or a question for the user; research never decides design. (L16)
 - The original files never enter the repository. CI fetches them from a private fixtures
-  repository holding the whole corpus; tests find fixtures by name; local tests skip without them. (L17) A *model-driven run* of the original is a carve-out of this (§10): a known-good hash table in a finding, a gate that refuses any run record off that table, then a `model-driven` task (`docs/tasks/TEMPLATE.md`); it corroborates the owner's runs, never replaces them. (L63)
+  repository holding the whole corpus; tests find fixtures by name; local tests skip without them. (L17) A *model-driven run* of the original is a carve-out of this (§10): a known-good hash table in a finding, a gate that refuses any run record off that table, then a `model-driven` task (`docs/tasks/TEMPLATE.md`); it corroborates the owner's runs, never replaces them, and what it shows amends `spec/` and `findings/` one claim at a time, never in bulk. (L63)
 
 ## 12. Delegating decisions to Jev
 
