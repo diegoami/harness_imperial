@@ -76,8 +76,7 @@ Token Plan section below for what this means and how to use those models.
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one (alibaba's still carries a
-  `pricing` object, even though the rest of its entry is empty, and the chooser's `readPricing`
-  reads it; zai's carries `pricing` too);
+  `pricing` object, even though the rest of its entry is empty; zai's carries `pricing` too);
 - OpenCode's `external_directory` is a coarse guard, not a sandbox (L61, the owner accepted
   2026-10-06): it path-checks the agent's file tools and, as raw command text, `cd` and `cat`
   (L59) — not `git -C` or grep/sed/head/ls, so an agent with bash allowed can read any directory.

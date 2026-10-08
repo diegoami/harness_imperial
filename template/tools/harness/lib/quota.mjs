@@ -62,29 +62,35 @@ export function quotaBlock(id, quota) {
   return `${p.provider} is exhausted${p.available_in ? ` until it is usable again in ${p.available_in}` : ''}`;
 }
 
-// The time-of-day pricing quota-tracker reports per provider (`/quota/<provider>`'s `pricing`:
-// alibaba's `discount_now`/`next_change_at`/`discount_pct`, zai's `peak_now`/`multiplier`), for
-// ranking, never blocking (docs/models.md): a provider without pricing, or a payload that fails
-// to parse, is simply absent from the map; only a service that cannot be reached at all is `{ off }`.
-// { pricing: Map(name → pricing) } or { off: why }.
-const PRICING_PROVIDERS = ['alibaba', 'zai'];
-export async function readPricing(env = process.env, { timeoutMs = 3000 } = {}) {
+// quota-tracker's recommendation (`/recommend?tier=heavy` and `?tier=light`, the owner 2026-10-08):
+// per model, `score` = spare calls per day until its pool resets (negative: the pool runs out
+// before then at the current demand; null: the pool cannot be sized yet, `spare_pct` still says
+// how much is left), comparable across providers where headroom percentages are not. `skipped`
+// lists the exhausted or nearly full, with why. Alibaba is not ranked. Both tiers are read; a tier
+// that cannot be read, or says its statistics are still loading with nothing ranked, adds no rows.
+// { rows: [{ provider, model, score, usable, spare_pct, limiting_window, confidence, reasons,
+// skipped, why }] } or { off: why } when neither tier answers.
+export async function readRecommend(env = process.env, { timeoutMs = 3000 } = {}) {
   const base = `${(env.HARNESS_QUOTA_URL || 'http://localhost:8765').replace(/\/$/, '')}`;
-  const pricing = new Map();
-  for (const name of PRICING_PROVIDERS) {
+  const rows = [];
+  const problems = [];
+  const str = (v) => typeof v === 'string';
+  const row = (r) => r && str(r.provider) && str(r.model) && (r.score === null || r.score === undefined || typeof r.score === 'number');
+  for (const tier of ['heavy', 'light']) {
     try {
-      const res = await fetch(`${base}/quota/${name}`, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!res.ok) continue;
-      const p = await res.json();
-      if (p && typeof p === 'object' && p.pricing && typeof p.pricing === 'object') pricing.set(name, p.pricing);
-    } catch { /* this provider only */ }
-  }
-  if (!pricing.size) {
-    try {
-      await fetch(`${base}/quota`, { signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetch(`${base}/recommend?tier=${tier}`, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) { problems.push(`${tier}: ${res.status}`); continue; }
+      const b = await res.json();
+      const ranking = Array.isArray(b?.ranking) ? b.ranking : [];
+      const skipped = Array.isArray(b?.skipped) ? b.skipped : [];
+      if (![...ranking, ...skipped].every(row)) { problems.push(`${tier}: unreadable`); continue; }
+      if (!ranking.length && b?.note) { problems.push(`${tier}: ${b.note}`); continue; }
+      for (const r of ranking) rows.push({ ...r, score: r.score ?? null, tier, skipped: false });
+      for (const r of skipped) rows.push({ ...r, score: r.score ?? null, tier, skipped: true, why: r.why ?? r.reason ?? (r.reasons ?? []).join('; ') });
     } catch (e) {
-      return { off: `${base} did not answer (${e.cause?.code ?? e.name})` };
+      problems.push(`${tier}: ${e.cause?.code ?? e.name}`);
     }
   }
-  return { pricing };
+  if (!rows.length) return { off: `${base}/recommend gave nothing (${problems.join(', ')})` };
+  return { rows };
 }
