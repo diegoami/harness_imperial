@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export function quotaServer(providers, raw) {
-  const child = spawn(process.execPath, [path.join(here, 'fake-quota.mjs')], { env: { ...process.env, FAKE_QUOTA: raw ?? JSON.stringify(providers) } });
+export function quotaServer(providers, raw, env = {}) {
+  const child = spawn(process.execPath, [path.join(here, 'fake-quota.mjs')], { env: { ...process.env, FAKE_QUOTA: raw ?? JSON.stringify(providers), ...env } });
   return new Promise((resolve) => {
     child.stdout.once('data', (d) => resolve({ url: `http://127.0.0.1:${String(d).trim()}`, stop: () => child.kill() }));
   });

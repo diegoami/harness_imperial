@@ -1,5 +1,5 @@
-// The chooser: ranking harness.json's models for a role and difficulty by live quota and
-// pricing over the owner's preference order (headroom outranks pricing — the owner, 2026-10-06).
+// The chooser: ranking harness.json's models for a role and difficulty by quota-tracker's
+// /recommend band over the owner's preference order (#128, the owner 2026-10-08).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readPricing } from '../template/tools/harness/lib/quota.mjs';
+import { readRecommend } from '../template/tools/harness/lib/quota.mjs';
 import { chooserOrder, rankCandidates } from '../template/tools/harness/lib/choose.mjs';
 import { quotaServer, entry } from './quota-server.mjs';
 
@@ -27,7 +27,8 @@ const config = () => ({
 });
 
 const of = (...entries) => ({ providers: new Map(entries.map((p) => [p.provider, p])) });
-const pricing = (map) => ({ pricing: new Map(Object.entries(map)) });
+const rec = (...rows) => ({ rows: rows.map((r) => ({ usable: true, skipped: false, limiting_window: '7d', ...r })) });
+const row = (provider, model, score, extra = {}) => ({ provider, model, score, ...extra });
 
 test('chooserOrder: the block when it names it, the chains when it does not, and a rotting name refuses', () => {
   const c = config();
@@ -42,33 +43,77 @@ test('chooserOrder: the block when it names it, the chains when it does not, and
   assert.throws(() => chooserOrder(rotted, { role: 'reviewer', difficulty: 'easy' }), /names nobody, which harness\.json's models does not list/);
 });
 
-test('headroom outranks pricing: a discounted nearly-burnt pool loses to a fresh one (the owner, 2026-10-06)', () => {
+
+test('a pool with spare calls outranks one that runs out before its reset, whatever the preference order (#128)', () => {
   const c = config();
-  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'deepseek-flash'] } };
-  const quota = of(
-    entry('alibaba', 'low', [{ name: 'month', used_pct: 92, resets_in: '12d' }], { headroom_pct: 8 }),
-    entry('opencode_go', 'ok', [{ name: '7d', used_pct: 20, resets_in: '5d' }], { headroom_pct: 80 }),
-  );
-  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota, pricing: pricing({ alibaba: { discount_now: true, next_change_at: 1791295200 } }) });
-  assert.equal(ranked[0].name, 'deepseek-flash');
-  assert.equal(ranked[1].name, 'ali-qwen-flash');
-  assert.equal(ranked[1].band, 2);
-  assert.equal(ranked[1].tier, -1);
-  assert.match(ranked[1].note, /discount on/);
+  c.chooser = { implementer: { easy: ['deepseek-flash', 'glm-flash'] } };
+  // opencode_go has the bigger headroom percentage but would run out before its monthly reset;
+  // zai has spare calls/day: the comparable measure decides, not the percentage.
+  const quota = of(entry('opencode_go', 'ok', [], { headroom_pct: 70 }), entry('zai', 'ok', [], { headroom_pct: 25 }));
+  const recommend = rec(row('opencode_go', 'deepseek-v4.1-flash', -742, { limiting_window: '30d' }), row('zai', 'glm-5.3-flash', 14, { limiting_window: '1w' }));
+  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota, recommend });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band, r.score]), [['glm-flash', 0, 14], ['deepseek-flash', 1, -742]]);
+  assert.match(ranked[0].note, /14 spare calls\/day/);
 });
 
-test('pricing reorders peers within a band: a discount promotes, a peak demotes', () => {
+test('within a band the owner\'s preference order decides, not the score', () => {
   const c = config();
-  c.chooser = { implementer: { easy: ['glm-flash', 'ali-qwen-flash', 'deepseek-flash'] } };
-  const quota = of(
-    entry('zai', 'ok', [], { headroom_pct: 60 }),
-    entry('alibaba', 'ok', [], { headroom_pct: 60 }),
-    entry('opencode_go', 'ok', [], { headroom_pct: 60 }),
+  c.chooser = { reviewer: { hard: ['glm', 'luna'] } };
+  const recommend = rec(row('zai', 'glm-5.3', 6, { limiting_window: '1w' }), row('openai', 'gpt-5.6-luna', 449));
+  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'hard', quota: of(), recommend });
+  assert.deepEqual(ranked.map((r) => r.name), ['glm', 'luna']);
+});
+
+test('a pool not yet sized (score null) is band 0 while usable with spare, band 1 without', () => {
+  const c = config();
+  c.chooser = { reviewer: { easy: ['glm', 'luna'] } };
+  const sized = rec(row('zai', 'glm-5.3', -5), row('openai', 'gpt-5.6-luna', null, { spare_pct: 95, limiting_window: 'gpt-5.6-luna:7d' }));
+  let ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend: sized });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['luna', 0], ['glm', 1]]);
+  assert.match(ranked[0].note, /not yet sized, 95% spare/);
+  const none = rec(row('zai', 'glm-5.3', -5), row('openai', 'gpt-5.6-luna', null, { spare_pct: 0, limiting_window: 'gpt-5.6-luna:7d' }));
+  ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend: none });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['glm', 1], ['luna', 1]]);
+  const unusable = rec(row('openai', 'gpt-5.6-luna', null, { spare_pct: 40, usable: false }));
+  assert.equal(rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend: unusable }).find((r) => r.name === 'luna').band, 1);
+});
+
+test('OpenRouter\'s prepaid 0 and a skipped (nearly full) pool are band 1; an unranked one is band 2 (#125)', () => {
+  const c = config();
+  c.models.or = { id: 'openrouter/deepseek/deepseek-v4.1-flash', variant: 'high', family: 'deepseek' };
+  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'or', 'glm-flash', 'deepseek-flash'] } };
+  const recommend = { rows: [
+    { provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash', score: 0, usable: true, skipped: false },
+    { provider: 'zai', model: 'glm-5.3-flash', score: null, skipped: true, why: '1w: 96% used' },
+    { provider: 'opencode_go', model: 'deepseek-v4.1-flash', score: 3, usable: true, skipped: false, limiting_window: '30d' },
+  ] };
+  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota: of(), recommend });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['deepseek-flash', 0], ['or', 1], ['glm-flash', 1], ['ali-qwen-flash', 2]]);
+  assert.match(ranked.find((r) => r.name === 'glm-flash').note, /skipped by \/recommend: 1w: 96% used/);
+  assert.match(ranked.find((r) => r.name === 'ali-qwen-flash').note, /not ranked/);
+  assert.equal(ranked.find((r) => r.name === 'ali-qwen-flash').blocked, null);
+});
+
+test('a model /recommend does not list takes its provider\'s shared pool, never a model\'s own window', () => {
+  const c = config();
+  c.models.sol = { id: 'openai/gpt-6-sol', variant: 'low', family: 'openai' };
+  c.chooser = { reviewer: { easy: ['sol', 'glm'] } };
+  // Sol draws on openai's shared 7d pool (sol-6.1's row), never on Luna's own window: shared
+  // runs out, Luna's is fresh -> band 1; then shared is fresh, Luna's runs out -> band 0.
+  let recommend = rec(
+    row('openai', 'gpt-5.6-luna', 900, { limiting_window: 'gpt-5.6-luna:7d' }),
+    row('openai', 'gpt-6.1-sol', -20, { limiting_window: '7d' }),
+    row('zai', 'glm-5.3', 6, { limiting_window: '1w' }),
   );
-  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota,
-    pricing: pricing({ alibaba: { discount_now: true }, zai: { peak_now: true } }) });
-  assert.deepEqual(ranked.map((r) => r.name), ['ali-qwen-flash', 'deepseek-flash', 'glm-flash']);
-  assert.equal(ranked.find((r) => r.name === 'glm-flash').tier, 1);
+  let ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['glm', 0], ['sol', 1]]);
+  assert.match(ranked.find((r) => r.name === 'sol').note, /its provider's gpt-6\.1-sol row/);
+  recommend = rec(
+    row('openai', 'gpt-5.6-luna', -50, { limiting_window: 'gpt-5.6-luna:7d' }),
+    row('openai', 'gpt-6.1-sol', 300, { limiting_window: '7d' }),
+  );
+  ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend });
+  assert.equal(ranked.find((r) => r.name === 'sol').band, 0);
 });
 
 test('an exhausted provider ranks last with the reason; a reviewer never shares the implementer\'s family', () => {
@@ -77,7 +122,7 @@ test('an exhausted provider ranks last with the reason; a reviewer never shares 
     entry('openai', 'ok', [], { headroom_pct: 70 }),
   );
   const ranked = rankCandidates({ config: config(), role: 'reviewer', difficulty: 'hard', quota,
-    pricing: { pricing: new Map() }, implementedBy: 'glm-flash' });
+    recommend: { rows: [] }, implementedBy: 'glm-flash' });
   // glm is excluded (the implementer's family) and ranks last with the reason; luna reviews.
   assert.equal(ranked[0].name, 'luna');
   assert.equal(ranked[ranked.length - 1].name, 'glm');
@@ -94,21 +139,55 @@ test('a model whose own window is exhausted ranks last on fresh provider headroo
     { name: 'gpt-5.6-luna:7d', used_pct: 97, resets_in: '6d' },
     { name: '7d', used_pct: 30, resets_in: '4d' },
   ], { headroom_pct: 70 }));
-  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota, pricing: { pricing: new Map() } });
+  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota, recommend: { rows: [] } });
   assert.equal(ranked[0].name, 'sol');
   assert.equal(ranked[ranked.length - 1].name, 'luna');
   assert.match(ranked.find((r) => r.name === 'luna').blocked, /own gpt-5\.6-luna:7d window is 97% used/);
 });
 
-test('quota off means preference alone, even with pricing reachable (Sol\'s R2)', async () => {
+test('with /recommend off every model is band 2, ranked by preference alone', () => {
+  const c = config();
+  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'deepseek-flash', 'glm-flash'] } };
+  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota: of(entry('zai', 'ok', [])), recommend: { off: 'down' } });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['ali-qwen-flash', 2], ['deepseek-flash', 2], ['glm-flash', 2]]);
+});
+
+test('readRecommend: both tiers, a loading note with nothing ranked adds nothing, off when neither answers', async () => {
+  const heavy = { ranking: [{ provider: 'openai', model: 'gpt-6.1-sol', score: 449 }], skipped: [{ provider: 'opencode_go', model: 'deepseek-v4-pro', score: null, reasons: ['30d: 99% used'] }] };
+  const light = { ranking: [], skipped: [], note: 'statistics are loading' };
+  const lightRows = { ranking: [{ provider: 'zai', model: 'glm-5.3-flash', score: 14 }], skipped: [] };
+  const s = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(heavy), FAKE_RECOMMEND_LIGHT: JSON.stringify(lightRows) });
+  try {
+    const got = await readRecommend({ HARNESS_QUOTA_URL: s.url });
+    assert.deepEqual(got.rows.map((r) => [r.model, r.tier, r.skipped]), [['gpt-6.1-sol', 'heavy', false], ['deepseek-v4-pro', 'heavy', true], ['glm-5.3-flash', 'light', false]]);
+    assert.equal(got.rows[1].why, '30d: 99% used');
+  } finally { s.stop(); }
+  // A light tier still loading adds nothing; the heavy rows stand.
+  const half = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(heavy), FAKE_RECOMMEND_LIGHT: JSON.stringify(light) });
+  try {
+    assert.deepEqual((await readRecommend({ HARNESS_QUOTA_URL: half.url })).rows.map((r) => r.tier), ['heavy', 'heavy']);
+  } finally { half.stop(); }
+  // Only the light tier answering: its rows are read.
+  const lonly = await quotaServer([], undefined, { FAKE_RECOMMEND_LIGHT: JSON.stringify(lightRows) });
+  try {
+    assert.deepEqual((await readRecommend({ HARNESS_QUOTA_URL: lonly.url })).rows.map((r) => r.model), ['glm-5.3-flash']);
+  } finally { lonly.stop(); }
+  const loading = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(light), FAKE_RECOMMEND_LIGHT: JSON.stringify(light) });
+  try { assert.match((await readRecommend({ HARNESS_QUOTA_URL: loading.url })).off, /loading/); } finally { loading.stop(); }
+  const garbage = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify({ ranking: [{ model: 3 }] }) });
+  try { assert.match((await readRecommend({ HARNESS_QUOTA_URL: garbage.url })).off, /unreadable/); } finally { garbage.stop(); }
+  assert.match((await readRecommend({ HARNESS_QUOTA_URL: 'http://127.0.0.1:9' })).off, /gave nothing/);
+});
+
+test('quota off means preference alone, even with /recommend reachable (Sol\'s R2)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'choose2-'));
   const c = config();
   c.chooser = { implementer: { hard: ['deepseek-flash', 'ali-qwen-flash'] } };
   fs.writeFileSync(path.join(dir, 'harness.json'), JSON.stringify(c));
   await new Promise((r) => spawn(process.execPath, ['-e', 'require("child_process").execSync("git init -q")'], { cwd: dir }).on('exit', r));
-  // /quota is garbage; /quota/alibaba answers a discount. The discount must not reorder.
-  process.env.FAKE_QUOTA_PROVIDERS = JSON.stringify([entry('alibaba', 'ok', [], { pricing: { discount_now: true } })]);
-  const s2 = await quotaServer([], 'not json');
+  // /quota is garbage; /recommend would put ali-qwen-flash first. It must not reorder.
+  const s2 = await quotaServer([], 'not json', { FAKE_RECOMMEND_LIGHT: JSON.stringify({ ranking: [
+    { provider: 'alibaba', model: 'qwen3.8-flash', score: 99, usable: true }, { provider: 'opencode_go', model: 'deepseek-v4.1-flash', score: -9, usable: true }] }) });
   try {
     const run = (args) => new Promise((resolve) => {
       const p = spawn(process.execPath, [tool, ...args], { cwd: dir, env: { ...process.env, HARNESS_QUOTA_URL: s2.url }, encoding: 'utf8' });
@@ -128,62 +207,6 @@ test('quota off means preference alone, even with pricing reachable (Sol\'s R2)'
   }
 });
 
-test('a provider the tracker could not check is band 3, unknown, blocking nothing', () => {
-  const quota = of(entry('openai', 'error', [], { headroom_pct: null }));
-  const c = config();
-  c.chooser = { implementer: { easy: ['deepseek-flash', 'ali-qwen-flash'] } };
-  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota,
-    pricing: { pricing: new Map() } });
-  const ds = ranked.find((r) => r.name === 'deepseek-flash');
-  assert.equal(ds.band, 3);            // opencode_go absent from the tracker: unknown, not blocked
-  assert.equal(ds.blocked, null);
-  assert.equal(ds.status, 'unknown');
-});
-
-test('an unmonitored discounted provider ranks after every monitored one with quota left (#125)', () => {
-  // game-archaeologist's T16: Alibaba is absent from /quota (#119) yet, discounted, ranked above
-  // zai at 23% left. Unknown headroom is the last band; its discount reorders it only there.
-  const c = config();
-  c.models['ali-glm'] = { id: 'alibaba-token-plan/glm-5.3', variant: 'low', family: 'glm' };
-  c.chooser = { reviewer: { hard: ['ali-glm', 'ali-qwen-flash', 'glm', 'deepseek-flash', 'luna'] } };
-  const quota = of(
-    entry('openai', 'ok', [], { headroom_pct: 90 }),
-    entry('zai', 'ok', [], { headroom_pct: 23 }),
-    entry('opencode_go', 'low', [], { headroom_pct: 12 }),
-  );
-  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'hard', quota,
-    pricing: pricing({ alibaba: { discount_now: true } }) });
-  assert.deepEqual(ranked.map((r) => r.name), ['luna', 'glm', 'deepseek-flash', 'ali-glm', 'ali-qwen-flash']);
-  assert.equal(ranked.find((r) => r.name === 'ali-glm').band, 3);
-  assert.equal(ranked.find((r) => r.name === 'ali-glm').tier, -1);
-  assert.equal(ranked.find((r) => r.name === 'ali-glm').blocked, null);
-  // status not_monitored, if the tracker lists it, is unknown too.
-  const listed = of(entry('zai', 'ok', [], { headroom_pct: 23 }), entry('alibaba', 'not_monitored', [], { headroom_pct: null }));
-  const r2 = rankCandidates({ config: c, role: 'reviewer', difficulty: 'hard', quota: listed,
-    pricing: pricing({ alibaba: { discount_now: true } }) });
-  assert.equal(r2.find((r) => r.name === 'ali-glm').band, 3);
-  assert.ok(r2.findIndex((r) => r.name === 'glm') < r2.findIndex((r) => r.name === 'ali-glm'));
-});
-
-test('readPricing: present, absent without blocking, and off when the service is down', async () => {
-  const s = await quotaServer([
-    entry('alibaba', 'ok', [], { pricing: { discount_now: false, next_change_at: 1 } }),
-    entry('zai', 'ok', [], { pricing: { peak_now: true, next_change_at: 2 } }),
-  ]);
-  try {
-    const got = await readPricing({ HARNESS_QUOTA_URL: s.url });
-    assert.equal(got.pricing.get('alibaba').discount_now, false);
-    assert.equal(got.pricing.get('zai').peak_now, true);
-  } finally { s.stop(); }
-  const none = await quotaServer([entry('alibaba', 'ok', []), entry('zai', 'ok', [])]);
-  try {
-    const got = await readPricing({ HARNESS_QUOTA_URL: none.url });
-    assert.equal(got.pricing.size, 0);   // no pricing anywhere: not off, just empty
-  } finally { none.stop(); }
-  const down = await readPricing({ HARNESS_QUOTA_URL: 'http://127.0.0.1:9' });
-  assert.match(down.off, /did not answer/);
-});
-
 test('the CLI ranks, picks, and exits 3 when nothing is usable', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'choose-'));
   const run = (args, env) => new Promise((resolve) => {
@@ -198,21 +221,30 @@ test('the CLI ranks, picks, and exits 3 when nothing is usable', async () => {
   fs.writeFileSync(path.join(dir, 'harness.json'), JSON.stringify(c));
   await new Promise((r) => git(['init', '-q']).on('exit', r));
   const s = await quotaServer([
-    entry('opencode_go', 'ok', [{ name: '7d', used_pct: 20, resets_in: '5d' }], { headroom_pct: 80 }),
-    entry('alibaba', 'low', [{ name: 'month', used_pct: 92, resets_in: '12d' }], { headroom_pct: 8, pricing: { discount_now: true } }),
-  ]);
+    entry('opencode_go', 'ok', [{ name: '30d', used_pct: 20, resets_in: '5d' }], { headroom_pct: 80 }),
+  ], undefined, { FAKE_RECOMMEND_LIGHT: JSON.stringify({ ranking: [{ provider: 'opencode_go', model: 'deepseek-v4.1-flash', score: 120, usable: true }] }) });
   try {
     const table = await run(['--role', 'implementer', '--difficulty', 'easy'], { HARNESS_QUOTA_URL: s.url });
     assert.equal(table.code, 0, table.err);
     assert.match(table.out, /1\. deepseek-flash/);
     assert.match(table.out, /2\. ali-qwen-flash/);
-    assert.match(table.out, /discount on/);
+    assert.match(table.out, /1\. deepseek-flash.*band 0 — 120 spare calls\/day/);
+    assert.match(table.out, /2\. ali-qwen-flash.*band 2 — not ranked by \/recommend/);
     const pick = await run(['--role', 'implementer', '--difficulty', 'easy', '--pick'], { HARNESS_QUOTA_URL: s.url });
     assert.equal(pick.code, 0);
     assert.match(pick.out.trim().split('\n').at(-1), /^deepseek-flash$/);
     const json = await run(['--role', 'implementer', '--difficulty', 'easy', '--json'], { HARNESS_QUOTA_URL: s.url });
     assert.deepEqual(JSON.parse(json.out).ranked.map((r) => r.name), ['deepseek-flash', 'ali-qwen-flash']);
   } finally { s.stop(); }
+  // /quota answers, /recommend does not: band 2 for all, by preference, and the CLI says so.
+  const norec = await quotaServer([entry('opencode_go', 'ok', [])]);
+  try {
+    const t = await run(['--role', 'implementer', '--difficulty', 'easy'], { HARNESS_QUOTA_URL: norec.url });
+    assert.equal(t.code, 0, t.err);
+    assert.match(t.err, /recommend: not read: .*every model is band 2, by preference/);
+    assert.match(t.out, /1\. deepseek-flash.*band 2/);
+    assert.match(t.out, /2\. ali-qwen-flash.*band 2/);
+  } finally { norec.stop(); }
   const dead = await run(['--role', 'implementer', '--difficulty', 'easy', '--pick'], { HARNESS_QUOTA_URL: 'http://127.0.0.1:9' });
   assert.equal(dead.code, 0);            // tracker off: ranks by preference alone, never blocks
   const blocked = await quotaServer([

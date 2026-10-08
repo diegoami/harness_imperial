@@ -1,10 +1,12 @@
-// Ranking the registered models for a run, by live quota and time-of-day pricing over the
-// owner's preference order (harness.json's `chooser` block; an absent block falls back to the
-// chains). Pure: no IO, so tests drive it directly.
+// Ranking the registered models for a run, by quota-tracker's recommendation over the owner's
+// preference order (harness.json's `chooser` block; an absent block falls back to the chains).
+// Pure: no IO, so tests drive it directly.
 //
-// The order is (blocked, band, tier, preference index) — headroom outranks pricing, per the
-// owner (2026-10-06): a discounted pool that is nearly burnt loses to a fresh one; pricing only
-// reorders peers with comparable headroom. A reviewer never shares the implementer's family.
+// The order is (blocked, band, preference index). The band comes from `/recommend` (the owner,
+// 2026-10-08, #128): headroom percentages are not comparable between providers, whose pools
+// differ in size and period and are partly used by Claude sessions; `/recommend`'s score, spare
+// calls per day until the reset, is. Time-of-day pricing is in that score already (zai's peak
+// multiplier), so it is no tier of its own here. A reviewer never shares the implementer's family.
 
 import { providerOf, quotaBlock } from './quota.mjs';
 import { excludeImplementers } from './chain.mjs';
@@ -30,37 +32,44 @@ export function chooserOrder(config, { role, difficulty }) {
   return difficulty === 'easy' ? [...(rev.chain ?? [])] : [...(rev.hard ?? rev.chain ?? [])];
 }
 
-// Headroom band: 0 means half the window or more is left, 1 a fifth to a half (or low), 2 under
-// a fifth, 3 unknown: a provider the tracker could not check, or does not monitor (Alibaba, #119).
-// Unknown blocks nothing (quotaBlock) but ranks after every monitored provider with quota left,
-// so its pricing only reorders it among the unknown (#125).
-function bandOf(p) {
-  if (!p || p.status === 'error' || p.status === 'not_configured' || p.status === 'not_monitored') return { band: 3, unknown: true };
-  const h = typeof p.headroom_pct === 'number' ? p.headroom_pct : null;
-  if (h === null) return { band: p.status === 'low' ? 1 : 0, unknown: false };
-  return { band: h >= 50 ? 0 : h >= 20 ? 1 : 2, unknown: false };
+// The `/recommend` row for a model id: the row naming that model, else (a model it does not list,
+// such as an older Sol) the provider's shared pool, i.e. its rows not limited by a model's own
+// window (`name:period`), the lowest score of them. null when the provider has no row.
+export function recommendRow(id, rec) {
+  const provider = providerOf(id);
+  const model = id.split('/').slice(1).join('/');
+  const rows = (rec?.rows ?? []).filter((r) => r.provider === provider);
+  const exact = rows.find((r) => r.model === model);
+  if (exact) return { row: exact, estimate: false };
+  const shared = rows.filter((r) => !String(r.limiting_window ?? '').includes(':') && r.model !== model);
+  if (!shared.length) return null;
+  const low = shared.reduce((x, y) => ((y.score ?? Infinity) < (x.score ?? Infinity) ? y : x));
+  return { row: low, estimate: true };
 }
 
-// Pricing tier within a band, from the owner's standing rule (docs/models.md, Pricing by time of
-// day): a discount that is on now promotes (−1); a peak that is on now demotes (+1); anything
-// else is neutral. Providers without pricing are neutral.
-function tierOf(provider, pricing) {
-  const p = pricing?.get?.(provider);
-  if (!p) return { tier: 0, note: null };
-  const until = typeof p.next_change_at === 'number' ? new Date(p.next_change_at * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'the next change';
-  if (p.discount_now === true) return { tier: -1, note: `discount on until ${until}` };
-  if (p.peak_now === true) return { tier: 1, note: `peak now until ${until}` };
-  return { tier: 0, note: null };
+// Band 0: spare calls before the reset (score > 0, or a pool not yet sized that is usable with
+// spare left). Band 1: none (score <= 0: it runs out before its reset at the current demand, or
+// OpenRouter's prepaid 0), or skipped as nearly full. Band 2: not ranked at all (Alibaba, or the
+// tracker off), so it never outranks a ranked pool (#125).
+export function bandOf(id, rec) {
+  const found = recommendRow(id, rec);
+  if (!found) return { band: 2, score: null, note: rec?.off ? null : 'not ranked by /recommend' };
+  const { row, estimate } = found;
+  const via = estimate ? ` (its provider's ${row.model} row)` : '';
+  if (row.skipped) return { band: 1, score: row.score, note: `skipped by /recommend${via}: ${row.why || 'nearly full'}` };
+  if (typeof row.score === 'number') return { band: row.score > 0 ? 0 : 1, score: row.score, note: `${row.score} spare calls/day${via}` };
+  const spare = row.usable !== false && typeof row.spare_pct === 'number' && row.spare_pct > 0;
+  return { band: spare ? 0 : 1, score: null, note: `pool not yet sized, ${row.spare_pct ?? '?'}% spare${via}` };
 }
 
 /**
- * Rank the candidates for a run. `quota` and `pricing` are readQuota's and readPricing's
- * results ({ providers: Map } / { pricing: Map }); `implementedBy` (optional, reviewer only)
- * names who implemented, for the family rule. Returns the ranked list, most runnable first:
- * { name, id, family, blocked, band, tier, provider, status, headroom, limiting, note } —
- * blocked candidates last, each with its reason.
+ * Rank the candidates for a run. `quota` is readQuota's result ({ providers: Map }, for blocking)
+ * and `recommend` readRecommend's ({ rows } or { off }, for the band); `implementedBy` (optional,
+ * reviewer only) names who implemented, for the family rule. Returns the ranked list, most
+ * runnable first: { name, id, family, blocked, band, score, provider, status, note } — blocked
+ * candidates last, each with its reason.
  */
-export function rankCandidates({ config, role, difficulty, quota, pricing, implementedBy }) {
+export function rankCandidates({ config, role, difficulty, quota, recommend, implementedBy }) {
   let order = chooserOrder(config, { role, difficulty });
   let excluded = [];
   if (role === 'reviewer' && implementedBy) {
@@ -72,21 +81,17 @@ export function rankCandidates({ config, role, difficulty, quota, pricing, imple
     const entry = config.models[name];
     const provider = providerOf(entry.id);
     const p = quota?.providers?.get(provider);
-    const { band, unknown } = bandOf(p);
-    const { tier, note } = tierOf(provider, pricing?.pricing);
-    const limiting = p?.limiting_window ?? (p?.windows ?? [])[0]?.name ?? null;
+    const { band, score, note } = bandOf(entry.id, recommend);
     return {
-      name, id: entry.id, family: entry.family, blocked: quotaBlock(entry.id, quota),
-      band, tier, provider, status: p?.status ?? 'unknown', headroom: p?.headroom_pct ?? null,
-      limiting, resetsIn: p?.windows?.find((w) => w.name === p.limiting_window)?.resets_in ?? null,
-      note, index: i,
+      name, id: entry.id, family: entry.family, blocked: quota?.providers ? quotaBlock(entry.id, quota) : null,
+      band, score, provider, status: p?.status ?? 'unknown', note, index: i,
     };
   });
   for (const n of excluded) {
     ranked.push({ name: n, id: config.models[n].id, family: config.models[n].family,
       blocked: `the implementer's family (${config.models[n].family ?? n}); the reviewer never shares it`,
-      band: 9, tier: 0, provider: providerOf(config.models[n].id), status: 'excluded', headroom: null,
-      limiting: null, resetsIn: null, note: null, index: order.length + excluded.indexOf(n) });
+      band: 9, score: null, provider: providerOf(config.models[n].id), status: 'excluded', note: null,
+      index: order.length + excluded.indexOf(n) });
   }
-  return ranked.sort((a, b) => (a.blocked ? 1 : 0) - (b.blocked ? 1 : 0) || a.band - b.band || a.tier - b.tier || a.index - b.index);
+  return ranked.sort((a, b) => (a.blocked ? 1 : 0) - (b.blocked ? 1 : 0) || a.band - b.band || a.index - b.index);
 }
