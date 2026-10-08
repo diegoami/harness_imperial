@@ -154,8 +154,5 @@ Never:
 - weaken a Done-when;
 - let the implementer's model family review its PR;
 - relay part of a review;
-- dispatch a `model-driven` task before the carve-out's preconditions are merged
-  (the known-good hash table and the gate, per process.md §11) and before the carve-out's
-  gate in `tools/` accepts the implementer's `runtime.platform` and `start_state.sha256`.
-  The carve-out is corroboration, never replacement, of the owner-driven run model.
+- dispatch a `model-driven` task before its carve-out's table and gate are merged (process.md §10, L63);
 - force-push or rewrite `main`.

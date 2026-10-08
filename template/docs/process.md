@@ -132,16 +132,7 @@ the rework rate with the baseline in `docs/lessons.md` before changing models. (
 ## 10. Adding a rule
 
 A rule enters `CLAUDE.md` or this file only with a lesson in `docs/lessons.md`: a failure in a real
-run, or the owner's decision with its basis. Plausible rules without either stay out. (L14)
-
-A rule can have a **carve-out**: a named, conditional loosening of the rule for a specific
-workflow, gated by an external check (a per-project tool, a hash table, a known-good list).
-A carve-out's contract is: named preconditions; a gate that enforces them; a list of what
-the carve-out permits; a list of what stays forbidden. The carve-out is in the same numbered
-list as the rule it loosens, with its own lettered sub-conditions (A, B, C, ...) so a
-reviewer can check the carve-out line by line. The original rule's wording is unchanged;
-the carve-out is an *addendum*, not a *replacement*. A project adopts a carve-out in its
-own `CLAUDE.md`; this file carries the *shape*, not the *instance*.
+run, or the owner's decision with its basis. Plausible rules without either stay out. (L14) A rule may carry a **carve-out**: an addendum that loosens it under named conditions, its wording unchanged, with lettered preconditions (A, B, …) a reviewer checks one by one, a gate in `tools/` that enforces them, and what stays forbidden; a project's `CLAUDE.md` holds the instance. (L63)
 
 ## 11. For a reverse-engineering project
 
@@ -149,19 +140,7 @@ own `CLAUDE.md`; this file carries the *shape*, not the *instance*.
 - New evidence runs in two stages: findings to the research repository, then a check of every
   document claim it touches. Each finding is a doc fix, a bug, a task-file edit, or a question for the user; research never decides design. (L16)
 - The original files never enter the repository. CI fetches them from a private fixtures
-  repository holding the whole corpus; tests find fixtures by name; local tests skip without them. (L17)
-- **Reverse-engineering carve-out (template).** A project may forbid the original game files
-  entirely (rule 18 above) but permit a *model-driven run* of the original under named
-  conditions. The pattern: a `model-driven` task kind; a known-good hash table in a
-  finding; a `tools/check_no_originals.py`-style gate that allows a run record whose
-  `runtime.platform` matches a recognised token and whose `start_state.sha256` matches a
-  table row for the named set+variant; per-claim wording amendment in `spec/` and
-  `findings/`, not in bulk; corroboration, never replacement, of the owner-driven run model.
-  The carve-out's letters (A locality, B static-first, C per-run tagging, D text handling,
-  E corroboration, F tool check, G per-claim wording) are the *checklist* a reviewer reads
-  line by line. The companion changes that operationalise a carve-out are themselves
-  three tasks: a known-good-hash table (an F-finding's row), the gate in `tools/`, and
-  a task file for the first model-driven run.
+  repository holding the whole corpus; tests find fixtures by name; local tests skip without them. (L17) A *model-driven run* of the original is a carve-out of this (§10): a known-good hash table in a finding, a gate that refuses any run record off that table, then a `model-driven` task (`docs/tasks/TEMPLATE.md`); it corroborates the owner's runs, never replaces them. (L63)
 
 ## 12. Delegating decisions to Jev
 

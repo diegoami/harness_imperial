@@ -74,19 +74,10 @@ project reviews its UI (a person looks at the screen).
 - Send private repository content or personal data to a provider the user has not cleared for it.
 - Spend on a batch without saying the cost first.
 
-## The rule-carve-out pattern (process.md §10)
+## A rule's carve-out (process.md §10)
 
-A project may have a rule that applies in general and a *carve-out* that loosens it under
-named conditions, gated by a per-project tool. When a project's `CLAUDE.md` carries a
-carve-out, three companion changes land before any model-driven run:
-
-- a known-good hash table in a finding (the source of truth the gate reads);
-- the gate in `tools/` (the runtime check on every record);
-- a task file for the first model-driven run (the entry gate that names implementer,
-  reviewer, Done-when, and the carve-out's lettered sub-conditions).
-
-When delegating a `model-driven` task (TEMPLATE.md's `Kind` enum), the carve-out's
-gating tool is the load-bearing piece: a record whose `runtime.platform` and
-`start_state.sha256` do not match the table is refused. A model-driven task is
-*corroboration* of an owner-driven run, never a replacement. Per-claim wording
-amendment is per-claim, not in bulk.
+When a project's `CLAUDE.md` loosens a rule by carve-out, three changes merge before the first
+task that uses it: the known-good table in a finding, the gate in `tools/` that checks every
+record against it, and the task file for the first run, which names the carve-out's lettered
+preconditions as Done-when lines. Delegate a `model-driven` task only once the gate accepts the
+implementer's run records; such a run corroborates the owner's runs, never replaces them. (L63)
