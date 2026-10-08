@@ -7,6 +7,7 @@
 // GitHub serves it: compare-and-set, one 201 (the claim race test).
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 const args = process.argv.slice(2);
 if (args[0] === '--version') { console.log('gh fake'); process.exit(0); }
 const file = process.env.FAKE_GH_STATE;
@@ -90,6 +91,22 @@ function api() {
   };
   const r = route.replace(/^repos\/\{owner\}\/\{repo\}\//, '');
   let m;
+  // FAKE_GH_HOOK = { match: "<METHOD> <route regex>", run: [args] }: the first request that matches
+  // runs `node <args>` to completion first, with the lock released, so a second machine acts at
+  // exactly that point (an interleaving the API allows; Sol's R1-R5).
+  if (process.env.FAKE_GH_HOOK && !state.hookFired) {
+    const h = JSON.parse(process.env.FAKE_GH_HOOK);
+    const [hm, ...hr] = h.match.split(' ');
+    if (hm === method && new RegExp(hr.join(' ')).test(r)) {
+      state.hookFired = true; save(); unlock();
+      const env = { ...process.env };
+      for (const k of ['FAKE_GH_HOOK', 'FAKE_GH_FAIL_COMMENT', 'FAKE_GH_COMMENT_DELAY_MIN', 'FAKE_GH_SEQ']) delete env[k];
+      Object.assign(env, h.env ?? {});
+      const out = spawnSync(process.execPath, h.run, { env, encoding: 'utf8' });
+      fs.appendFileSync(`${file}.hook.log`, JSON.stringify({ code: out.status, out: out.stdout, err: out.stderr }) + '\n');
+      acquire(); state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    }
+  }
   // FAKE_GH_SEQ=N (the takeover race): N callers (claim.mjs processes, told apart by ppid) all read
   // the claim ref first, then write to it one at a time in the order they read, each finishing (a
   // claim comment or a 422) before the next starts. So every later taker acts on a stale view: the
@@ -111,7 +128,8 @@ function api() {
     }
   }
   if (r === 'git/commits' && method === 'POST') {
-    const sha = crypto.createHash('sha1').update(JSON.stringify([fields, Math.random()])).digest('hex');
+    // Content-addressed, as git is: equal message, tree and parents are one commit (Sol's R6).
+    const sha = crypto.createHash('sha1').update(JSON.stringify([fields.message, fields.tree, fields.parents ?? []])).digest('hex');
     state.commits[sha] = { message: fields.message, tree: fields.tree, parents: fields.parents ?? [], date: nowIso() };
     save(); return reply(201, { sha });
   }
@@ -141,13 +159,23 @@ function api() {
       state.refs[name] = fields.sha; save(); return reply(200, { ref: name, object: { sha: fields.sha } });
     }
   }
+  if ((m = /^issues\/(\d+)\/comments$/.exec(r)) && method === 'POST') {
+    if (process.env.FAKE_GH_FAIL_COMMENT) return reply(500, { message: 'fake gh: comment failed (FAKE_GH_FAIL_COMMENT)' });
+    const shift = Number(process.env.FAKE_GH_COMMENT_DELAY_MIN ?? 0) * 60e3;
+    const c = { body: fields.body, created_at: new Date(Date.parse(nowIso()) + shift).toISOString().replace(/\.\d{3}Z$/, 'Z') };
+    (state.issueComments[m[1]] ??= []).push(c);
+    if (process.env.FAKE_GH_SEQ && /^claim /.test(fields.body) && state.seq?.started.includes(process.ppid)) state.seq.turn++;
+    save(); return reply(201, c);
+  }
   if ((m = /^issues\/(\d+)\/comments$/.exec(r))) {
     for (const c of state.issueComments[m[1]] ?? []) console.log(JSON.stringify(c));
     process.exit(0);
   }
-  if ((m = /^commits\/(.+)$/.exec(r))) {
-    const date = state.branchDates?.[decodeURIComponent(m[1])];
-    return date ? reply(200, { commit: { committer: { date } } }) : reply(404, { message: 'Not Found' });
+  if ((m = /^commits\?(.+)$/.exec(r))) {
+    const q = new URLSearchParams(m[1]);
+    const since = Date.parse(q.get('since') ?? '1970-01-01T00:00:00Z');
+    for (const d of [].concat(state.branchDates?.[q.get('sha')] ?? []).filter((x) => Date.parse(x) >= since).sort().reverse()) console.log(d);
+    process.exit(0);
   }
   reply(404, { message: `fake gh: no route ${method} ${route}` });
 }

@@ -31,7 +31,7 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/.claude/skills/switch-model/SKILL.md` | `/switch-model`: why, the candidates (live), a dry run with a probe, the user's yes, the switch and its commit. |
 | `template/tools/harness/models.mjs` | Lists the models OpenRouter or ElevenLabs offer now, filtered by input and output (text, image, audio). |
 | `template/tools/harness/choose.mjs`, `lib/choose.mjs` | Ranks the registered models for a role and difficulty by live quota headroom and time-of-day pricing over the `chooser` block's preference order (`--pick` names the top one); advisory, never edits `harness.json`. |
-| `template/tools/harness/claim.mjs`, `lib/claim.mjs` | Claims a task for one machine (H4, #120): `claim` creates `refs/heads/claim/T<nn>` compare-and-set (201 won, 422 held), then comments and labels; `status`, `renew`, `release` and `takeover` (the primary, `HARNESS_PRIMARY`, or the user) follow the lease and staleness rules. One `claim-api` line per ref write on stdout. |
+| `template/tools/harness/claim.mjs`, `lib/claim.mjs` | Claims a task for one machine (H4, #120). The ref `refs/heads/claim/T<nn>` is the claim's whole state, and every change to it is compare-and-set: the first claim a create (201 won, 422 held), then claim of a released task, renew, release, takeover (the primary, `HARNESS_PRIMARY`, or the user) and merge non-forced moves. One `claim-api` line per ref write on stdout. |
 | `template/harness.json` | Models, chains, timeouts, providers, and the Jev decisions with their cutoffs. |
 | `template/docs/tasks/`, `template/.github/pull_request_template.md` | The task-file and PR formats. |
 

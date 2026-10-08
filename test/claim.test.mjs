@@ -43,7 +43,7 @@ test('claim: a 201 wins; the ref points at a claim commit on main; comment, labe
     assert.equal(x.out, `claim-api op=create status=201 ref=refs/heads/claim/T14 machine=box-a at=${T0}\n`);
     const s = r.read();
     const c = s.commits[s.refs['refs/heads/claim/T14']];
-    assert.equal(c.message, `claim T14 machine=box-a at=${T0}`);
+    assert.match(c.message, new RegExp(`^claim T14 machine=box-a at=${T0} nonce=[0-9a-f]{12}$`));
     assert.equal(c.tree, 'tree0');
     assert.deepEqual(c.parents, ['m0']);
     assert.deepEqual(s.issueComments[39].map((k) => k.body), [`claim T14 machine=box-a at=${T0} lease=24h preflight=gh:ok`]);
@@ -73,6 +73,9 @@ test('claim: a 422 "Reference already exists" is held, exit 3, and writes nothin
     assert.equal(z.code, 1, z.err);
     assert.match(z.err, /Object does not exist/);
     assert.equal(bad.read().issueComments[39], undefined);
+    // A near match is not "Reference already exists" either (Sol's R7).
+    const n = await bad.run(claimArgs('box-c'), { FAKE_GH_REF_422: 'Object already exists' });
+    assert.equal(n.code, 1, n.err);
   } finally { bad.done(); }
 });
 
@@ -94,32 +97,36 @@ test('the race: of 8 machines claiming at once exactly one wins, and only the wi
   } finally { r.done(); }
 });
 
-test('claim: a failed claim comment deletes the ref (no comment, no lease); a label failure keeps the claim', async () => {
+test('claim: a failed claim comment gives the claim back (released); a label failure keeps it', async () => {
   const r = repo();
   try {
     const x = await r.run(claimArgs('box-a'), { FAKE_GH_FAIL_COMMENT: '1' });
     assert.equal(x.code, 1);
     assert.match(x.out, /op=create status=201/);
-    assert.match(x.out, /op=delete status=204/);
-    assert.equal(r.read().refs['refs/heads/claim/T14'], undefined);
+    assert.match(x.out, /op=release status=200/);
+    const s = r.read();
+    assert.match(s.commits[s.refs['refs/heads/claim/T14']].message, /^release T14 machine=box-a \S+ reason=claim-comment-failed /);
+    assert.equal((await status(r)).state, 'released');
+    // A released ref is claimed by a compare-and-set move, not a create.
     const y = await r.run(claimArgs('box-a'), { FAKE_GH_FAIL_LABELS: '1' });
     assert.equal(y.code, 0, y.err);
+    assert.match(y.out, /^claim-api op=claim status=200 /);
     assert.match(y.err, /label error/);
-    assert.ok(r.read().refs['refs/heads/claim/T14']);
+    assert.equal((await status(r)).holder, 'box-a');
   } finally { r.done(); }
 });
 
 const status = async (r, env, ...more) => JSON.parse((await r.run(['status', '--task', 'T14', '--issue', '39', '--json', ...more], env)).out);
 
 test('status: free, held under lease, renewed by a comment or a push, stale when the lease expires', async () => {
-  const r = repo({ branchDates: { 'task/T14-x': at(30 * 60) } });
+  const r = repo({ branchDates: { 'task/T14-x': [at(30 * 60)] } });
   try {
-    assert.deepEqual(await status(r), { held: false });
+    assert.deepEqual(await status(r), { state: 'free', held: false });
     await r.run(claimArgs('box-a'));
     let s = await status(r, { HARNESS_NOW: at(60) });
     assert.equal(s.holder, 'box-a'); assert.equal(s.stale, null); assert.equal(s.expires, at(24 * 60));
     s = await status(r, { HARNESS_NOW: at(24 * 60) });
-    assert.match(s.stale, /lease expired/);
+    assert.match(s.stale, /lease ran out/);
     // A comment at +20h renews to +44h.
     await r.run(['renew', '--task', 'T14', '--issue', '39', '--machine', 'box-a'], { HARNESS_NOW: at(20 * 60) });
     s = await status(r, { HARNESS_NOW: at(24 * 60) });
@@ -128,7 +135,7 @@ test('status: free, held under lease, renewed by a comment or a push, stale when
     s = await status(r, { HARNESS_NOW: at(50 * 60) }, '--branch', 'task/T14-x');
     assert.equal(s.stale, null); assert.equal(s.expires, at(54 * 60));
     s = await status(r, { HARNESS_NOW: at(50 * 60) });
-    assert.match(s.stale, /lease expired/);
+    assert.match(s.stale, /lease ran out/);
   } finally { r.done(); }
 });
 
@@ -149,24 +156,44 @@ test('status: a claim ref with no claim comment is pending for 10 min, then stal
   } finally { r.done(); }
 });
 
-test('release: only the holder; comment, machine label off, ref deleted; --merged keeps the label', async () => {
+test('release: only the holder; the ref moves to a release commit, never deleted; --merged keeps the label and deletes', async () => {
   const r = repo();
   try {
     await r.run(claimArgs('box-a'));
     const no = await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-b']);
     assert.equal(no.code, 3);
-    assert.ok(r.read().refs['refs/heads/claim/T14']);
+    assert.equal((await status(r)).holder, 'box-a');
     const x = await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a', '--reason', 'escalated']);
     assert.equal(x.code, 0, x.err);
-    assert.match(x.out, /^claim-api op=delete status=204 /);
+    assert.match(x.out, /^claim-api op=release status=200 /);
     const s = r.read();
-    assert.equal(s.refs['refs/heads/claim/T14'], undefined);
+    assert.match(s.commits[s.refs['refs/heads/claim/T14']].message, /^release T14 machine=box-a at=\S+ reason=escalated nonce=/);
     assert.ok(!s.issueLabels[39].includes('machine:box-a'));
     assert.match(s.issueComments[39].at(-1).body, /^release T14 machine=box-a at=\S+ reason=escalated$/);
+    assert.equal((await status(r)).state, 'released');
     await r.run(claimArgs('box-a'));
-    assert.equal((await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a', '--merged'])).code, 0);
+    const m = await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a', '--merged']);
+    assert.equal(m.code, 0, m.err);
+    assert.match(m.out, /op=merged status=200 .*\n.*op=delete status=204 /);
+    assert.equal(r.read().refs['refs/heads/claim/T14'], undefined);
     assert.ok(r.read().issueLabels[39].includes('machine:box-a'));
     assert.match(r.read().issueComments[39].at(-1).body, /reason=merged$/);
+  } finally { r.done(); }
+});
+
+test('a merged ref is never claimed or taken over (when its delete failed)', async () => {
+  const r = repo();
+  try {
+    await r.run(claimArgs('box-a'));
+    await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a', '--merged']);
+    const st = r.read();
+    const merged = Object.entries(st.commits).find(([, c]) => /^merged T14 /.test(c.message))[0];
+    st.refs['refs/heads/claim/T14'] = merged; fs.writeFileSync(r.file, JSON.stringify(st));
+    const c = await r.run(claimArgs('box-b'));
+    assert.equal(c.code, 3); assert.equal(c.out, '');        // refused before any ref write
+    assert.match(c.err, /merged/);
+    assert.equal((await r.run(take('box-b', '--by-user', '--force'))).code, 3);
+    assert.equal(r.read().refs['refs/heads/claim/T14'], merged);
   } finally { r.done(); }
 });
 
@@ -236,5 +263,108 @@ test('usage: a bad task id, issue or machine is exit 2; --machine falls back to 
     const x = await r.run(['claim', '--task', 'T14', '--issue', '39'], { HARNESS_MACHINE: 'box-env' });
     assert.equal(x.code, 0, x.err);
     assert.match(x.out, /machine=box-env /);
+  } finally { r.done(); }
+});
+
+const hook = (match, run, env = {}) => ({ FAKE_GH_HOOK: JSON.stringify({ match, run: [tool, ...run], env }) });
+const hookLog = (r) => fs.readFileSync(`${r.file}.hook.log`, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const holderOf = (r) => { const s = r.read(); return /machine=(\S+)/.exec(s.commits[s.refs['refs/heads/claim/T14']]?.message ?? '')?.[1]; };
+
+test('a claimer displaced before its claim comment does not report a win (Sol\'s R1)', async () => {
+  const r = repo();
+  try {
+    const x = await r.run(claimArgs('box-a'), hook('POST issues/39/comments', take('box-u', '--by-user', '--force')));
+    assert.equal(hookLog(r)[0].code, 0, hookLog(r)[0].err);
+    assert.equal(x.code, 3, x.err);
+    assert.match(x.err, /lost/);
+    assert.equal(holderOf(r), 'box-u');
+  } finally { r.done(); }
+});
+
+test('a release after a takeover moved the ref fails and leaves the new holder\'s ref (Sol\'s R2)', async () => {
+  const r = repo();
+  try {
+    await r.run(claimArgs('box-a'));
+    const x = await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a'], hook('PATCH git/refs/heads/claim/T14', take('box-u', '--by-user', '--force')));
+    assert.equal(hookLog(r)[0].code, 0, hookLog(r)[0].err);
+    assert.equal(x.code, 3, x.err);
+    assert.equal(holderOf(r), 'box-u');
+    assert.equal((await status(r)).holder, 'box-u');
+  } finally { r.done(); }
+});
+
+test('a failed-comment give-back after a takeover leaves the new holder\'s ref (Sol\'s R3)', async () => {
+  const r = repo();
+  try {
+    const x = await r.run(claimArgs('box-a'), { FAKE_GH_FAIL_COMMENT: '1', ...hook('POST issues/39/comments', take('box-u', '--by-user', '--force')) });
+    assert.equal(hookLog(r)[0].code, 0, hookLog(r)[0].err);
+    assert.equal(x.code, 1, x.err);
+    assert.equal(holderOf(r), 'box-u');
+    assert.equal((await status(r)).holder, 'box-u');
+  } finally { r.done(); }
+});
+
+test('takeover counts pushes to the task branch the claim names (Sol\'s R4)', async () => {
+  const r = repo({ variables: { HARNESS_PRIMARY: 'box-p' }, branchDates: { 'task/T14-x': [at(23 * 60)] } });
+  try {
+    await r.run(claimArgs('box-a', '--branch', 'task/T14-x'));
+    assert.match(r.read().issueComments[39][0].body, / branch=task\/T14-x$/);
+    const x = await r.run(take('box-p'), { HARNESS_NOW: at(25 * 60) });
+    assert.equal(x.code, 3, x.err);
+    assert.equal(holderOf(r), 'box-a');
+    // Past the renewed lease it is stale, and the primary takes it.
+    assert.equal((await r.run(take('box-p'), { HARNESS_NOW: at(49 * 60) })).code, 0);
+  } finally { r.done(); }
+});
+
+test('a renew between a taker\'s stale read and its move beats the taker (Sol\'s R5); late activity revives nothing', async () => {
+  const r = repo({ variables: { HARNESS_PRIMARY: 'box-p' } });
+  try {
+    await r.run(claimArgs('box-a'));
+    const late = { HARNESS_NOW: at(25 * 60) };
+    const x = await r.run(take('box-p'), { ...late, ...hook('PATCH git/refs/heads/claim/T14', ['renew', '--task', 'T14', '--issue', '39', '--machine', 'box-a'], late) });
+    assert.equal(hookLog(r)[0].code, 0, hookLog(r)[0].err);
+    assert.equal(x.code, 3, x.err);
+    assert.equal(holderOf(r), 'box-a');
+    assert.match(r.read().commits[r.read().refs['refs/heads/claim/T14']].message, /^renew T14 machine=box-a /);
+  } finally { r.done(); }
+  // A comment after the lease ran out does not make it live again.
+  const q = repo();
+  try {
+    await q.run(claimArgs('box-a'));
+    const st = q.read(); st.issueComments[39].push({ body: 'late note', created_at: at(25 * 60) }); fs.writeFileSync(q.file, JSON.stringify(st));
+    assert.match((await status(q, { HARNESS_NOW: at(26 * 60) })).stale, /lease ran out/);
+  } finally { q.done(); }
+});
+
+test('one machine racing itself, same second: exactly one claim and one takeover win (Sol\'s R6)', async () => {
+  const r = repo();
+  try {
+    const res = await Promise.all([0, 1, 2, 3].map(() => r.run(claimArgs('box-a'))));
+    assert.deepEqual(res.map((x) => x.code).sort(), [0, 3, 3, 3], res.map((x) => x.err).join('\n'));
+    const late = { HARNESS_NOW: at(25 * 60), FAKE_GH_SEQ: '3' };
+    const t = await Promise.all([0, 1, 2].map(() => r.run(take('box-u', '--by-user'), late)));
+    assert.deepEqual(t.map((x) => x.code).sort(), [0, 3, 3], t.map((x) => x.err).join('\n'));
+  } finally { r.done(); }
+});
+
+test('a claimer whose claim comment lands 5 min late gives the claim back', async () => {
+  const r = repo();
+  try {
+    const x = await r.run(claimArgs('box-a'), { FAKE_GH_COMMENT_DELAY_MIN: '6' });
+    assert.equal(x.code, 1, x.err);
+    assert.match(x.err, /6 min after the claim/);
+    assert.equal((await status(r)).state, 'released');
+  } finally { r.done(); }
+});
+
+test('of several machines claiming a released task at once, exactly one wins', async () => {
+  const r = repo();
+  try {
+    await r.run(claimArgs('box-a'));
+    await r.run(['release', '--task', 'T14', '--issue', '39', '--machine', 'box-a']);
+    const res = await Promise.all(['b', 'c', 'd', 'e'].map((n) => r.run(claimArgs(n))));
+    assert.deepEqual(res.map((x) => x.code).sort(), [0, 3, 3, 3], res.map((x) => x.err).join('\n'));
+    assert.equal(holderOf(r), ['b', 'c', 'd', 'e'][res.findIndex((x) => x.code === 0)]);
   } finally { r.done(); }
 });
