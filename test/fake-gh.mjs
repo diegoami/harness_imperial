@@ -15,7 +15,9 @@ const lock = `${file}.lock`;
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const acquire = () => {
   for (let i = 0; ; i++) {
-    try { fs.mkdirSync(lock); return; } catch (e) { if (e.code !== 'EEXIST' || i > 4000) throw e; sleep(5); }
+    // Windows answers EPERM (or EACCES) while another caller's rmdir of the lock is still pending:
+    // the lock is taken, the same as EEXIST (a claim race test failed on windows-latest).
+    try { fs.mkdirSync(lock); return; } catch (e) { if (!['EEXIST', 'EPERM', 'EACCES'].includes(e.code) || i > 4000) throw e; sleep(5); }
   }
 };
 const unlock = () => { try { fs.rmdirSync(lock); } catch { /* gone */ } };
