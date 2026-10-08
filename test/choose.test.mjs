@@ -145,15 +145,33 @@ test('a model whose own window is exhausted ranks last on fresh provider headroo
   assert.match(ranked.find((r) => r.name === 'luna').blocked, /own gpt-5\.6-luna:7d window is 97% used/);
 });
 
+test('with /recommend off every model is band 2, ranked by preference alone', () => {
+  const c = config();
+  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'deepseek-flash', 'glm-flash'] } };
+  const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota: of(entry('zai', 'ok', [])), recommend: { off: 'down' } });
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['ali-qwen-flash', 2], ['deepseek-flash', 2], ['glm-flash', 2]]);
+});
+
 test('readRecommend: both tiers, a loading note with nothing ranked adds nothing, off when neither answers', async () => {
   const heavy = { ranking: [{ provider: 'openai', model: 'gpt-6.1-sol', score: 449 }], skipped: [{ provider: 'opencode_go', model: 'deepseek-v4-pro', score: null, reasons: ['30d: 99% used'] }] };
   const light = { ranking: [], skipped: [], note: 'statistics are loading' };
-  const s = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(heavy), FAKE_RECOMMEND_LIGHT: JSON.stringify(light) });
+  const lightRows = { ranking: [{ provider: 'zai', model: 'glm-5.3-flash', score: 14 }], skipped: [] };
+  const s = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(heavy), FAKE_RECOMMEND_LIGHT: JSON.stringify(lightRows) });
   try {
     const got = await readRecommend({ HARNESS_QUOTA_URL: s.url });
-    assert.deepEqual(got.rows.map((r) => [r.model, r.tier, r.skipped]), [['gpt-6.1-sol', 'heavy', false], ['deepseek-v4-pro', 'heavy', true]]);
+    assert.deepEqual(got.rows.map((r) => [r.model, r.tier, r.skipped]), [['gpt-6.1-sol', 'heavy', false], ['deepseek-v4-pro', 'heavy', true], ['glm-5.3-flash', 'light', false]]);
     assert.equal(got.rows[1].why, '30d: 99% used');
   } finally { s.stop(); }
+  // A light tier still loading adds nothing; the heavy rows stand.
+  const half = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(heavy), FAKE_RECOMMEND_LIGHT: JSON.stringify(light) });
+  try {
+    assert.deepEqual((await readRecommend({ HARNESS_QUOTA_URL: half.url })).rows.map((r) => r.tier), ['heavy', 'heavy']);
+  } finally { half.stop(); }
+  // Only the light tier answering: its rows are read.
+  const lonly = await quotaServer([], undefined, { FAKE_RECOMMEND_LIGHT: JSON.stringify(lightRows) });
+  try {
+    assert.deepEqual((await readRecommend({ HARNESS_QUOTA_URL: lonly.url })).rows.map((r) => r.model), ['glm-5.3-flash']);
+  } finally { lonly.stop(); }
   const loading = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(light), FAKE_RECOMMEND_LIGHT: JSON.stringify(light) });
   try { assert.match((await readRecommend({ HARNESS_QUOTA_URL: loading.url })).off, /loading/); } finally { loading.stop(); }
   const garbage = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify({ ranking: [{ model: 3 }] }) });
@@ -218,6 +236,15 @@ test('the CLI ranks, picks, and exits 3 when nothing is usable', async () => {
     const json = await run(['--role', 'implementer', '--difficulty', 'easy', '--json'], { HARNESS_QUOTA_URL: s.url });
     assert.deepEqual(JSON.parse(json.out).ranked.map((r) => r.name), ['deepseek-flash', 'ali-qwen-flash']);
   } finally { s.stop(); }
+  // /quota answers, /recommend does not: band 2 for all, by preference, and the CLI says so.
+  const norec = await quotaServer([entry('opencode_go', 'ok', [])]);
+  try {
+    const t = await run(['--role', 'implementer', '--difficulty', 'easy'], { HARNESS_QUOTA_URL: norec.url });
+    assert.equal(t.code, 0, t.err);
+    assert.match(t.err, /recommend: not read: .*every model is band 2, by preference/);
+    assert.match(t.out, /1\. deepseek-flash.*band 2/);
+    assert.match(t.out, /2\. ali-qwen-flash.*band 2/);
+  } finally { norec.stop(); }
   const dead = await run(['--role', 'implementer', '--difficulty', 'easy', '--pick'], { HARNESS_QUOTA_URL: 'http://127.0.0.1:9' });
   assert.equal(dead.code, 0);            // tracker off: ranks by preference alone, never blocks
   const blocked = await quotaServer([
