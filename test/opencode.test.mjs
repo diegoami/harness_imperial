@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
 import {
+  scratchAllow, withScratchAllow,
   runOpenCodeWatched, lookupSession, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
   commandLineTooLong, briefFileName,
   openCodeHome, listedModels, loginHint, keyProblem, openCodeVersion, versionProblem,
@@ -25,7 +26,7 @@ const run = (mode, opts = {}, extra = {}) => {
   const { dir, env } = setup(mode, extra);
   return runOpenCodeWatched({
     args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'line one\nline two',
-    workDir: dir, title: 'test', opencode, env, logDir: path.join(dir, 'logs'),
+    workDir: dir, title: 'test', opencode, env, logDir: path.join(dir, 'logs'), scratchRoot: path.join(dir, 'tmp'),
     pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000, ...opts,
   });
 };
@@ -437,4 +438,122 @@ test('a hopeless shelve on a thrown failure names no path that does not exist (L
     for (const f of kept) assert.ok(fs.existsSync(f), `named path exists: ${f}`);
     assert.equal(fs.readdirSync(dir).some((n) => n.startsWith('.harness-brief-')), false, 'worktree cleared');
   } finally { fs.renameSync = realRename; fs.copyFileSync = realCopy; }
+});
+
+test('a run gets its own scratch folder as TMPDIR/TEMP, named in the pointer; removed after a clean run, kept after a failed one (L66)', async () => {
+  const { dir, env } = setup('ok');
+  const root = path.join(dir, 'tmp');
+  const r = await runOpenCodeWatched({
+    args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'p', workDir: dir, title: 'test', opencode, env,
+    logDir: path.join(dir, 'logs'), scratchRoot: root, pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+  });
+  const [session] = readSessions(path.join(dir, 'state.json'));
+  const scratch = path.join(root, `harness-run-${r.title}`);
+  assert.equal(session.tmpdir, scratch);
+  assert.equal(session.temp, scratch);
+  assert.equal(session.tmp, scratch);
+  assert.ok(session.prompt.includes(`Your scratch folder for this run is ${scratch} (also $TMPDIR)`));
+  assert.equal(fs.existsSync(scratch), false);
+  assert.equal(r.scratch, null);
+  const bad = await run('permission');
+  assert.ok(bad.scratch && fs.existsSync(bad.scratch), 'kept after a rejection');
+  assert.match(path.basename(bad.scratch), /^harness-run-test-[0-9a-f]{12}$/);
+});
+
+test('the scratch folder defaults to /tmp on POSIX, never the caller\'s TMPDIR (the agent files allow /tmp/harness-run-*)', { skip: process.platform === 'win32' }, async () => {
+  const { dir, env } = setup('ok');
+  // The caller's own TMPDIR (a Claude session's scratchpad), which os.tmpdir() would follow.
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = path.join(dir, 'callers-tmp');
+  fs.mkdirSync(process.env.TMPDIR);
+  let r;
+  try {
+    r = await runOpenCodeWatched({
+      args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'p', workDir: dir, title: 'test', opencode,
+      env: { ...env, TMPDIR: process.env.TMPDIR }, logDir: path.join(dir, 'logs'),
+      pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+    });
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+  }
+  const [session] = readSessions(path.join(dir, 'state.json'));
+  assert.equal(session.tmpdir, `/tmp/harness-run-${r.title}`);
+});
+
+test('a rejection is appended to the rejection log with the rejected call; a clean run writes nothing (L66)', async () => {
+  const { dir } = setup('ok');
+  const log = path.join(dir, 'work', 'permission-rejections.jsonl');
+  await run('ok', { rejectionLog: log, script: 'implement' });
+  assert.equal(fs.existsSync(log), false);
+  const r = await run('permission', { rejectionLog: log, script: 'implement' });
+  const lines = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(lines.length, 1);
+  const [e] = lines;
+  assert.equal(e.permission, 'external_directory (/tmp/*)');
+  assert.deepEqual(e.calls, [{ tool: 'bash', input: 'cat /tmp/notes.txt' }]);
+  assert.equal(e.script, 'implement'); assert.equal(e.model, 'opencode-go/x'); assert.equal(e.agent, 'reviewer');
+  assert.equal(e.title, r.title);
+  assert.equal(e.worktree, fs.realpathSync(r.scratch ? path.dirname(path.dirname(r.scratch)) : '.'));
+  assert.equal(e.hint, null);
+  assert.ok(!Number.isNaN(Date.parse(e.at)));
+});
+
+const agentMd = (perm) => `---\ndescription: d\nmode: all\npermission:\n${perm}  bash:\n    "*": allow\n---\nbody\n`;
+
+test('each run loads a per-run copy of its agent file allowing exactly its own scratch folder, removed after the run (Sol\'s R1 on PR 137)', async () => {
+  const runs = [];
+  for (const k of [1, 2]) {
+    const { dir, env } = setup('ok');
+    fs.mkdirSync(path.join(dir, '.opencode', 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.opencode', 'agents', 'reviewer.md'), agentMd('  external_directory:\n    "/tmp/opencode/*": deny\n'));
+    const r = await runOpenCodeWatched({
+      args: ['run', '--agent', 'reviewer', '--model', 'opencode-go/x'], prompt: 'p', workDir: dir, title: 'test', opencode, env,
+      logDir: path.join(dir, 'logs'), scratchRoot: path.join(dir, 'tmp'), pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000,
+    });
+    const [session] = readSessions(path.join(dir, 'state.json'));
+    runs.push({ r, session, dir, k });
+  }
+  for (const { r, session, dir } of runs) {
+    const scratch = path.join(dir, 'tmp', `harness-run-${r.title}`);
+    assert.equal(session.configDir, path.join(dir, 'logs', `${r.title}.config`));
+    assert.ok(session.agentFile.startsWith(session.configDir), session.agentFile);
+    const rules = session.agentText.split('\n').filter((l) => /^    "/.test(l) && !/^    "\*": allow$/.test(l));
+    assert.deepEqual(rules, ['    "' + scratch + '/*": allow', '    "/tmp/opencode/*": deny']);
+    assert.equal(fs.existsSync(session.configDir), false, 'removed after the run');
+  }
+  assert.notEqual(runs[0].r.title, runs[1].r.title);
+  // Without an agent file to copy, no config dir is made, and the run says so.
+  const { dir, env } = setup('ok');
+  const said = [];
+  await runOpenCodeWatched({ args: ['run', '--agent', 'nosuch', '--model', 'opencode-go/x'], prompt: 'p', workDir: dir, title: 'test', opencode, env,
+    logDir: path.join(dir, 'logs'), scratchRoot: path.join(dir, 'tmp'), log: (l) => said.push(l), pollMs: 50, startupTimeoutMs: 1500, idleTimeoutMs: 800, totalTimeoutMs: 5000 });
+  assert.equal(readSessions(path.join(dir, 'state.json'))[0].configDir, env.OPENCODE_CONFIG_DIR ?? null);
+  assert.ok(said.some((l) => /no agent file for nosuch/.test(l)));
+});
+
+test('scratchAllow and withScratchAllow: the exact pattern, added to the block or as a block; no front matter, nothing', () => {
+  assert.equal(scratchAllow('/tmp/harness-run-a', 'linux'), '/tmp/harness-run-a/*');
+  assert.equal(scratchAllow('C:\\Users\\u\\AppData\\Local\\Temp\\harness-run-a', 'win32'), 'C:?Users?u?AppData?Local?Temp?harness-run-a?*');
+  const inBlock = withScratchAllow(agentMd('  external_directory:\n    "/x/*": deny\n'), '/tmp/r/*');
+  assert.match(inBlock, /  external_directory:\n    "\/tmp\/r\/\*": allow\n    "\/x\/\*": deny\n/);
+  assert.match(inBlock, /\n---\nbody\n$/);
+  assert.match(withScratchAllow(agentMd('  edit: deny\n'), '/tmp/r/*'), /permission:\n  external_directory:\n    "\/tmp\/r\/\*": allow\n  edit: deny/);
+  assert.equal(withScratchAllow('no front matter\n', '/tmp/r/*'), null);
+  assert.equal(withScratchAllow('---\ndescription: d\n---\nbody\n', '/tmp/r/*'), null);
+  assert.equal(withScratchAllow(agentMd(''), '/tmp/"q/*'), null);
+});
+
+test('a rejection before a timeout is still logged, and the thrown failure names the kept scratch folder (Sol\'s R5, R6 on PR 137)', async () => {
+  const { dir } = setup('ok');
+  const log = path.join(dir, 'work', 'permission-rejections.jsonl');
+  let err;
+  try { await run('permission-idle', { rejectionLog: log, script: 'review' }); } catch (e) { err = e; }
+  assert.ok(err instanceof OpenCodeInfraError, String(err));
+  assert.match(err.reason, /idle/);
+  assert.ok(err.scratch && fs.existsSync(err.scratch), 'kept and named');
+  const [e] = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(e.permission, 'external_directory (/tmp/*)');
+  assert.equal(e.script, 'review');
+  assert.match(e.failure, /idle/);
+  assert.deepEqual(e.calls, [{ tool: 'bash', input: 'cat /tmp/notes.txt' }]);
 });

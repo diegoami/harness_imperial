@@ -31,6 +31,7 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/.claude/skills/switch-model/SKILL.md` | `/switch-model`: why, the candidates (live), a dry run with a probe, the user's yes, the switch and its commit. |
 | `template/tools/harness/models.mjs` | Lists the models OpenRouter or ElevenLabs offer now, filtered by input and output (text, image, audio). |
 | `template/tools/harness/choose.mjs`, `lib/choose.mjs` | Ranks the registered models for a role and difficulty by quota-tracker's `/recommend` band (spare calls before the reset, none, not ranked) over the `chooser` block's preference order; `--pick` names the top one. Advisory: it never edits `harness.json`. |
+| `template/tools/harness/rejections.mjs`, `lib/rejections.mjs` | Groups the permission rejections the runs logged, newest and most frequent first, with the rejected commands and what to do about each: allow it, fix the brief, or ask the user (L66). |
 | `template/tools/harness/claim.mjs`, `lib/claim.mjs` | Claims a task for one machine (H4, #120). The ref `refs/heads/claim/T<nn>` is the claim's whole state, and every change to it is compare-and-set: the first claim a create (201 won, 422 held), then claim of a released task, renew, release, takeover (the primary, `HARNESS_PRIMARY`, or the user) and merge non-forced moves. One `claim-api` line per ref write on stdout. |
 | `template/harness.json` | Models, chains, timeouts, providers, and the Jev decisions with their cutoffs. |
 | `template/docs/tasks/`, `template/.github/pull_request_template.md` | The task-file and PR formats. |
@@ -57,6 +58,11 @@ added. Each behaviour exists because a run failed without it:
   - A `cd` or `..` in an agent's command can trip the same check with nothing leaving the worktree,
     because OpenCode resolves the path against `--dir`, not the `cd` before it (#14). The agent
     files forbid both (L31), and when the rejected command used one, the failure says so.
+  - Each rejection is appended, with the rejected calls, to `<workRoot>/permission-rejections.jsonl`;
+    `tools/harness/rejections.mjs` groups them for triage and says what to do about each (L66).
+- **A scratch folder per run.** `harness-run-<title>` under /tmp (the user's TEMP on Windows) is the
+  run's TMPDIR, TEMP and TMP, named in the brief's pointer, and the agent files allow exactly that
+  pattern and the null device. It is removed after a clean run and kept after a failed one (L66).
 - **The export is read from a file.** Through a pipe, a large export arrives truncated, and the agent
   check loses its evidence (ic2-conquest's WSL reviewer).
 - **Its own data directory.** OpenCode's desktop app (2.x) can migrate the default database to a

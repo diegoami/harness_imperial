@@ -59,7 +59,7 @@ if (cmd === 'export') {
   // So does Node: process.exit() drops what a pipe has not yet taken, but a file is written at once.
   const messages = process.env.FAKE_OC_BIG_EXPORT ? [{ text: 'x'.repeat(4 << 20) }] : [];
   // A rejected tool call, as OpenCode 1.18.34 records it.
-  if (s.rejected) messages.push({ parts: [{ type: 'tool', tool: 'read', state: { status: 'error', error: 'The user rejected permission to use this specific tool call.' } }] });
+  if (s.rejected) messages.push({ parts: [{ type: 'tool', tool: 'bash', state: { status: 'error', input: { command: 'cat /tmp/notes.txt' }, error: 'The user rejected permission to use this specific tool call.' } }] });
   process.stdout.write(JSON.stringify({ messages, info: { agent: s.agent } }));
   process.exit(0);
 }
@@ -95,6 +95,9 @@ const brief = briefFile && fs.existsSync(briefFile) ? fs.readFileSync(briefFile,
 const createSession = (recordedAgent = agent, extra = {}) => {
   mine = { ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
     dataHome: process.env.XDG_DATA_HOME ?? null, prompt: pointer, agentFile, brief,
+    tmpdir: process.env.TMPDIR ?? null, temp: process.env.TEMP ?? null, tmp: process.env.TMP ?? null,
+    configDir: process.env.OPENCODE_CONFIG_DIR ?? null,
+    agentText: (() => { try { return agentFile ? fs.readFileSync(agentFile, 'utf8') : null; } catch { return null; } })(),
     projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
     agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null };
   writeSession(stateFile, mine);
@@ -117,6 +120,12 @@ switch (mode) {
   }
   case 'no-session': forever(); break;
   case 'idle': createSession(); forever(); break;
+  case 'permission-idle':
+    // Rejected, then idle until the runner's idle timeout kills it (Sol's R5 on PR 137).
+    createSession(agent, { rejected: true });
+    process.stderr.write('\x1b[93m\x1b[1m! \x1b[0mpermission requested: external_directory (/tmp/*); auto-rejecting\n');
+    forever();
+    break;
   case 'exit-no-session': process.exit(1); break;
   case 'exit2': createSession(); process.exit(2); break;
   case 'fallback':

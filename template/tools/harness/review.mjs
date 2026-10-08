@@ -215,6 +215,7 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
           args: ocArgs(worktree, rev.agent, model), prompt, workDir: worktree, title: `pr${a.pr}-${m}`,
           startupTimeoutMs: rev.startupTimeoutSec * 1000, idleTimeoutMs: rev.idleTimeoutSec * 1000,
           totalTimeoutMs: rev.totalTimeoutSec * 1000, opencode, env: reviewEnv, log: say,
+          rejectionLog: path.join(workRoot, 'permission-rejections.jsonl'), script: 'review',
         });
       } catch (e) {
         if (!(e instanceof OpenCodeInfraError)) throw e;
