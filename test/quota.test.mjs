@@ -66,7 +66,10 @@ test('readQuota reads the service, and is off, saying why, when it does not answ
     [entry('openrouter', 'ok', [], { free_model_daily_requests: { remaining: '5', limit: 1000 } })],
     [entry('openai', 'exhausted', [], { when_exhausted: { usable_models: 'gpt-5.6-luna' } })],
     [entry('openai', 'exhausted', [], { when_exhausted: { usable_models: [7] } })],
-    [entry('openai', 'exhausted', [], { when_exhausted: 'gpt-5.6-luna' })]]) {
+    [entry('openai', 'exhausted', [], { when_exhausted: 'gpt-5.6-luna' })],
+    [entry('openai', 'exhausted', [], { when_exhausted: {} })],
+    [entry('openai', 'exhausted', [], { when_exhausted: [] })],
+    [entry('openai', 'exhausted', [], { when_exhausted: ['gpt-5.6-luna'] })]]) {
     const bad = await quotaServer(body);
     try {
       assert.match((await readQuota({ HARNESS_QUOTA_URL: bad.url })).off, /unreadable/, JSON.stringify(body));

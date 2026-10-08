@@ -19,7 +19,7 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 
 | Name | Model and route | Family | Used for, here |
 | --- | --- | --- | --- |
-| `luna` | GPT-5.6 Luna, `openai/gpt-5.6-luna`, the direct OpenAI route, its own weekly pool (L51) | OpenAI | **easy reviewer** of small, simple PRs, the `harness.json` default |
+| `luna` | GPT-5.6 Luna, `openai/gpt-5.6-luna`, the direct OpenAI route, on OpenAI's main quota like Sol, running alone when OpenAI is exhausted (L51, L65) | OpenAI | **easy reviewer** of small, simple PRs, the `harness.json` default |
 | `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **reviewer of complex work**: `--reviewer sol-6.1` (the owner, 2026-10-04, below), and `--hard --sol` for a guard task and a hard task's last round (L41); still on watch (L35) |
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
 | `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project (`--model deepseek-flash`); second in the default chain |
@@ -326,7 +326,7 @@ and the trials issue it names.
     cybersecurity risk"), so no review came back: on security-heavy reviews it may not finish.
   - On PR 77 (the runners' quota check) it asked for rework twice, both times about trusting the
     shape of quota-tracker's answer, and approved round 3 with no findings.
-- **GPT-5.6 Luna** (`luna` since 2026-10-04, L51; its own weekly pool): it approved PR 76 (its own
+- **GPT-5.6 Luna** (`luna` since 2026-10-04, L51; on OpenAI's main quota since 2026-10-09, L65): it approved PR 76 (its own
   switch) and PR 74's mistakes-only head with no findings, staying in its worktree where GLM-5.3
   and DeepSeek V4 Pro did not. Both reviews were thin, with Done-when results and little else, so
   the main session re-ran the key checks before merging (L46).

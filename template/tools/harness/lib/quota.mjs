@@ -34,8 +34,10 @@ export async function readQuota(env = process.env, { timeoutMs = 3000 } = {}) {
     const window = (w) => w && typeof w.name === 'string' && typeof w.used_pct === 'number' && text(w.resets_in);
     const num = (v) => typeof v === 'number';
     const free = (f) => f === undefined || f === null || (typeof f === 'object' && num(f.remaining) && num(f.limit));
-    const whenOut = (w) => w === undefined || w === null || (typeof w === 'object' && (w.usable_models === undefined
-      || (Array.isArray(w.usable_models) && w.usable_models.every((m) => typeof m === 'string'))));
+    // when_exhausted, when present, is an object carrying usable_models, an array of strings
+    // (Luna's R1 on PR 136: {} and [] must not pass).
+    const whenOut = (w) => w === undefined || w === null || (typeof w === 'object' && !Array.isArray(w)
+      && Array.isArray(w.usable_models) && w.usable_models.every((m) => typeof m === 'string'));
     const readable = (p) => p && typeof p.provider === 'string' && typeof p.status === 'string' && text(p.available_in)
       && free(p.free_model_daily_requests) && whenOut(p.when_exhausted)
       && (p.windows === undefined || (Array.isArray(p.windows) && p.windows.every(window)));
