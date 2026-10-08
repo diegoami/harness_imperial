@@ -14,9 +14,16 @@ const ctx = { mainRoot: '/home/u/projects/game', home: '/home/u', repo: 'game' }
 const ed = (p) => `external_directory (${p})`;
 
 test('classify: allow the run folder, the null device and the project\'s own data; fix the brief for scratch and the main checkout; the rest is the user\'s', () => {
-  const act = (p) => classify(ed(p), ctx).action;
-  assert.equal(act('/tmp/harness-run-T07-glm-ab12/*'), 'allow');
-  assert.equal(act('C:\\Users\\u\\AppData\\Local\\Temp\\harness-run-x\\*'), 'allow');
+  const act = (p, titles = []) => classify(ed(p), ctx, titles).action;
+  assert.equal(act('/tmp/harness-run-T07-glm-ab12/*', ['T07-glm-ab12']), 'allow');
+  assert.equal(act('C:\\Users\\u\\AppData\\Local\\Temp\\harness-run-x\\*', ['x']), 'allow');
+  // Sol's R2-R4 on PR 137: another run's folder, look-alikes and `..` are never "allow".
+  assert.equal(act('/tmp/harness-run-other-session/*', ['T07-glm-ab12']), 'brief');
+  assert.equal(act('/tmp/harness-run-x/*'), 'brief');                                   // no run named
+  assert.equal(act('/home/u/projects/other/harness-run-x/*', ['x']), 'owner');
+  assert.equal(act('/home/u/projects/other/dev/null/*'), 'owner');
+  assert.equal(act('/home/u/.config/game/../../other/*'), 'owner');
+  assert.equal(act('/dev/null'), 'allow');
   assert.equal(act('/dev/*'), 'allow');
   assert.equal(act('\\\\.\\NUL\\*'), 'allow');
   assert.equal(act('/home/u/.local/share/game/static/*'), 'allow');
@@ -34,7 +41,7 @@ test('classify: allow the run folder, the null device and the project\'s own dat
 });
 
 test('summarize groups by permission, most frequent first, with up to three distinct calls; readRejections skips bad lines', () => {
-  const line = (at, p, input) => JSON.stringify({ at, permission: ed(p), calls: [{ tool: 'bash', input }] });
+  const line = (at, p, input) => JSON.stringify({ at, title: 'T1-a', permission: ed(p), calls: [{ tool: 'bash', input }] });
   const text = [line('2026-10-07T10:00:00Z', '/tmp/*', 'rm /tmp/a'), 'not json', '{"at":3}', '',
     line('2026-10-08T10:00:00Z', '/tmp/*', 'cp x /tmp/b'), line('2026-10-08T11:00:00Z', '/tmp/*', 'rm /tmp/a'),
     line('2026-10-08T09:00:00Z', '/tmp/*', 'ls /tmp/c'), line('2026-10-08T08:00:00Z', '/tmp/*', 'cat /tmp/d'),
@@ -45,6 +52,10 @@ test('summarize groups by permission, most frequent first, with up to three dist
   assert.deepEqual(g.map((x) => [x.permission, x.count, x.action]), [[ed('/tmp/*'), 5, 'brief'], [ed('/dev/*'), 1, 'allow']]);
   assert.equal(g[0].last, '2026-10-08T11:00:00Z');
   assert.deepEqual(g[0].samples, ['bash: rm /tmp/a', 'bash: cp x /tmp/b', 'bash: ls /tmp/c']);   // three at most, distinct
+  assert.deepEqual(g[0].titles, ['T1-a']);
+  // The run's own folder is "allow" only for the run that asked.
+  const own = summarize(readRejections(JSON.stringify({ at: 'x', title: 'T9-q', permission: ed('/tmp/harness-run-T9-q/*'), calls: [] })), ctx);
+  assert.equal(own[0].action, 'allow');
 });
 
 test('the CLI reads <workRoot>/permission-rejections.jsonl, filters by --since, and says when there is nothing', () => {

@@ -71,7 +71,10 @@ test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)',
   assert.equal(session.projectConfig, 'read');
   // Both sides through realpathSync.native: Windows may give the temp directory as an 8.3 short name.
   const long = (f) => fs.realpathSync.native(f);
-  assert.equal(long(session.agentFile), long(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md')));
+  // The run loads a per-run copy (L66) of the worktree's own agent file, plus its one scratch allow.
+  const own = fs.readFileSync(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md'), 'utf8');
+  assert.equal(session.agentText.replace(/^    "[^"]*harness-run-[^"]*": allow\n/m, ''), own);
+  assert.match(session.configDir ?? '', /harness-opencode[\\/]T07-[\w.-]+\.config$/);   // the run's own, not the inherited one
 });
 
 test('--copy brings an untracked file into the worktree, its folders created (#90)', posix, async () => {

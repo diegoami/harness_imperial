@@ -5,8 +5,6 @@ permission:
   edit: allow
   external_directory:
     "/tmp/opencode/*": deny
-    "/tmp/harness-run-*": allow
-    "*?Temp?harness-run-*": allow
     "/dev/*": allow
     "??.?NUL*": allow
   task:

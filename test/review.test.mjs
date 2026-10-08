@@ -295,7 +295,9 @@ test('the reviewer\'s agent comes from the main checkout, never from the PR unde
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
   // Both sides through realpathSync.native: Windows may give the temp directory as an 8.3 short name.
-  assert.equal(fs.realpathSync.native(session.agentFile), fs.realpathSync.native(path.join(p.main, '.opencode', 'agents', 'reviewer.md')));
+  // The run loads a per-run copy (L66): the main checkout's file plus this run's one scratch allow.
+  const mainText = fs.readFileSync(path.join(p.main, '.opencode', 'agents', 'reviewer.md'), 'utf8');
+  assert.equal(session.agentText.replace(/^    "[^"]*harness-run-[^"]*": allow\n/m, ''), mainText);
   assert.doesNotMatch(session.agentDescription, /THE PR'S OWN REVIEWER/);
   // and the PR's .opencode/ is not read at all: an opencode.json or a plugin there is ignored too.
   assert.equal(session.projectConfig, 'disabled');

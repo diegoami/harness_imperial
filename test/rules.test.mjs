@@ -123,12 +123,12 @@ test('the scripts skip an exhausted provider themselves, and no chain is edited 
   assert.match(read('template/docs/lessons.md'), /^\| L52 \| `implement\.mjs` and `review\.mjs` check quota themselves/m);
 });
 
-test('the agent files allow the run\'s scratch folder and the null device, and send scratch there (L66)', () => {
+test('the agent files allow the null device and nothing broader, and send scratch to the run\'s folder (L66)', () => {
   for (const a of ['implementer', 'reviewer']) {
     const f = read(`template/.opencode/agents/${a}.md`);
-    for (const rule of ['"/tmp/opencode/*": deny', '"/tmp/harness-run-*": allow', '"*?Temp?harness-run-*": allow', '"/dev/*": allow', '"??.?NUL*": allow']) {
-      assert.ok(f.includes(`    ${rule}\n`), `${a}: ${rule}`);
-    }
+    // Exactly these rules, nothing broader: the run's scratch allow is added per run, exactly (Sol's R1, R7 on PR 137).
+    const block = /\n  external_directory:\n((?:    .*\n)*)/.exec(f)[1];
+    assert.equal(block, '    "/tmp/opencode/*": deny\n    "/dev/*": allow\n    "??.?NUL*": allow\n', a);
     assert.match(f.replace(/\s+/g, ' '), /scratch folder the brief's pointer names \(also \$TMPDIR\)|your scratch folder, the one the brief's pointer names \(also \$TMPDIR\)/, a);
   }
   assert.match(read('template/tools/harness/implement.mjs').replace(/\s+/g, ' '), /Scratch files go in your scratch folder \(\$TMPDIR, named at the top of this brief\)/);
