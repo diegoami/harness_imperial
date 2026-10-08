@@ -79,7 +79,7 @@ another entry or schedule after `next_change_at`. If the tracker doesn't answer,
 don't block on it.
 - **Alibaba Token Plan**: quota-tracker no longer checks it (Alibaba flagged the console checks
   as unusual activity), so `/quota/alibaba` returns `not_monitored` with `pricing` only — no
-  `month` window, and Alibaba is absent from `/quota`, `/best` and `/avoid`. Use Alibaba only as
+  `month` window, and Alibaba is absent from `/quota` and `/avoid`, and `/recommend` does not rank it. Use Alibaba only as
   a supplement or an extra reviewer, not as a main or default model, and not in long loops. On a
   quota or rate error, stop using Alibaba until the next day and report it; do not retry.
   `bl auth login` is no longer needed.

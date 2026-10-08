@@ -35,7 +35,10 @@ another way, or tell the user what is missing (`docs/environment.md`).
    To change the implementer's or reviewer's model itself, use `/switch-model`.
 2. **Check the quota first** (L50). Where quota-tracker runs (`curl -sf localhost:8765/health`),
    `curl -s localhost:8765/avoid` lists the providers out of quota and when each is usable again,
-   and `curl -s localhost:8765/best` those with quota, most headroom first (`docs/environment.md`).
+   and `curl -s 'localhost:8765/recommend?tier=heavy'` (or `tier=light`) ranks the models to use:
+   `pick` is the best, `ranking` lists them with `score`, spare calls per day until the pool's reset
+   (negative: it runs out before then at the current demand) (`docs/environment.md`). Never rank by
+   headroom: pools differ in size and period, and Claude sessions draw on some.
    Skip a model whose provider is `exhausted`: name the next model of its chain that has quota
    (`--model` for `implement.mjs`, `--reviewer` for `review.mjs`) and say so in the run's report.
    Both scripts also skip such a model themselves and log why (L52); never pause a provider by
