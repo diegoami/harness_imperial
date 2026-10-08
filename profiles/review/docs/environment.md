@@ -37,7 +37,15 @@ OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrou
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one;
-- `curl -s localhost:8765/best`: the providers with quota left, most headroom first;
+- `curl -s 'localhost:8765/recommend?tier=heavy'` (or `tier=light`): which model to use.
+  `ranking` is best first, each row with `provider`, `model`, `command`, `score` (spare calls per
+  day until the pool's reset; negative means the pool would run out before its reset at the current
+  demand), `confidence` and `reasons`; `pick` is the first row; `skipped` lists the exhausted or
+  nearly full providers, with why. OpenRouter scores 0 (prepaid); Alibaba is not ranked (occasional
+  use only, in its discount hours). Right after the service restarts, `note` says the statistics
+  are loading: retry after a minute or two. Do not rank by `/best` or `headroom_pct`: percentages
+  are not comparable between providers, whose pools differ hugely in size, are monthly or weekly,
+  and are partly used by Claude sessions running on them as their main model;
 - `curl -s localhost:8765/avoid`: the providers out of quota, with when each is usable again.
 
 Each provider has a `status`: `ok` (under 80% used), `low` (80% or more), `exhausted` (95% or

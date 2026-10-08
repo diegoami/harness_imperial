@@ -82,7 +82,15 @@ localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the ca
   2026-10-06): it path-checks the agent's file tools and, as raw command text, `cd` and `cat`
   (L59) — not `git -C` or grep/sed/head/ls, so an agent with bash allowed can read any directory.
   Secrets are the credential jail's business; a grant is for deliberate reads (L59's recipe).
-- `curl -s localhost:8765/best`: the providers with quota left, most headroom first;
+- `curl -s 'localhost:8765/recommend?tier=heavy'` (or `tier=light`): which model to use.
+  `ranking` is best first, each row with `provider`, `model`, `command`, `score` (spare calls per
+  day until the pool's reset; negative means the pool would run out before its reset at the current
+  demand), `confidence` and `reasons`; `pick` is the first row; `skipped` lists the exhausted or
+  nearly full providers, with why. OpenRouter scores 0 (prepaid); Alibaba is not ranked (occasional
+  use only, in its discount hours). Right after the service restarts, `note` says the statistics
+  are loading: retry after a minute or two. Do not rank by `/best` or `headroom_pct`: percentages
+  are not comparable between providers, whose pools differ hugely in size, are monthly or weekly,
+  and are partly used by Claude sessions running on them as their main model;
 - `curl -s localhost:8765/avoid`: the providers out of quota, with when each is usable again.
 
 Each provider has a `status`: `ok` (under 80% used), `low` (80% or more), `exhausted` (95% or
@@ -126,8 +134,8 @@ The models per provider, heavy and light:
 | minimax | `opencode -m minimax/MiniMax-M3` | `opencode -m minimax/MiniMax-M2.7` |
 
 Alibaba's Token Plan is no longer in quota-tracker: `/quota/alibaba` returns `not_monitored` with
-`pricing` only — there is no `month` window, and Alibaba is absent from `/quota`, `/best` and
-`/avoid`. Use Alibaba only as a supplement or an extra reviewer, not as a main or default model,
+`pricing` only — there is no `month` window, and Alibaba is absent from `/quota` and
+`/avoid`, and `/recommend` does not rank it. Use Alibaba only as a supplement or an extra reviewer, not as a main or default model,
 and not in long loops. OpenCode's key for it comes only from the environment variable
 `ALIBABA_TOKEN_PLAN_API_KEY` (in WSL from `~/.config/ai-keys.env`, which `~/.bashrc` and
 `~/.profile` load, and through WSLENV for commands started from Windows; on Windows a user
