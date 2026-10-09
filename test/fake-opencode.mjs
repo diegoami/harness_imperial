@@ -65,9 +65,17 @@ if (cmd === 'export') {
   for (const d of s.denials ?? []) {
     const error = d.kind === 'denied' ? 'The user has specified a rule which prevents you from using this specific tool call. Here are some of the relevant rules []'
       : 'The user rejected permission to use this specific tool call.';
-    messages.push({ parts: [{ type: 'tool', tool: d.tool, state: { status: 'error', input: d.tool === 'bash' ? { command: d.input } : { filePath: d.input }, error } }] });
+    const input = d.inputObject ?? (d.tool === 'bash' ? { command: d.input } : { filePath: d.input });
+    messages.push({ info: { role: 'assistant' }, parts: [{ type: 'tool', tool: d.tool, state: { status: 'error', input, error } }] });
   }
-  if (s.denials?.length && s.recovered) messages.push({ parts: [{ type: 'text', text: 'went on' }] });
+  // FAKE_OC_DENY_AFTER: what follows the last denial instead of the model's own text (Sol's R1 on PR 155).
+  const after = process.env.FAKE_OC_DENY_AFTER ? JSON.parse(process.env.FAKE_OC_DENY_AFTER) : [{ info: { role: 'assistant' }, parts: [{ type: 'text', text: 'went on' }] }];
+  if (s.denials?.length && s.recovered) messages.push(...after);
+  // FAKE_OC_EXPORT_STALE: the first export, the live one, holds no denials yet (Sol's R3 on PR 155).
+  if (process.env.FAKE_OC_EXPORT_STALE) {
+    const flag = `${process.env.FAKE_OC_STATE}.stale-served`;
+    if (!fs.existsSync(flag)) { fs.writeFileSync(flag, '1'); process.stdout.write(JSON.stringify({ messages: [], info: { agent: s.agent } })); process.exit(0); }
+  }
   process.stdout.write(JSON.stringify({ messages, info: { agent: s.agent } }));
   process.exit(0);
 }

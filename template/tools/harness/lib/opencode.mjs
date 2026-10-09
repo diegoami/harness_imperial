@@ -368,10 +368,24 @@ export function deniedNote(run) {
 // are a pattern, not a slip.
 export function denialVerdict(denials) {
   const counts = new Map();
-  for (const d of denials) counts.set(`${d.tool}\u0000${d.input}`, (counts.get(`${d.tool}\u0000${d.input}`) ?? 0) + 1);
+  for (const d of denials) {
+    const key = `${d.tool}\u0000${d.key ?? d.input}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
   if ([...counts.values()].some((n) => n >= 2)) return 'permission-rejected-after-retry';
   if (counts.size >= 3) return 'permission-rejected-x3-distinct';
   return null;
+}
+
+// A call's whole input as one string, keys sorted at every level: the same call written with its
+// keys in another order is the same call, and nothing is cut, so two calls that differ only past
+// the shown part are two (Sol's R2, R5 on PR 155).
+export function canonicalInput(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalInput).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonicalInput(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
 }
 
 // How many denial marks OpenCode has printed so far: its rejection line, or a rule's error. A rise
@@ -389,17 +403,23 @@ export async function sessionRecord(cmd, { workDir, sessionId, outFile, timeoutM
   if (!res || res.code !== 0) return null;
   try {
     const j = JSON.parse(res.stdout.slice(res.stdout.indexOf('{')));
-    const parts = (j.messages ?? []).flatMap((m) => m.parts ?? []);
+    const parts = (j.messages ?? []).flatMap((m) => (m.parts ?? []).map((p) => ({ ...p, role: m.info?.role ?? m.role ?? null })));
     const isDenial = (p) => p.type === 'tool' && p.state?.status === 'error' && DENIED.test(String(p.state.error ?? ''));
-    // Each denied call, and whether the model went on after it: a later tool call or text.
+    // The model working: its own tool call that ran (or was denied), or its own text. Not a user's
+    // or a synthetic message, not a call that never ran (Sol's R1 on PR 155).
+    const worked = (q) => q.role === 'assistant' && !q.synthetic
+      && ((q.type === 'tool' && ['running', 'completed', 'error'].includes(q.state?.status))
+        || (q.type === 'text' && String(q.text ?? '').trim()));
+    // Each denied call, and whether the model went on after it.
     const denials = parts.flatMap((p, i) => {
       if (!isDenial(p)) return [];
       const input = p.state?.input ?? {};
       return [{
         tool: p.tool ?? null,
         input: String(input.command ?? input.filePath ?? input.path ?? JSON.stringify(input)).slice(0, 300),
+        key: canonicalInput(input),
         kind: /rejected permission/i.test(String(p.state.error)) ? 'rejected' : 'denied',
-        recovered: parts.slice(i + 1).some((q) => q.type === 'tool' || (q.type === 'text' && String(q.text ?? '').trim())),
+        recovered: parts.slice(i + 1).some(worked),
       }];
     });
     return { agent: j.info?.agent ?? null, rejected: denials.some((d) => d.kind === 'rejected'), denials };
@@ -495,11 +515,37 @@ function perRunConfig({ agent, scratch, workDir, env, dir, log }) {
 
 // The run's OPENCODE_CONFIG_CONTENT: the caller's, if any, with experimental.continue_loop_on_deny
 // set (#146). OpenCode reads it as local config, over the files.
+// OpenCode reads its config as JSONC: comments and trailing commas, never inside a string (Sol's
+// R4 on PR 155). Content that still does not parse is returned as it is, flag unset, and logged by
+// the caller: a denial then ends the run, which fails as before.
 export function withContinueOnDeny(content) {
-  let config = {};
-  try { config = content ? JSON.parse(content) : {}; } catch { config = {}; }
-  if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};
-  return JSON.stringify({ ...config, experimental: { ...(config.experimental ?? {}), continue_loop_on_deny: true } });
+  if (!content || !String(content).trim()) return JSON.stringify({ experimental: { continue_loop_on_deny: true } });
+  let config;
+  try { config = JSON.parse(stripJsonc(String(content))); } catch { return null; }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
+  const experimental = config.experimental && typeof config.experimental === 'object' ? config.experimental : {};
+  return JSON.stringify({ ...config, experimental: { ...experimental, continue_loop_on_deny: true } });
+}
+
+function stripJsonc(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      out += '\n';
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 1;
+      out += ' ';
+    } else out += c;
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
 }
 
 /**
@@ -538,7 +584,10 @@ export async function runOpenCodeWatched({
     ? perRunConfig({ agent: requestedAgent, scratch, workDir, env, dir: path.join(logDir, `${title}.config`), log }) : { dir: null, given: false };
   const runConfig = agentConfig.dir;
   const runEnv = { ...env, TMPDIR: scratch, TEMP: scratch, TMP: scratch, ...(runConfig ? { OPENCODE_CONFIG_DIR: runConfig } : {}),
-    OPENCODE_CONFIG_CONTENT: withContinueOnDeny(env.OPENCODE_CONFIG_CONTENT) };
+    OPENCODE_CONFIG_CONTENT: withContinueOnDeny(env.OPENCODE_CONFIG_CONTENT) ?? env.OPENCODE_CONFIG_CONTENT };
+  if (runEnv.OPENCODE_CONFIG_CONTENT === env.OPENCODE_CONFIG_CONTENT) {
+    log('opencode: OPENCODE_CONFIG_CONTENT does not parse; passed on as it is, without continue_loop_on_deny: a denial will end the run');
+  }
   const briefFile = path.join(workDir, briefFileName(title));
   fs.writeFileSync(briefFile, prompt);
   const files = [outFile, errFile, briefFile];
@@ -635,7 +684,7 @@ export async function runOpenCodeWatched({
       // that fails leaves `lastUpdated` unchanged, so the idle clock keeps running.
       const idlePollMs = Math.max(pollMs, Math.min(60_000, Math.ceil(idleTimeoutMs / 5)));
       let lastUpdated = session ? Number(session.updated) : startedMs;
-      let marks = 0;
+      let recorded = 0;
       while (!hasExited()) {
         const remaining = Math.max(0, totalTimeoutMs - elapsed());
         const wait = session ? Math.min(idleTimeoutMs > 0 ? idlePollMs : pollMs, remaining) : remaining;
@@ -646,11 +695,13 @@ export async function runOpenCodeWatched({
           throw fail(`no exit in ${secs} s`, `OpenCode did not finish within ${secs} s; killed pid ${child.pid}`);
         }
         // A new denial mark: read the record, and stop the run at once when it is past saving (#146).
-        const nowMarks = session ? denialMarks(`${fs.readFileSync(outFile, 'utf8')}\n${fs.readFileSync(errFile, 'utf8')}`) : 0;
-        if (nowMarks > marks) {
-          marks = nowMarks;
+        // A mark stays unaccounted until the record holds as many denials, so a stale or failed
+        // export is read again at the next poll (Sol's R3 on PR 155).
+        const marks = session ? denialMarks(`${fs.readFileSync(outFile, 'utf8')}\n${fs.readFileSync(errFile, 'utf8')}`) : 0;
+        if (marks > recorded) {
           const seen = await sessionRecord(cmd, { workDir, sessionId: session.id, outFile: path.join(logDir, `${title}.export.json`), env, timeoutMs: 30_000 });
           fs.rmSync(path.join(logDir, `${title}.export.json`), { force: true });
+          if (seen) recorded = Math.max(recorded, seen.denials.length);
           const verdict = seen ? denialVerdict(seen.denials) : null;
           if (verdict && !hasExited()) {
             stoppedFor = verdict;
