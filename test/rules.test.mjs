@@ -297,15 +297,17 @@ test('each role\'s two mirror agent files are byte-equal and every agent carries
 
 // L66a (#138): the agent files allow exactly OpenCode's tool output and the null device, and no
 // harness-run path: each run's own folder is allowed in its per-run copy only (lib/opencode.mjs). The
-// null device by identity: `cp a /dev/null` asks for `/dev/*` (an exact `/dev/null` never matches),
+// null device by identity: `cp a /dev/null` asks for `/dev/*` (an exact `/dev/null` never matches), and
+// `/dev/*` alone also admitted `/dev/shm`, a writable tmpfs, so `/dev/*/*` is denied after it (Sol's R1,
+// PR 152): a device node directly in /dev passes, nothing below it does;
 // Windows' NUL is `\\.\NUL`, which OpenCode matches as `//./NUL`; `??.?NUL*` also matched the
 // directory `/a.bNUL-other/*` (Sol's R1, PR 137 round 2). Probed on OpenCode 1.18.34, 2026-10-09.
-test('the agent files allow exactly /tmp/opencode, /dev and //./NUL outside the worktree, and send scratch to the run\'s folder (L66)', () => {
+test('the agent files allow exactly /tmp/opencode, /dev (not below it) and //./NUL outside the worktree, and send scratch to the run\'s folder (L66)', () => {
   for (const f of ['template/.opencode/agents/implementer.md', '.opencode/agents/implementer.md',
     'template/.opencode/agents/reviewer.md', '.opencode/agents/reviewer.md']) {
     const text = read(f);
     const block = /\n  external_directory:\n((?: {4}.*\n)*)/.exec(text)?.[1];
-    assert.equal(block, '    "/tmp/opencode/*": allow\n    "/dev/*": allow\n    "//./NUL*": allow\n', f);
+    assert.equal(block, '    "/tmp/opencode/*": allow\n    "/dev/*": allow\n    "/dev/*/*": deny\n    "//./NUL*": allow\n', f);
     assert.equal(text.match(/^  external_directory:/gm).length, 1, `${f}: one external_directory block`);
     assert.match(text.replace(/\s+/g, ' '), /Stay inside your worktree and your scratch folder: no other temp directory/, f);
   }

@@ -6,6 +6,7 @@ permission:
   external_directory:
     "/tmp/opencode/*": allow
     "/dev/*": allow
+    "/dev/*/*": deny
     "//./NUL*": allow
   bash:
     "*": allow

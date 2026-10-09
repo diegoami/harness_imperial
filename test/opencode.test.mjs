@@ -547,6 +547,9 @@ test('withScratchAllow: last in the block or a new block; BOM, CRLF and blanks a
   const inBlock = withScratchAllow(agentMd('  external_directory:\n    "*": deny\n    "/x/*": allow\n'), '/tmp/r/*');
   assert.match(inBlock, /\n  external_directory:\n    "\*": deny\n    "\/x\/\*": allow\n    "\/tmp\/r\/\*": allow\n  bash:/);
   assert.match(inBlock, /\n---\nbody\n$/);
+  // A blank or comment line inside the block does not end it: the allow still goes last (Sol's R2, PR 152).
+  const gaps = withScratchAllow(agentMd('  external_directory:\n\n    # the run\'s own\n    "*": deny\n\n    "/x/*": deny\n  # next\n'), '/tmp/r/*');
+  assert.match(gaps, /\n    "\/x\/\*": deny\n    "\/tmp\/r\/\*": allow\n\n?  # next\n  bash:/);
   assert.match(withScratchAllow(agentMd('  edit: deny\n'), '/tmp/r/*'), /permission:\n  external_directory:\n    "\/tmp\/r\/\*": allow\n  edit: deny/);
   const crlf = withScratchAllow(`\uFEFF${agentMd('  external_directory:\n    "/x/*": allow\n', '\r\n').replace(/^---\r\n/, '--- \r\n')}`, '/tmp/r/*');
   assert.ok(crlf.startsWith('\uFEFF--- \r\n'), JSON.stringify(crlf.slice(0, 12)));
@@ -574,4 +577,13 @@ test('a failure while making the run\'s config leaves no brief in the worktree',
   fs.writeFileSync = (f, ...a) => { if (String(f).endsWith(`${path.sep}reviewer.md`) && String(f).includes('.config')) throw new Error('disk full'); return realWrite(f, ...a); };
   try { await assert.rejects(runIn(s), /disk full/); } finally { fs.writeFileSync = realWrite; }
   assert.equal(fs.readdirSync(s.dir).some((n) => n.startsWith('.harness-brief-')), false);
+});
+
+test('a thrown failure removes the run\'s config dir too (Sol\'s R3, PR 152)', async () => {
+  const s = withAgent('no-session', agentMd(''));
+  await assert.rejects(runIn(s), infra(/no session/));
+  const [session] = readSessions(path.join(s.dir, 'state.json')).concat([undefined]);
+  assert.equal(session, undefined, 'no session was made');
+  const logs = path.join(s.dir, 'logs');
+  assert.deepEqual(fs.readdirSync(logs).filter((n) => n.endsWith('.config')), [], fs.readdirSync(logs).join(', '));
 });

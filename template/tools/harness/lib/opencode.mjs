@@ -395,8 +395,11 @@ export function withScratchAllow(text, pattern) {
   const ed = at(/^  external_directory:/);
   if (ed >= 0) {
     if (!/^  external_directory:[ \t]*$/.test(lines[ed])) return null;
+    // The block runs to the next line indented less, past blank and comment lines (Sol's R2, PR 152).
     let last = ed;
-    while (last + 1 < end && /^ {4}/.test(lines[last + 1])) last += 1;
+    for (let i = ed + 1; i < end && (/^ {4}/.test(lines[i]) || /^[ \t]*(#.*)?$/.test(lines[i])); i += 1) {
+      if (/^ {4}/.test(lines[i]) && !/^[ \t]*#/.test(lines[i])) last = i;
+    }
     lines.splice(last + 1, 0, rule);
   } else {
     const perm = at(/^permission:[ \t]*$/);

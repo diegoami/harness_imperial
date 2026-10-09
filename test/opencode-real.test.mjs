@@ -175,6 +175,8 @@ test('real OpenCode: the per-run allow admits this run\'s folder only, and the n
     [path.join(root, 'harness-run-T07-a1x', 'f'), true, 'a folder whose name only starts with its own'],
     [win ? '\\\\.\\NUL' : '/dev/null', false, 'the null device'],
     [win ? 'C:\\a.bNUL-other\\f' : '/a.bNUL-other/f', true, 'a directory named like the null device'],
+    // Below /dev is not the null device: /dev/shm is a writable tmpfs (Sol's R1, PR 152).
+    ...(win ? [] : [['/dev/shm', true, 'a directory under /dev'], ['/dev/shm/harness-none', true, 'a file below /dev']]),
   ];
   for (const [file, deny, what] of cases) {
     const out = read(file);
