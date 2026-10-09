@@ -43,6 +43,18 @@ another way, or tell the user what is missing (`docs/environment.md`).
    (`--model` for `implement.mjs`, `--reviewer` for `review.mjs`) and say so in the run's report.
    Both scripts also skip such a model themselves and log why (L52); never pause a provider by
    editing `harness.json` for quota.
+   When a task needs both an implementer and a reviewer, use `/recommend`'s `pair` field
+   (`curl -s 'localhost:8765/recommend?tier=heavy' | jq .pair`): `pair.implementer` and
+   `pair.reviewer`, the reviewer from another family (claude, openai, glm, deepseek, minimax;
+   each free model its own). Add `review_tier=light` for a lighter reviewer; `private=0` is for
+   code that is not private (the free OpenRouter models may then be in the pair). With
+   `tier=heavy`, the same response also offers `free_reviewer` — a free second opinion on the
+   shared 1,000-requests-a-day allowance, lost at 00:00 UTC. Never use a free model for private
+   or client code, secrets or NDA material. A null reviewer means no other family has quota:
+   tell the owner. Project exclusions apply on top: if the suggested reviewer is one the
+   project rules out (rule 3, the family rule), take the next row of `ranking` whose reviewer
+   is from a different family than the implementer. Alibaba is never recommended and never
+   appears in `pair`.
 3. **Choose on the evidence you have.** In order of preference:
    - this project's own measurements (review rounds and tokens per task, from the merge comments);
    - a small trial;

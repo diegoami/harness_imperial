@@ -67,11 +67,11 @@ test('within a band the owner\'s preference order decides, not the score', () =>
 test('a pool not yet sized (score null) is band 0 while usable with spare, band 1 without', () => {
   const c = config();
   c.chooser = { reviewer: { easy: ['glm', 'luna'] } };
-  const sized = rec(row('zai', 'glm-5.3', -5), row('openai', 'gpt-5.6-luna', null, { spare_pct: 95, limiting_window: 'gpt-5.6-luna:7d' }));
+  const sized = rec(row('zai', 'glm-5.3', -5), row('openai', 'gpt-5.6-luna', null, { spare_pct: 95, limiting_window: '7d' }));
   let ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend: sized });
   assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['luna', 0], ['glm', 1]]);
   assert.match(ranked[0].note, /not yet sized, 95% spare/);
-  const none = rec(row('zai', 'glm-5.3', -5), row('openai', 'gpt-5.6-luna', null, { spare_pct: 0, limiting_window: 'gpt-5.6-luna:7d' }));
+  const none = rec(row('zai', 'glm-5.3', -5), row('openai', 'gpt-5.6-luna', null, { spare_pct: 0, limiting_window: '7d' }));
   ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend: none });
   assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['glm', 1], ['luna', 1]]);
   const unusable = rec(row('openai', 'gpt-5.6-luna', null, { spare_pct: 40, usable: false }));
@@ -94,26 +94,19 @@ test('OpenRouter\'s prepaid 0 and a skipped (nearly full) pool are band 1; an un
   assert.equal(ranked.find((r) => r.name === 'ali-qwen-flash').blocked, null);
 });
 
-test('a model /recommend does not list takes its provider\'s shared pool, never a model\'s own window', () => {
+test('a model /recommend does not list takes its provider\'s quota row, never a missing model\'s window (L65)', () => {
   const c = config();
   c.models.sol = { id: 'openai/gpt-6-sol', variant: 'low', family: 'openai' };
   c.chooser = { reviewer: { easy: ['sol', 'glm'] } };
-  // Sol draws on openai's shared 7d pool (sol-6.1's row), never on Luna's own window: shared
-  // runs out, Luna's is fresh -> band 1; then shared is fresh, Luna's runs out -> band 0.
-  let recommend = rec(
-    row('openai', 'gpt-5.6-luna', 900, { limiting_window: 'gpt-5.6-luna:7d' }),
+  // Sol is in /recommend on openai's `7d`; Luna is not in /recommend (her window is gone, L65).
+  // Sol still reads the openai provider's quota row.
+  const recommend = rec(
     row('openai', 'gpt-6.1-sol', -20, { limiting_window: '7d' }),
     row('zai', 'glm-5.3', 6, { limiting_window: '1w' }),
   );
-  let ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend });
+  const ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend });
   assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['glm', 0], ['sol', 1]]);
   assert.match(ranked.find((r) => r.name === 'sol').note, /its provider's gpt-6\.1-sol row/);
-  recommend = rec(
-    row('openai', 'gpt-5.6-luna', -50, { limiting_window: 'gpt-5.6-luna:7d' }),
-    row('openai', 'gpt-6.1-sol', 300, { limiting_window: '7d' }),
-  );
-  ranked = rankCandidates({ config: c, role: 'reviewer', difficulty: 'easy', quota: of(), recommend });
-  assert.equal(ranked.find((r) => r.name === 'sol').band, 0);
 });
 
 test('an exhausted provider ranks last with the reason; a reviewer never shares the implementer\'s family', () => {
