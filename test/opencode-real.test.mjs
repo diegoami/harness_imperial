@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runOpenCodeWatched, resolveOpenCode, openCodeVersion, versionProblem } from '../template/tools/harness/lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, openCodeVersion, versionProblem, scratchAllow, withScratchAllow } from '../template/tools/harness/lib/opencode.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let opencode = null;
@@ -137,4 +137,51 @@ test('real OpenCode: /tmp/opencode/* is allowed for the implementer (L43 correct
       assert.equal(written, true, `implementer file-tool did not write ${file} by ${tool}: ${out.slice(-300)}`);
     }
   }
+});
+
+// L66a (#138), on the real matcher. The project's implementer file gets `"*": deny` first in its
+// external_directory block, so only an explicit allow lets a path through (`debug agent` lets an
+// "ask" pass); the run's own config dir holds the per-run copy, as the runner writes it. OpenCode
+// applies the last matching rule in file order, which is why the copy's allow comes last.
+test('real OpenCode: the per-run allow admits this run\'s folder only, and the null device by identity (L66, #138)', { skip }, () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'oc-scratch-')));
+  execFileSync('git', ['init', '-q', dir]);
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'oc-scratch-root-')));
+  const folder = (n) => { const d = path.join(root, `harness-run-${n}`); fs.mkdirSync(path.join(d, 'sub'), { recursive: true }); fs.writeFileSync(path.join(d, 'f'), 'x'); fs.writeFileSync(path.join(d, 'sub', 'f'), 'x'); return d; };
+  const own = folder('T07-a1');
+  folder('T07-b2');
+  folder('T07-a1x');
+  const template = fs.readFileSync(path.join(here, '../template/.opencode/agents/implementer.md'), 'utf8');
+  const project = template.replace('  external_directory:\n', '  external_directory:\n    "*": deny\n');
+  fs.mkdirSync(path.join(dir, '.opencode', 'agents'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.opencode', 'agents', 'implementer.md'), project);
+  const config = path.join(root, 'config');
+  fs.mkdirSync(path.join(config, 'agents'), { recursive: true });
+  fs.writeFileSync(path.join(config, 'agents', 'implementer.md'), withScratchAllow(project, scratchAllow(own)));
+  const read = (file, withConfig = true) => {
+    const env = clean(process.env);
+    if (withConfig) env.OPENCODE_CONFIG_DIR = config;
+    try {
+      return execFileSync(opencode.exe, [...opencode.prefix, 'debug', 'agent', 'implementer', '--tool', 'read', '--params', JSON.stringify({ filePath: file })],
+        { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
+    } catch (e) { return `${e.stdout ?? ''}${e.stderr ?? ''}`; }
+  };
+  const denied = (out) => /prevents you from using this specific tool call/.test(out);
+  const win = process.platform === 'win32';
+  const cases = [
+    [path.join(own, 'f'), false, 'its own folder'],
+    [path.join(own, 'sub', 'f'), false, 'a subfolder of its own'],
+    [path.join(root, 'harness-run-T07-b2', 'f'), true, 'another run\'s folder'],
+    [path.join(root, 'harness-run-T07-a1x', 'f'), true, 'a folder whose name only starts with its own'],
+    [win ? '\\\\.\\NUL' : '/dev/null', false, 'the null device'],
+    [win ? 'C:\\a.bNUL-other\\f' : '/a.bNUL-other/f', true, 'a directory named like the null device'],
+    // Below /dev is not the null device: /dev/shm is a writable tmpfs (Sol's R1, PR 152).
+    ...(win ? [] : [['/dev/shm', true, 'a directory under /dev'], ['/dev/shm/harness-none', true, 'a file below /dev']]),
+  ];
+  for (const [file, deny, what] of cases) {
+    const out = read(file);
+    assert.equal(denied(out), deny, `${what} (${file}): ${out.slice(-300)}`);
+  }
+  // Without the run's config dir, its own folder is rejected too: the per-run copy is what allows it.
+  assert.equal(denied(read(path.join(own, 'f'), false)), true, 'its own folder, without the per-run copy');
 });

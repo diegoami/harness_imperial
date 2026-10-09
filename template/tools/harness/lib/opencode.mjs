@@ -21,6 +21,12 @@
 //      reported as `permissionRejected` with what OpenCode's warning line says was rejected (IC2
 //      #501: three runs in one day, on TEMP and on tools' install directories). The line decides
 //      alone only when the record cannot be read: a tool's output can quote it (PR 35).
+//   8. The run gets a scratch folder of its own outside every checkout, harness-run-<title> under
+//      /tmp (the user's TEMP on Windows), as TMPDIR, TEMP and TMP, and the pointer names it. The
+//      agent files allow no harness-run path: the run's own OPENCODE_CONFIG_DIR carries a copy of
+//      its agent file with one more external_directory allow, this folder exactly, so another
+//      run's folder is rejected like any outside path (Sol's R1 on PR 137). The folder is removed
+//      after a clean run and kept after a failed one (L66).
 //
 // Every failure of OpenCode itself throws an OpenCodeInfraError with a short `reason`; a fallback
 // chain may move past it. Anything else thrown is a defect of the caller.
@@ -360,19 +366,90 @@ export function briefFileName(title) {
   return `.harness-brief-${title}.md`;
 }
 
+// The external_directory pattern for exactly this run's scratch folder (L66). OpenCode 1.18.34's
+// matcher turns every `\` into `/`, in the path asked about and in the pattern alike, then matches
+// the whole path; so the folder's own path, with `/`, and `/*` match it and its subfolders and
+// nothing else: not another run's folder, not one whose name only starts with this one's (probed
+// 2026-10-09). No `?` stands in for a separator: `?` matches any character (Sol's R1, PR 137 r2).
+export function scratchAllow(scratch) {
+  return `${scratch.replace(/\\/g, '/')}/*`;
+}
+
+// The agent file with one more external_directory rule, `"<pattern>": allow`: last in the block,
+// because OpenCode 1.18.34 applies the last rule that matches, in file order (probed 2026-10-09:
+// an allow above `"*": deny` is overridden), or as a block under `permission:`. A leading BOM, CRLF line ends and trailing blanks on the
+// `---` lines are read as such, and the file keeps its own line ends (Sol's R5, PR 137 r2). Null
+// when there is no front matter or permission block, when external_directory is not a block, or
+// when the pattern cannot be written inside double quotes.
+export function withScratchAllow(text, pattern) {
+  if (/["\\\r\n]/.test(pattern)) return null;
+  const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.slice(bom.length).split(/\r?\n/);
+  const fence = (l) => /^---[ \t]*$/.test(l);
+  if (!fence(lines[0])) return null;
+  const end = lines.findIndex((l, i) => i > 0 && fence(l));
+  if (end < 0) return null;
+  const at = (re) => lines.findIndex((l, i) => i < end && re.test(l));
+  const rule = `    "${pattern}": allow`;
+  const ed = at(/^  external_directory:/);
+  if (ed >= 0) {
+    if (!/^  external_directory:[ \t]*$/.test(lines[ed])) return null;
+    // The block runs to the next line indented less, past blank and comment lines (Sol's R2, PR 152).
+    let last = ed;
+    for (let i = ed + 1; i < end && (/^ {4}/.test(lines[i]) || /^[ \t]*(#.*)?$/.test(lines[i])); i += 1) {
+      if (/^ {4}/.test(lines[i]) && !/^[ \t]*#/.test(lines[i])) last = i;
+    }
+    lines.splice(last + 1, 0, rule);
+  } else {
+    const perm = at(/^permission:[ \t]*$/);
+    if (perm < 0) return null;
+    lines.splice(perm + 1, 0, '  external_directory:', rule);
+  }
+  return bom + lines.join(eol);
+}
+
+// The run's own OPENCODE_CONFIG_DIR (L66), or null (and logged) when its agent file cannot carry
+// the scratch allow. Where the agent comes from decides what is copied: an inherited
+// OPENCODE_CONFIG_DIR (the reviewer's, L34) is replaced by this one, so all of it is copied but
+// OpenCode's own node_modules; the worktree's .opencode is still read as the project's, and the
+// agent file in this directory applies over it (probed on OpenCode 1.18.34), so only that is.
+function perRunConfig({ agent, scratch, workDir, env, dir, log }) {
+  const inherited = env.OPENCODE_CONFIG_DIR || null;
+  const base = inherited ?? (env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? null : path.join(workDir, '.opencode'));
+  const source = base ? path.join(base, 'agents', `${agent}.md`) : null;
+  if (!source || !fs.existsSync(source)) {
+    log(`opencode: no agent file ${source ?? `for ${agent}`} to allow the scratch folder in; writes there will be rejected`);
+    return null;
+  }
+  const text = withScratchAllow(fs.readFileSync(source, 'utf8'), scratchAllow(scratch));
+  if (!text) {
+    log(`opencode: ${source} has no permission block the scratch allow can go in; writes to the scratch folder will be rejected`);
+    return null;
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (inherited) fs.cpSync(inherited, dir, { recursive: true, filter: (src) => path.basename(src) !== 'node_modules' });
+  fs.mkdirSync(path.join(dir, 'agents'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'agents', `${agent}.md`), text);
+  return dir;
+}
+
 /**
  * Runs `opencode <args...> --title <title-token> <pointer prompt>` in workDir, watched. The
  * prompt is written to `<workDir>/.harness-brief-<title>.md` and the command line carries only
  * a short pointer to it (L60): the whole brief never passes through argv, which Windows caps at
  * 32767 characters (IC2's T146/T148 were blocked by it) and Linux per argument at 128 KiB.
  * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent,
- *   permissionRejected, permissionHint, files, briefFile, seconds }.
+ *   permissionRejected, permissionHint, files, briefFile, scratch, seconds }.
  * A non-zero exit is returned, not thrown: the caller decides.
  */
 export async function runOpenCodeWatched({
   args, prompt, workDir, title,
   startupTimeoutMs = 180_000, totalTimeoutMs = 3_600_000, idleTimeoutMs = 600_000, pollMs = 10_000,
   logDir = path.join(os.tmpdir(), 'harness-opencode'), opencode, env = process.env, log = () => {},
+  // Not os.tmpdir() on POSIX: a caller's TMPDIR (a Claude session's scratchpad) is not where
+  // scratch belongs.
+  scratchRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp',
 }) {
   if (args[0] !== 'run') throw new Error(`runOpenCodeWatched runs 'opencode run'; got '${args[0]}'.`);
   const cmd = opencode ?? resolveOpenCode(env);
@@ -381,11 +458,20 @@ export async function runOpenCodeWatched({
   fs.mkdirSync(logDir, { recursive: true });
   const outFile = path.join(logDir, `${title}.out.txt`);
   const errFile = path.join(logDir, `${title}.err.txt`);
+  // Before the brief is written: a failure here leaves nothing in the worktree. Its real path (a Windows TEMP may be an 8.3 short name), the one OpenCode asks about.
+  fs.mkdirSync(path.join(scratchRoot, `harness-run-${title}`), { recursive: true });
+  const scratch = fs.realpathSync.native(path.join(scratchRoot, `harness-run-${title}`));
+  const agentIdx = args.indexOf('--agent');
+  const requestedAgent = agentIdx >= 0 ? args[agentIdx + 1] : null;
+  const runConfig = requestedAgent
+    ? perRunConfig({ agent: requestedAgent, scratch, workDir, env, dir: path.join(logDir, `${title}.config`), log }) : null;
+  const runEnv = { ...env, TMPDIR: scratch, TEMP: scratch, TMP: scratch, ...(runConfig ? { OPENCODE_CONFIG_DIR: runConfig } : {}) };
   const briefFile = path.join(workDir, briefFileName(title));
   fs.writeFileSync(briefFile, prompt);
   const files = [outFile, errFile, briefFile];
   const pointer = `Your complete brief for this run is the file ${briefFileName(title)} at the root of this worktree.`
-    + ' Read that file first and follow it exactly; never edit, commit or delete it.';
+    + ' Read that file first and follow it exactly; never edit, commit or delete it.'
+    + ` Your scratch folder for this run is ${scratch} (also $TMPDIR): temporary files go there, never anywhere else outside this worktree.`;
   const all = [...args, '--title', title, pointer];
   // The brief leaves the worktree when the run is not clean (L60): kept for diagnosis with the
   // log files, but never left as untracked work a reset would save as the implementer's (#87).
@@ -422,7 +508,7 @@ export async function runOpenCodeWatched({
     const errFd = fs.openSync(errFile, 'w');
     const startedMs = Date.now();
     try {
-      child = spawnDetached(cmd, all, { cwd: workDir, env, stdio: ['ignore', outFd, errFd] });
+      child = spawnDetached(cmd, all, { cwd: workDir, env: runEnv, stdio: ['ignore', outFd, errFd] });
     } finally {
       fs.closeSync(outFd);
       fs.closeSync(errFd);
@@ -509,8 +595,6 @@ export async function runOpenCodeWatched({
 
     const stdout = fs.readFileSync(outFile, 'utf8');
     const stderr = fs.readFileSync(errFile, 'utf8');
-    const agentIdx = args.indexOf('--agent');
-    const requestedAgent = agentIdx >= 0 ? args[agentIdx + 1] : null;
     const exportFile = path.join(logDir, `${title}.export.json`);
     const record = await sessionRecord(cmd, { workDir, sessionId: session.id, outFile: exportFile, env });
     const recordedAgent = requestedAgent ? record?.agent ?? null : null;
@@ -521,10 +605,14 @@ export async function runOpenCodeWatched({
     const said = permissionRejection(`${stdout}\n${stderr}`);
     const permissionRejected = !record ? said : record.rejected ? said ?? 'a tool call (in the session record)' : null;
     const permissionHint = permissionRejected ? rejectionHint(`${stdout}\n${stderr}`) : null;
-    if (exitCode === 0 && !permissionRejected) for (const f of files) fs.rmSync(f, { force: true });
-    else {
+    if (runConfig) fs.rmSync(runConfig, { recursive: true, force: true });
+    const clean = exitCode === 0 && !permissionRejected;
+    if (clean) {
+      for (const f of files) fs.rmSync(f, { force: true });
+      fs.rmSync(scratch, { recursive: true, force: true });
+    } else {
       shelveBrief();
-      log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}`);
+      log(`opencode: exit ${exitCode}${permissionRejected ? `, permission rejected: ${permissionRejected}` : ''}; files kept: ${files.join(', ')}; scratch kept: ${scratch}`);
     }
     return {
       output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
@@ -532,11 +620,14 @@ export async function runOpenCodeWatched({
       agentFallback, sessionAgent: recordedAgent, permissionRejected, permissionHint,
       files: exitCode === 0 && !permissionRejected ? [] : files,
       briefFile: exitCode === 0 && !permissionRejected ? briefFile : briefKeptPath,
+      scratch: clean ? null : scratch,
       seconds: Math.round(elapsed() / 1000),
     };
   } catch (e) {
     shelveBrief();
     if (child) { try { killTree(child); } catch { /* already dead */ } }
+    // The scratch folder stays for diagnosis; naming it on a thrown failure is L66b's (#139).
+    if (runConfig) fs.rmSync(runConfig, { recursive: true, force: true });
     // The failure was worded before shelving moved or dropped the brief: name where it actually is.
     if (briefKeptPath && e.message && e.message.includes(briefFile)) e.message = e.message.split(briefFile).join(briefKeptPath);
     // ...and rebuild the kept-files list itself, which the hopeless fallback shortens (round-2 R1).

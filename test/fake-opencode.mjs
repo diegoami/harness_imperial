@@ -95,6 +95,9 @@ const brief = briefFile && fs.existsSync(briefFile) ? fs.readFileSync(briefFile,
 const createSession = (recordedAgent = agent, extra = {}) => {
   mine = { ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
     dataHome: process.env.XDG_DATA_HOME ?? null, prompt: pointer, agentFile, brief,
+    tmpdir: process.env.TMPDIR ?? null, temp: process.env.TEMP ?? null, tmp: process.env.TMP ?? null,
+    configDir: process.env.OPENCODE_CONFIG_DIR ?? null,
+    agentText: (() => { try { return agentFile ? fs.readFileSync(agentFile, 'utf8') : null; } catch { return null; } })(),
     projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
     agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null };
   writeSession(stateFile, mine);
