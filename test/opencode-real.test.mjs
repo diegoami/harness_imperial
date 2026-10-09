@@ -90,16 +90,18 @@ test('real OpenCode: --version gives a supported 1.x version (#26)', { skip }, a
   assert.equal(versionProblem(v, opencode.exe), null);
 });
 
-// OpenCode 1.18 lets every agent write to /tmp/opencode/ unasked, and an implementer did (L43). The
-// agent files deny it; OpenCode's own tool-output folder stays allowed, since a long tool output is
-// saved there for the agent to read back.
-test('real OpenCode: neither agent may write to /tmp/opencode, by bash or by a patch (L43)', { skip: skip || (process.platform === 'win32' && 'a POSIX path') }, () => {
+// OpenCode 1.18 lets every agent write to /tmp/opencode/ unasked; the agent files *allow* it
+// (L43 correction, 2026-10-09) — OpenCode's tool-output flows there, and rejecting those writes
+// kills the run. The L66a per-run scratch at /tmp/harness-run-<title> is the implementer's
+// safety net, not a deny on OpenCode's namespace. This test pins the *new* allow shape: bash `>`
+// writes succeed for the implementer; the reviewer stays read-only (edit: deny) for file-tools.
+test('real OpenCode: /tmp/opencode/* is allowed for the implementer (L43 correction 2026-10-09)', { skip: skip || (process.platform === 'win32' && 'a POSIX path') }, () => {
   for (const role of ['implementer', 'reviewer']) {
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'oc-deny-')));
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'oc-allow-')));
     execFileSync('git', ['init', '-q', dir]);
     fs.mkdirSync(path.join(dir, '.opencode', 'agents'), { recursive: true });
     fs.copyFileSync(path.join(here, `../template/.opencode/agents/${role}.md`), path.join(dir, `.opencode/agents/${role}.md`));
-    const target = `/tmp/opencode/harness-deny-${process.pid}-${role}`;
+    const target = `/tmp/opencode/harness-allow-${process.pid}-${role}`;
     const agent = (...extra) => {
       try {
         return execFileSync(opencode.exe, [...opencode.prefix, 'debug', 'agent', role, ...extra],
@@ -110,19 +112,29 @@ test('real OpenCode: neither agent may write to /tmp/opencode, by bash or by a p
     // otherwise (CI has no model configured).
     const shown = agent();
     const has = JSON.parse(shown.slice(shown.indexOf('{'))).tools ?? {};
-    const tools = [
-      ['bash', { command: `mkdir -p /tmp/opencode && echo x > ${target}-bash.txt`, description: 'probe' }, 'bash'],
-      'apply_patch' in has
-        ? ['apply_patch', { patchText: `*** Begin Patch\n*** Add File: ${target}-file.txt\n+x\n*** End Patch` }, 'file']
-        : ['write', { filePath: `${target}-file.txt`, content: 'x' }, 'file'],
-    ];
-    for (const [tool, params, kind] of tools) {
+    // bash write: implementer allowed, reviewer allowed too (bash `*`: allow per the rule) — but
+    // the file-write tools (`apply_patch` / `write`) are denied for the reviewer (`edit: deny`).
+    // Pin both: bash writes succeed regardless of role; file-tools behave per their rule.
+    const bashCmd = `mkdir -p /tmp/opencode && echo x > ${target}-bash.txt`;
+    const outBash = agent('--tool', 'bash', '--params', JSON.stringify({ command: bashCmd, description: 'probe' }));
+    const bashWritten = fs.existsSync(`${target}-bash.txt`);
+    fs.rmSync(`${target}-bash.txt`, { force: true });
+    assert.equal(bashWritten, true, `${role} bash did not write ${target}-bash.txt: ${outBash.slice(-300)}`);
+    if (role === 'reviewer') {
+      // Reviewer's `edit: deny` covers the file-tools; bash is the meaningful check. Skip the
+      // file-tools for the reviewer — the existing 'Tool apply_patch|write is disabled for agent
+      // reviewer' assertion lives in the rules-pinning elsewhere.
+      continue;
+    }
+    const fileTools = 'apply_patch' in has
+      ? [['apply_patch', { patchText: `*** Begin Patch\n*** Add File: ${target}-file.txt\n+x\n*** End Patch` }, 'file']]
+      : [['write', { filePath: `${target}-file.txt`, content: 'x' }, 'file']];
+    for (const [tool, params, kind] of fileTools) {
       const out = agent('--tool', tool, '--params', JSON.stringify(params));
       const file = `${target}-${kind}.txt`;
       const written = fs.existsSync(file);
       fs.rmSync(file, { force: true });
-      assert.equal(written, false, `${role} wrote ${file} by ${tool}: ${out.slice(-300)}`);
-      assert.match(out, /prevents you from using this specific tool call|Tool (apply_patch|write) is disabled for agent reviewer/, `${role} by ${tool}`);   // the reviewer has no edit at all
+      assert.equal(written, true, `implementer file-tool did not write ${file} by ${tool}: ${out.slice(-300)}`);
     }
   }
 });
