@@ -126,6 +126,18 @@ test('every reviewer is told a proven bypass of what the task protects is blocki
   assert.match(instructions, /Scratch output goes to your scratch folder, the one the brief's pointer names \(also \$TMPDIR\): .* never another `\/tmp` path \(L66\)\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
 });
 
+test('a review that went on after a denied call is posted; the same call denied twice falls to the next reviewer (#146)', posix, () => {
+  const p = project();
+  const ok = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_DENIALS: JSON.stringify([{ tool: 'read', input: '/etc/hostname', kind: 'rejected' }]) });
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  assert.match(ok.stdout, /luna: 1 denied call, the model went on: read \/etc\/hostname/);
+  assert.match(gh(p).comments[0].body, /^T07 review \(luna\)\napprove/);
+  const q = project();
+  const twice = review(q, { FAKE_OC_MODE: 'review-ok', FAKE_OC_DENIALS: JSON.stringify([{ tool: 'read', input: '/etc/hostname', kind: 'rejected' }, { tool: 'read', input: '/etc/hostname', kind: 'rejected' }]) });
+  assert.match(twice.stdout + twice.stderr, /luna failed: permission rejected: permission-rejected-after-retry: read \/etc\/hostname/);
+  assert.equal(gh(q).comments.length, 0, 'no review posted from a failed run');
+});
+
 test('the reviewer runs git in its worktree and is never asked to type its path (L30)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });

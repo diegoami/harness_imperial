@@ -21,6 +21,11 @@
 //      reported as `permissionRejected` with what OpenCode's warning line says was rejected (IC2
 //      #501: three runs in one day, on TEMP and on tools' install directories). The line decides
 //      alone only when the record cannot be read: a tool's output can quote it (PR 35).
+//      Since #146 the run sets OpenCode's experimental.continue_loop_on_deny, so a denied call (an
+//      auto-rejection, or a rule's deny) no longer ends the run: the model sees the error and goes
+//      on. A denial counts as recovered only when the record shows the model working after it; the
+//      same call denied twice, or a third different denial, fails the run, killed as soon as the
+//      record shows it (denialVerdict). A record that ends on a denial is a run that stopped there.
 //   8. The run gets a scratch folder of its own outside every checkout, harness-run-<title> under
 //      /tmp (the user's TEMP on Windows), as TMPDIR, TEMP and TMP, and the pointer names it. The
 //      agent files allow no harness-run path: the run's own OPENCODE_CONFIG_DIR carries a copy of
@@ -332,6 +337,49 @@ export async function lookupSession(cmd, { workDir, title, startedMs, timeoutMs,
   return { session, miss: null };
 }
 
+// A denied tool call as OpenCode 1.18.34 records it: auto-rejected (an "ask" in a non-interactive
+// run) or denied by a rule.
+const DENIED = /rejected permission to use this specific tool call|rule which prevents you from using this specific tool call/i;
+
+// Why a returned run failed, in the order that names the real cause (#146), or null: a run the watch
+// stopped on its denials (killed, so its exit code says nothing), OpenCode's own exit, the agent
+// falling back, then a denial. keyProblem is the caller's reading of a failed exit.
+export function runFailure(run, keyProblem = () => null) {
+  const denied = () => `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`;
+  if (run.stopped) return denied();
+  if (run.exitCode !== 0) return keyProblem(run.stderr) ?? `exit ${run.exitCode}`;
+  if (run.agentFallback) {
+    return run.agentLoad === 'load-failure'
+      ? 'agent-load-failure: OpenCode ran its default agent although the run gave it the agent file'
+      : 'fell back to the default agent';
+  }
+  if (run.permissionRejected) return denied();
+  return null;
+}
+
+// The denied calls a run went past, for its log (#146), or null.
+export function deniedNote(run) {
+  const d = run.permissionsDenied ?? [];
+  return d.length ? `${d.length} denied call${d.length > 1 ? 's' : ''}, the model went on: ${d.map((x) => `${x.tool} ${x.input}`).join('; ')}` : null;
+}
+
+// The verdict on a run's denied calls (#146), or null when the model may go on: the same call
+// (tool and input) denied twice means it retried what it had been refused; three different ones
+// are a pattern, not a slip.
+export function denialVerdict(denials) {
+  const counts = new Map();
+  for (const d of denials) counts.set(`${d.tool}\u0000${d.input}`, (counts.get(`${d.tool}\u0000${d.input}`) ?? 0) + 1);
+  if ([...counts.values()].some((n) => n >= 2)) return 'permission-rejected-after-retry';
+  if (counts.size >= 3) return 'permission-rejected-x3-distinct';
+  return null;
+}
+
+// How many denial marks OpenCode has printed so far: its rejection line, or a rule's error. A rise
+// only tells the watch to read the record; a quoted line costs one export, nothing more.
+function denialMarks(text) {
+  return (String(text).match(/permission requested: [^\r\n]*?; auto-rejecting|rule which prevents you from using this specific tool call/g) ?? []).length;
+}
+
 // The agent OpenCode recorded for the session (`opencode export <id>`: .info.agent), or null.
 // What the session record says: the agent that ran (L11), and whether OpenCode rejected a tool
 // call, which it records as the tool's error "The user rejected permission to use this specific
@@ -342,8 +390,19 @@ export async function sessionRecord(cmd, { workDir, sessionId, outFile, timeoutM
   try {
     const j = JSON.parse(res.stdout.slice(res.stdout.indexOf('{')));
     const parts = (j.messages ?? []).flatMap((m) => m.parts ?? []);
-    const rejected = parts.some((p) => p.type === 'tool' && p.state?.status === 'error' && /rejected permission/i.test(String(p.state.error ?? '')));
-    return { agent: j.info?.agent ?? null, rejected };
+    const isDenial = (p) => p.type === 'tool' && p.state?.status === 'error' && DENIED.test(String(p.state.error ?? ''));
+    // Each denied call, and whether the model went on after it: a later tool call or text.
+    const denials = parts.flatMap((p, i) => {
+      if (!isDenial(p)) return [];
+      const input = p.state?.input ?? {};
+      return [{
+        tool: p.tool ?? null,
+        input: String(input.command ?? input.filePath ?? input.path ?? JSON.stringify(input)).slice(0, 300),
+        kind: /rejected permission/i.test(String(p.state.error)) ? 'rejected' : 'denied',
+        recovered: parts.slice(i + 1).some((q) => q.type === 'tool' || (q.type === 'text' && String(q.text ?? '').trim())),
+      }];
+    });
+    return { agent: j.info?.agent ?? null, rejected: denials.some((d) => d.kind === 'rejected'), denials };
   } catch { return null; }
 }
 
@@ -420,18 +479,27 @@ function perRunConfig({ agent, scratch, workDir, env, dir, log }) {
   const source = base ? path.join(base, 'agents', `${agent}.md`) : null;
   if (!source || !fs.existsSync(source)) {
     log(`opencode: no agent file ${source ?? `for ${agent}`} to allow the scratch folder in; writes there will be rejected`);
-    return null;
+    return { dir: null, given: false };
   }
   const text = withScratchAllow(fs.readFileSync(source, 'utf8'), scratchAllow(scratch));
   if (!text) {
     log(`opencode: ${source} has no permission block the scratch allow can go in; writes to the scratch folder will be rejected`);
-    return null;
+    return { dir: null, given: true };
   }
   fs.rmSync(dir, { recursive: true, force: true });
   if (inherited) fs.cpSync(inherited, dir, { recursive: true, filter: (src) => path.basename(src) !== 'node_modules' });
   fs.mkdirSync(path.join(dir, 'agents'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'agents', `${agent}.md`), text);
-  return dir;
+  return { dir, given: true };
+}
+
+// The run's OPENCODE_CONFIG_CONTENT: the caller's, if any, with experimental.continue_loop_on_deny
+// set (#146). OpenCode reads it as local config, over the files.
+export function withContinueOnDeny(content) {
+  let config = {};
+  try { config = content ? JSON.parse(content) : {}; } catch { config = {}; }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};
+  return JSON.stringify({ ...config, experimental: { ...(config.experimental ?? {}), continue_loop_on_deny: true } });
 }
 
 /**
@@ -440,7 +508,10 @@ function perRunConfig({ agent, scratch, workDir, env, dir, log }) {
  * a short pointer to it (L60): the whole brief never passes through argv, which Windows caps at
  * 32767 characters (IC2's T146/T148 were blocked by it) and Linux per argument at 128 KiB.
  * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent,
- *   permissionRejected, permissionHint, files, briefFile, scratch, seconds }.
+ *   agentLoad, permissionRejected, permissionHint, permissionsDenied, stopped, files, briefFile, scratch, seconds }.
+ * agentLoad, when the agent fell back: 'load-failure' if the run was given its agent file,
+ * 'fallback' if there was none. permissionsDenied: the denied calls the model went past. stopped:
+ * the denial verdict the watch killed the run on (its exit code is then the kill's), or null.
  * A non-zero exit is returned, not thrown: the caller decides.
  */
 export async function runOpenCodeWatched({
@@ -463,9 +534,11 @@ export async function runOpenCodeWatched({
   const scratch = fs.realpathSync.native(path.join(scratchRoot, `harness-run-${title}`));
   const agentIdx = args.indexOf('--agent');
   const requestedAgent = agentIdx >= 0 ? args[agentIdx + 1] : null;
-  const runConfig = requestedAgent
-    ? perRunConfig({ agent: requestedAgent, scratch, workDir, env, dir: path.join(logDir, `${title}.config`), log }) : null;
-  const runEnv = { ...env, TMPDIR: scratch, TEMP: scratch, TMP: scratch, ...(runConfig ? { OPENCODE_CONFIG_DIR: runConfig } : {}) };
+  const agentConfig = requestedAgent
+    ? perRunConfig({ agent: requestedAgent, scratch, workDir, env, dir: path.join(logDir, `${title}.config`), log }) : { dir: null, given: false };
+  const runConfig = agentConfig.dir;
+  const runEnv = { ...env, TMPDIR: scratch, TEMP: scratch, TMP: scratch, ...(runConfig ? { OPENCODE_CONFIG_DIR: runConfig } : {}),
+    OPENCODE_CONFIG_CONTENT: withContinueOnDeny(env.OPENCODE_CONFIG_CONTENT) };
   const briefFile = path.join(workDir, briefFileName(title));
   fs.writeFileSync(briefFile, prompt);
   const files = [outFile, errFile, briefFile];
@@ -523,6 +596,7 @@ export async function runOpenCodeWatched({
     const waitExit = (ms) => Promise.race([exited, sleep(ms).then(() => false)]);
     const elapsed = () => Date.now() - startedMs;
     let session = null;
+    let stoppedFor = null;
     let lastMiss = 'no lookup ran';
     const lookup = async (timeoutMs) => {
       const r = await lookupSession(cmd, { workDir, title, startedMs, env, timeoutMs });
@@ -561,14 +635,29 @@ export async function runOpenCodeWatched({
       // that fails leaves `lastUpdated` unchanged, so the idle clock keeps running.
       const idlePollMs = Math.max(pollMs, Math.min(60_000, Math.ceil(idleTimeoutMs / 5)));
       let lastUpdated = session ? Number(session.updated) : startedMs;
+      let marks = 0;
       while (!hasExited()) {
         const remaining = Math.max(0, totalTimeoutMs - elapsed());
-        const wait = session && idleTimeoutMs > 0 ? Math.min(idlePollMs, remaining) : remaining;
+        const wait = session ? Math.min(idleTimeoutMs > 0 ? idlePollMs : pollMs, remaining) : remaining;
         if (await waitExit(wait)) break;
         if (elapsed() >= totalTimeoutMs) {
           killTree(child);
           const secs = Math.round(totalTimeoutMs / 1000);
           throw fail(`no exit in ${secs} s`, `OpenCode did not finish within ${secs} s; killed pid ${child.pid}`);
+        }
+        // A new denial mark: read the record, and stop the run at once when it is past saving (#146).
+        const nowMarks = session ? denialMarks(`${fs.readFileSync(outFile, 'utf8')}\n${fs.readFileSync(errFile, 'utf8')}`) : 0;
+        if (nowMarks > marks) {
+          marks = nowMarks;
+          const seen = await sessionRecord(cmd, { workDir, sessionId: session.id, outFile: path.join(logDir, `${title}.export.json`), env, timeoutMs: 30_000 });
+          fs.rmSync(path.join(logDir, `${title}.export.json`), { force: true });
+          const verdict = seen ? denialVerdict(seen.denials) : null;
+          if (verdict && !hasExited()) {
+            stoppedFor = verdict;
+            killTree(child);
+            log(`opencode: ${verdict}; killed pid ${child.pid}`);
+            break;
+          }
         }
         if (!session || idleTimeoutMs <= 0) continue;
         const { session: seen } = await lookupSession(cmd, { workDir, title, startedMs, env, timeoutMs: Math.max(0, Math.min(30_000, totalTimeoutMs - elapsed())) });
@@ -602,8 +691,18 @@ export async function runOpenCodeWatched({
     const agentFallback = !requestedAgent ? false
       : recordedAgent ? recordedAgent !== requestedAgent
       : agentWarning(stderr, requestedAgent);
+    const agentLoad = !agentFallback ? null : agentConfig.given ? 'load-failure' : 'fallback';
     const said = permissionRejection(`${stdout}\n${stderr}`);
-    const permissionRejected = !record ? said : record.rejected ? said ?? 'a tool call (in the session record)' : null;
+    // The record decides (#146): past a threshold, or ended on a denial, the run failed; denials the
+    // model went past are reported. Without a record, OpenCode's own line decides alone, as before.
+    const denials = record?.denials ?? [];
+    const last = denials.at(-1);
+    const verdict = stoppedFor ?? (record ? denialVerdict(denials) : null);
+    const lastDenied = said ?? (last ? `${last.tool} ${last.input}` : 'a tool call (in the session record)');
+    const permissionRejected = verdict ? `${verdict}: ${lastDenied}`
+      : !record ? said
+      : last && !last.recovered ? lastDenied : null;
+    const permissionsDenied = permissionRejected ? [] : denials;
     const permissionHint = permissionRejected ? rejectionHint(`${stdout}\n${stderr}`) : null;
     if (runConfig) fs.rmSync(runConfig, { recursive: true, force: true });
     const clean = exitCode === 0 && !permissionRejected;
@@ -617,7 +716,7 @@ export async function runOpenCodeWatched({
     return {
       output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
       stdout, stderr, exitCode, sessionId: session.id, title,
-      agentFallback, sessionAgent: recordedAgent, permissionRejected, permissionHint,
+      agentFallback, agentLoad, sessionAgent: recordedAgent, permissionRejected, permissionHint, permissionsDenied, stopped: stoppedFor,
       files: exitCode === 0 && !permissionRejected ? [] : files,
       briefFile: exitCode === 0 && !permissionRejected ? briefFile : briefKeptPath,
       scratch: clean ? null : scratch,

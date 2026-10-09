@@ -314,6 +314,17 @@ test('the agent files allow exactly /tmp/opencode, /dev (not below it) and //./N
   assert.match(read('template/.opencode/agents/implementer.md').replace(/\s+/g, ' '), /Scratch files go in the scratch folder the brief's pointer names \(also \$TMPDIR\), never in another \/tmp path \(L66\)/);
 });
 
+test('a denied call fails a run only past a threshold, and every text says so (L68, #146)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/docs/process.md'), /A denied tool call fails the run only when it ends the run, recurs, or is the third \(L26, L68\)/);
+  assert.match(read('template/docs/lessons.md'), /^\| L68 \| A denied tool call \(an auto-rejection or a rule's deny\) fails a run only when/m);
+  assert.match(read('template/docs/lessons.md'), /^\| L26 \| .*Correction 2026-10-09 \(L68\)/m);
+  for (const f of ['template/.opencode/agents/implementer.md', 'template/.opencode/agents/reviewer.md']) {
+    assert.match(flat(f), /You see the denial and may correct that call once, but the same call denied twice, or a third denied call, (fails the run|discards the review) \(L68\)/, f);
+  }
+  assert.doesNotMatch(flat('README.md'), /A rejected tool call is a failure\./);
+});
+
 // Implementer git denies are narrowed to the patterns OpenCode 1.18.34's matcher actually
 // honours (#145): trailing-space-star (`"git push --force *"`) catches `--force` bare, with
 // args, and with `--dry-run`, but NOT `--force-with-lease` (single token, no space). Bare-form

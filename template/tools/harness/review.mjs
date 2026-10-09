@@ -50,7 +50,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem } from './lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem, runFailure, deniedNote } from './lib/opencode.mjs';
 import { credentialJail, OFF_WARNING } from './lib/jail.mjs';
 import { runChain, excludeImplementers, readReview, doneWhenCount, briefTargets } from './lib/chain.mjs';
 import { planPost, publish, postComment, applyLabel, withdrawApproval, combinePlans } from './lib/post.mjs';
@@ -221,11 +221,10 @@ OUTPUT RULES (from tools/harness/review.mjs; they override anything above that c
         return { ok: false, reason: e.reason, detail: e.message };
       }
       // OpenCode's own error stream on a failed run, never the model's output (Luna's R1, round 2).
-      if (run.exitCode !== 0) return { ok: false, reason: keyProblem(run.stderr, model.id, reviewEnv.XDG_DATA_HOME) ?? `exit ${run.exitCode}`, detail: run.output };
-      if (run.agentFallback) return { ok: false, reason: 'fell back to the default agent', detail: run.output };
-      if (run.permissionRejected) {
-        return { ok: false, reason: `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`, detail: run.output };
-      }
+      const failure = runFailure(run, (stderr) => keyProblem(stderr, model.id, reviewEnv.XDG_DATA_HOME));
+      if (failure) return { ok: false, reason: failure, detail: run.output };
+      const note = deniedNote(run);
+      if (note) say(`${m}: ${note}`);
       const read = readReview(run.stdout, header);
       if (read.kind === 'none') return { ok: false, reason: read.reason, detail: run.output };
       return { ok: true, value: { ...read, header, model } };

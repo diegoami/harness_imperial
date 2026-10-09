@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { readSessions } from './fake-state.mjs';
 import {
   runOpenCodeWatched, lookupSession, OpenCodeInfraError, failureClass, agentWarning, permissionRejection, rejectionHint, resolveOpenCode,
-  commandLineTooLong, briefFileName, scratchAllow, withScratchAllow,
+  commandLineTooLong, briefFileName, scratchAllow, withScratchAllow, denialVerdict, runFailure, deniedNote, withContinueOnDeny,
   openCodeHome, listedModels, loginHint, keyProblem, openCodeVersion, versionProblem,
 } from '../template/tools/harness/lib/opencode.mjs';
 
@@ -586,4 +586,86 @@ test('a thrown failure removes the run\'s config dir too (Sol\'s R3, PR 152)', a
   assert.equal(session, undefined, 'no session was made');
   const logs = path.join(s.dir, 'logs');
   assert.deepEqual(fs.readdirSync(logs).filter((n) => n.endsWith('.config')), [], fs.readdirSync(logs).join(', '));
+});
+
+// #146: a denied call no longer ends the run; the record decides, at the thresholds.
+const deny = (denials, extra = {}, opts = {}) => {
+  const s = withAgent('deny', agentMd(''));
+  return runIn({ ...s, env: { ...s.env, FAKE_OC_DENIALS: JSON.stringify(denials), ...extra } }, opts);
+};
+const D = (input, kind = 'rejected', tool = 'read') => ({ tool, input, kind });
+
+test('one-shot-reject: a run that went on after one denied call is not failed; the call is reported (#146)', async () => {
+  const r = await deny([D('/etc/a')]);
+  assert.equal(r.exitCode, 0);
+  assert.equal(r.permissionRejected, null);
+  assert.equal(r.stopped, null);
+  assert.deepEqual(r.permissionsDenied.map((d) => [d.tool, d.input, d.recovered]), [['read', '/etc/a', true]]);
+  assert.equal(runFailure(r), null);
+  assert.equal(deniedNote(r), '1 denied call, the model went on: read /etc/a');
+  assert.equal(r.scratch, null, 'a clean run');
+});
+
+test('retry-recover: two different denied calls, each corrected, still pass (#146)', async () => {
+  const r = await deny([D('/etc/a'), D('ls /etc', 'denied', 'bash')]);
+  assert.equal(r.permissionRejected, null);
+  assert.equal(r.permissionsDenied.length, 2);
+});
+
+test('retry-fail: the same call denied twice fails as permission-rejected-after-retry; a rule\'s deny counts too (#146)', async () => {
+  for (const kind of ['rejected', 'denied']) {
+    const r = await deny([D('/etc/a', kind), D('/etc/a', kind)]);
+    assert.match(r.permissionRejected ?? '', /^permission-rejected-after-retry: /, kind);
+    assert.match(runFailure(r), /^permission rejected: permission-rejected-after-retry: /);
+    assert.deepEqual(r.permissionsDenied, []);
+    assert.ok(r.scratch, 'kept: a failed run');
+  }
+});
+
+test('distinct-x3: three different denied calls fail as permission-rejected-x3-distinct, recovered or not (#146)', async () => {
+  const r = await deny([D('/etc/a'), D('/etc/b'), D('/etc/c')]);
+  assert.match(r.permissionRejected ?? '', /^permission-rejected-x3-distinct: /);
+});
+
+test('a run past a threshold is killed as soon as the record shows it, not left to the idle or total timeout (#146)', async () => {
+  const started = Date.now();
+  const r = await deny([D('/etc/a'), D('/etc/b'), D('/etc/c')], { FAKE_OC_DENY_HANG: '1' }, { idleTimeoutMs: 20_000, totalTimeoutMs: 30_000 });
+  assert.equal(r.stopped, 'permission-rejected-x3-distinct');
+  assert.match(r.permissionRejected, /^permission-rejected-x3-distinct: /);
+  assert.ok(Date.now() - started < 10_000, `took ${Date.now() - started} ms`);
+  assert.match(runFailure({ ...r, exitCode: 137 }), /^permission rejected: permission-rejected-x3-distinct/, 'the verdict, not the kill\'s exit code');
+});
+
+test('a run whose record ends on a denied call stopped there: it fails as before, naming what was rejected (L26, IC2 #501)', async () => {
+  const r = await deny([D('/etc/a')], { FAKE_OC_DENY_STOPPED: '1' });
+  assert.equal(r.permissionRejected, 'external_directory (/etc/*)');
+  assert.equal(r.stopped, null);
+});
+
+test('every run sets continue_loop_on_deny, over the caller\'s own OPENCODE_CONFIG_CONTENT (#146)', async () => {
+  const s = withAgent('ok', agentMd(''));
+  await runIn({ ...s, env: { ...s.env, OPENCODE_CONFIG_CONTENT: '{"experimental":{"other":1},"share":"disabled"}' } });
+  const [session] = readSessions(path.join(s.dir, 'state.json'));
+  assert.deepEqual(JSON.parse(session.configContent), { experimental: { other: 1, continue_loop_on_deny: true }, share: 'disabled' });
+  assert.deepEqual(JSON.parse(withContinueOnDeny(undefined)), { experimental: { continue_loop_on_deny: true } });
+  assert.deepEqual(JSON.parse(withContinueOnDeny('not json')), { experimental: { continue_loop_on_deny: true } });
+});
+
+test('denialVerdict: after-retry before x3; two different calls, or one, pass', () => {
+  assert.equal(denialVerdict([]), null);
+  assert.equal(denialVerdict([D('/a'), D('/b')]), null);
+  assert.equal(denialVerdict([D('/a'), D('/a', 'rejected', 'bash')]), null, 'another tool is another call');
+  assert.equal(denialVerdict([D('/a'), D('/b'), D('/a'), D('/c')]), 'permission-rejected-after-retry');
+  assert.equal(denialVerdict([D('/a'), D('/b'), D('/c')]), 'permission-rejected-x3-distinct');
+});
+
+test('agentfallback-real and agentfallback-load: a fallback with no agent file keeps its reason; one with the file given is a load failure (#146, L11)', async () => {
+  const given = await runIn(withAgent('fallback', agentMd('')));
+  assert.equal(given.agentFallback, true);
+  assert.equal(given.agentLoad, 'load-failure');
+  assert.match(runFailure(given), /^agent-load-failure: /);
+  const none = await runIn(isolated(setup('fallback')));
+  assert.equal(none.agentFallback, true);
+  assert.equal(none.agentLoad, 'fallback');
+  assert.equal(runFailure(none), 'fell back to the default agent');
 });

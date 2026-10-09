@@ -49,11 +49,13 @@ added. Each behaviour exists because a run failed without it:
 - **The agent check.** Whether OpenCode loaded the requested agent is read from the session record,
   not from the output.
 - **UTF-8 output.**
-- **A rejected tool call is a failure.** OpenCode auto-rejects a path outside the worktree and exits
-  0, so the run looks clean (IC2 #501). Whether a call was rejected is read from the
-  session record, where the tool ends in "The user rejected permission…": a tool's output can quote
-  OpenCode's rejection line (PR 35's review printed issue #14). The line says what was rejected, and
-  decides alone only when the record cannot be read.
+- **A denied tool call fails the run past a threshold (L26, L68).** OpenCode auto-rejects a path
+  outside the worktree and, by default, ends the run there with exit 0, so it looks clean (IC2 #501).
+  Each run sets `experimental.continue_loop_on_deny`, so the model sees the denial and goes on; the
+  session record decides: the same call denied twice, a third different denial, or a record that
+  ends on a denial fails the run, and a run past a threshold is killed at once. Denials the model
+  went past are logged. The record is read because a tool's output can quote OpenCode's rejection
+  line (PR 35's review printed issue #14); the line decides alone only when it cannot be read.
   - A `cd` or `..` in an agent's command can trip the same check with nothing leaving the worktree,
     because OpenCode resolves the path against `--dir`, not the `cd` before it (#14). The agent
     files forbid both (L31), and when the rejected command used one, the failure says so.

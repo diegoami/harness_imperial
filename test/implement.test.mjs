@@ -188,6 +188,25 @@ test('a model on watch says what to look for, on the console and in the run log;
   assert.doesNotMatch(plain.stdout, /watch:/);
 });
 
+test('a run that went on after a denied call implements; the denial is in the log, not a failure (#146)', posix, async () => {
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_DENIALS: JSON.stringify([{ tool: 'read', input: '/etc/hostname', kind: 'rejected' }]) });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /implemented by: mimo-flash/);
+  assert.match(r.stdout, /mimo-flash: 1 denied call, the model went on: read \/etc\/hostname/);
+  assert.match(fs.readFileSync(path.join(p.base, 'proj-work', 'T07.implementer.log'), 'utf8'), /=== mimo-flash .*: ran ===\n(?:watch: .*\n)?1 denied call, the model went on: read \/etc\/hostname\n/);
+});
+
+test('the same call denied twice fails the model and the next one runs (#146)', posix, async () => {
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'deny', 'openai/gpt-5.6-luna': 'implement' }),
+    FAKE_OC_DENIALS_MODEL: 'opencode-go/mimo-v2.6-flash',
+    FAKE_OC_DENIALS: JSON.stringify([{ tool: 'bash', input: 'git stash list', kind: 'denied' }, { tool: 'bash', input: 'git stash list', kind: 'denied' }]) });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /fell back: mimo-flash: permission rejected: permission-rejected-after-retry: bash git stash list/);
+  assert.match(r.stdout, /implemented by: luna/);
+});
+
 test('an implementer that stops and reports is not retried, and exits 1', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'stop-report' });

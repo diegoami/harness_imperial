@@ -30,7 +30,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem } from './lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem, runFailure, deniedNote } from './lib/opencode.mjs';
 import { runChain } from './lib/chain.mjs';
 import { resetWorktree, selfTest as unsavedSelfTest } from './lib/unsaved.mjs';
 import {
@@ -183,9 +183,9 @@ const result = await runChain({
       });
       output = run.output;
       // OpenCode's own error stream on a failed run, never the model's output (Luna's R1, round 2).
-      if (run.exitCode !== 0) reason = keyProblem(run.stderr, model.id, implementEnv.XDG_DATA_HOME) ?? `exit ${run.exitCode}`;
-      else if (run.agentFallback) reason = 'fell back to the default agent';
-      else if (run.permissionRejected) reason = `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`;
+      reason = runFailure(run, (stderr) => keyProblem(stderr, model.id, implementEnv.XDG_DATA_HOME));
+      const note = deniedNote(run);
+      if (note) { say(`${m}: ${note}`); output = `${note}\n${output}`; }
     } catch (e) {
       if (!(e instanceof OpenCodeInfraError)) throw e;
       reason = e.reason;
