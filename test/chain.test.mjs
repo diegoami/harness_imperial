@@ -40,11 +40,11 @@ test('different causes keep the chain going', async () => {
 });
 
 const models = {
-  'deepseek-flash': { family: 'deepseek' }, deepseek: { family: 'deepseek' }, glm: { family: 'glm' }, luna: { family: 'openai' },
+  'mimo-flash': { family: 'mimo' }, mimo: { family: 'mimo' }, glm: { family: 'glm' }, luna: { family: 'openai' },
 };
 
 test('the reviewer is never the implementer\'s family', () => {
-  assert.deepEqual(excludeImplementers(['glm', 'luna', 'deepseek'], models, ['deepseek-flash']), ['glm', 'luna']);
+  assert.deepEqual(excludeImplementers(['glm', 'luna', 'mimo'], models, ['mimo-flash']), ['glm', 'luna']);
   assert.deepEqual(excludeImplementers(['glm', 'luna'], models, ['claude']), ['glm', 'luna']);
   assert.deepEqual(excludeImplementers(['glm'], models, ['glm']), []);
 });

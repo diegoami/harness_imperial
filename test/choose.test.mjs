@@ -17,12 +17,12 @@ const tool = path.resolve(here, '../template/tools/harness/choose.mjs');
 const config = () => ({
   models: {
     'glm-flash': { id: 'zai-coding-plan/glm-5.3-flash', variant: 'high', family: 'glm' },
-    'deepseek-flash': { id: 'opencode-go/deepseek-v4.1-flash', variant: 'high', family: 'deepseek' },
+    'mimo-flash': { id: 'opencode-go/mimo-v2.6-flash', variant: 'high', family: 'mimo' },
     'ali-qwen-flash': { id: 'alibaba-token-plan/qwen3.8-flash', variant: 'medium', family: 'qwen' },
     luna: { id: 'openai/gpt-5.6-luna', variant: 'high', family: 'openai' },
     glm: { id: 'zai-coding-plan/glm-5.3', variant: 'low', family: 'glm' },
   },
-  implementer: { chain: ['glm-flash', 'deepseek-flash'] },
+  implementer: { chain: ['glm-flash', 'mimo-flash'] },
   reviewer: { chain: ['luna'], hard: ['glm', 'luna'] },
 });
 
@@ -32,12 +32,12 @@ const row = (provider, model, score, extra = {}) => ({ provider, model, score, .
 
 test('chooserOrder: the block when it names it, the chains when it does not, and a rotting name refuses', () => {
   const c = config();
-  c.chooser = { implementer: { easy: ['deepseek-flash'], hard: ['ali-qwen-flash'] } };
-  assert.deepEqual(chooserOrder(c, { role: 'implementer', difficulty: 'easy' }), ['deepseek-flash']);
+  c.chooser = { implementer: { easy: ['mimo-flash'], hard: ['ali-qwen-flash'] } };
+  assert.deepEqual(chooserOrder(c, { role: 'implementer', difficulty: 'easy' }), ['mimo-flash']);
   assert.deepEqual(chooserOrder(c, { role: 'implementer', difficulty: 'hard' }), ['ali-qwen-flash']);
-  // No block: the chains. Reviewer hard is reviewer.hard; implementer hard puts deepseek first.
+  // No block: the chains. Reviewer hard is reviewer.hard; implementer hard puts mimo-flash first.
   assert.deepEqual(chooserOrder(config(), { role: 'reviewer', difficulty: 'hard' }), ['glm', 'luna']);
-  assert.deepEqual(chooserOrder(config(), { role: 'implementer', difficulty: 'hard' })[0], 'deepseek-flash');
+  assert.deepEqual(chooserOrder(config(), { role: 'implementer', difficulty: 'hard' })[0], 'mimo-flash');
   const rotted = config();
   rotted.chooser = { reviewer: { easy: ['nobody'] } };
   assert.throws(() => chooserOrder(rotted, { role: 'reviewer', difficulty: 'easy' }), /names nobody, which harness\.json's models does not list/);
@@ -46,13 +46,13 @@ test('chooserOrder: the block when it names it, the chains when it does not, and
 
 test('a pool with spare calls outranks one that runs out before its reset, whatever the preference order (#128)', () => {
   const c = config();
-  c.chooser = { implementer: { easy: ['deepseek-flash', 'glm-flash'] } };
+  c.chooser = { implementer: { easy: ['mimo-flash', 'glm-flash'] } };
   // opencode_go has the bigger headroom percentage but would run out before its monthly reset;
   // zai has spare calls/day: the comparable measure decides, not the percentage.
   const quota = of(entry('opencode_go', 'ok', [], { headroom_pct: 70 }), entry('zai', 'ok', [], { headroom_pct: 25 }));
-  const recommend = rec(row('opencode_go', 'deepseek-v4.1-flash', -742, { limiting_window: '30d' }), row('zai', 'glm-5.3-flash', 14, { limiting_window: '1w' }));
+  const recommend = rec(row('opencode_go', 'mimo-v2.6-flash', -742, { limiting_window: '30d' }), row('zai', 'glm-5.3-flash', 14, { limiting_window: '1w' }));
   const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota, recommend });
-  assert.deepEqual(ranked.map((r) => [r.name, r.band, r.score]), [['glm-flash', 0, 14], ['deepseek-flash', 1, -742]]);
+  assert.deepEqual(ranked.map((r) => [r.name, r.band, r.score]), [['glm-flash', 0, 14], ['mimo-flash', 1, -742]]);
   assert.match(ranked[0].note, /14 spare calls\/day/);
 });
 
@@ -80,15 +80,15 @@ test('a pool not yet sized (score null) is band 0 while usable with spare, band 
 
 test('OpenRouter\'s prepaid 0 and a skipped (nearly full) pool are band 1; an unranked one is band 2 (#125)', () => {
   const c = config();
-  c.models.or = { id: 'openrouter/deepseek/deepseek-v4.1-flash', variant: 'high', family: 'deepseek' };
-  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'or', 'glm-flash', 'deepseek-flash'] } };
+  c.models.or = { id: 'openrouter/xiaomi/mimo-v2.6-flash', variant: 'high', family: 'mimo' };
+  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'or', 'glm-flash', 'mimo-flash'] } };
   const recommend = { rows: [
-    { provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash', score: 0, usable: true, skipped: false },
+    { provider: 'openrouter', model: 'xiaomi/mimo-v2.6-flash', score: 0, usable: true, skipped: false },
     { provider: 'zai', model: 'glm-5.3-flash', score: null, skipped: true, why: '1w: 96% used' },
-    { provider: 'opencode_go', model: 'deepseek-v4.1-flash', score: 3, usable: true, skipped: false, limiting_window: '30d' },
+    { provider: 'opencode_go', model: 'mimo-v2.6-flash', score: 3, usable: true, skipped: false, limiting_window: '30d' },
   ] };
   const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota: of(), recommend });
-  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['deepseek-flash', 0], ['or', 1], ['glm-flash', 1], ['ali-qwen-flash', 2]]);
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['mimo-flash', 0], ['or', 1], ['glm-flash', 1], ['ali-qwen-flash', 2]]);
   assert.match(ranked.find((r) => r.name === 'glm-flash').note, /skipped by \/recommend: 1w: 96% used/);
   assert.match(ranked.find((r) => r.name === 'ali-qwen-flash').note, /not ranked/);
   assert.equal(ranked.find((r) => r.name === 'ali-qwen-flash').blocked, null);
@@ -135,19 +135,19 @@ test('OpenAI exhausted: the model when_exhausted names (Luna) ranks first, Sol l
 
 test('with /recommend off every model is band 2, ranked by preference alone', () => {
   const c = config();
-  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'deepseek-flash', 'glm-flash'] } };
+  c.chooser = { implementer: { easy: ['ali-qwen-flash', 'mimo-flash', 'glm-flash'] } };
   const ranked = rankCandidates({ config: c, role: 'implementer', difficulty: 'easy', quota: of(entry('zai', 'ok', [])), recommend: { off: 'down' } });
-  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['ali-qwen-flash', 2], ['deepseek-flash', 2], ['glm-flash', 2]]);
+  assert.deepEqual(ranked.map((r) => [r.name, r.band]), [['ali-qwen-flash', 2], ['mimo-flash', 2], ['glm-flash', 2]]);
 });
 
 test('readRecommend: both tiers, a loading note with nothing ranked adds nothing, off when neither answers', async () => {
-  const heavy = { ranking: [{ provider: 'openai', model: 'gpt-6.1-sol', score: 449 }], skipped: [{ provider: 'opencode_go', model: 'deepseek-v4-pro', score: null, reasons: ['30d: 99% used'] }] };
+  const heavy = { ranking: [{ provider: 'openai', model: 'gpt-6.1-sol', score: 449 }], skipped: [{ provider: 'opencode_go', model: 'mimo-v2.6-pro', score: null, reasons: ['30d: 99% used'] }] };
   const light = { ranking: [], skipped: [], note: 'statistics are loading' };
   const lightRows = { ranking: [{ provider: 'zai', model: 'glm-5.3-flash', score: 14 }], skipped: [] };
   const s = await quotaServer([], undefined, { FAKE_RECOMMEND_HEAVY: JSON.stringify(heavy), FAKE_RECOMMEND_LIGHT: JSON.stringify(lightRows) });
   try {
     const got = await readRecommend({ HARNESS_QUOTA_URL: s.url });
-    assert.deepEqual(got.rows.map((r) => [r.model, r.tier, r.skipped]), [['gpt-6.1-sol', 'heavy', false], ['deepseek-v4-pro', 'heavy', true], ['glm-5.3-flash', 'light', false]]);
+    assert.deepEqual(got.rows.map((r) => [r.model, r.tier, r.skipped]), [['gpt-6.1-sol', 'heavy', false], ['mimo-v2.6-pro', 'heavy', true], ['glm-5.3-flash', 'light', false]]);
     assert.equal(got.rows[1].why, '30d: 99% used');
   } finally { s.stop(); }
   // A light tier still loading adds nothing; the heavy rows stand.
@@ -170,12 +170,12 @@ test('readRecommend: both tiers, a loading note with nothing ranked adds nothing
 test('quota off means preference alone, even with /recommend reachable (Sol\'s R2)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'choose2-'));
   const c = config();
-  c.chooser = { implementer: { hard: ['deepseek-flash', 'ali-qwen-flash'] } };
+  c.chooser = { implementer: { hard: ['mimo-flash', 'ali-qwen-flash'] } };
   fs.writeFileSync(path.join(dir, 'harness.json'), JSON.stringify(c));
   await new Promise((r) => spawn(process.execPath, ['-e', 'require("child_process").execSync("git init -q")'], { cwd: dir }).on('exit', r));
   // /quota is garbage; /recommend would put ali-qwen-flash first. It must not reorder.
   const s2 = await quotaServer([], 'not json', { FAKE_RECOMMEND_LIGHT: JSON.stringify({ ranking: [
-    { provider: 'alibaba', model: 'qwen3.8-flash', score: 99, usable: true }, { provider: 'opencode_go', model: 'deepseek-v4.1-flash', score: -9, usable: true }] }) });
+    { provider: 'alibaba', model: 'qwen3.8-flash', score: 99, usable: true }, { provider: 'opencode_go', model: 'mimo-v2.6-flash', score: -9, usable: true }] }) });
   try {
     const run = (args) => new Promise((resolve) => {
       const p = spawn(process.execPath, [tool, ...args], { cwd: dir, env: { ...process.env, HARNESS_QUOTA_URL: s2.url }, encoding: 'utf8' });
@@ -186,7 +186,7 @@ test('quota off means preference alone, even with /recommend reachable (Sol\'s R
     const r = await run(['--role', 'implementer', '--difficulty', 'hard']);
     assert.equal(r.code, 0, r.err);
     assert.match(r.err, /quota: not checked/);
-    assert.match(r.out, /1\. deepseek-flash/);
+    assert.match(r.out, /1\. mimo-flash/);
     assert.match(r.out, /2\. ali-qwen-flash/);
   } finally {
     s2.stop();
@@ -204,25 +204,25 @@ test('the CLI ranks, picks, and exits 3 when nothing is usable', async () => {
     p.on('exit', (code) => resolve({ code, out, err }));
   });
   const c = config();
-  c.chooser = { implementer: { easy: ['deepseek-flash', 'ali-qwen-flash'] } };
+  c.chooser = { implementer: { easy: ['mimo-flash', 'ali-qwen-flash'] } };
   const git = (a) => spawn(process.execPath, ['-e', `require("child_process").execSync("git ${a.join(' ')}")`], { cwd: dir });
   fs.writeFileSync(path.join(dir, 'harness.json'), JSON.stringify(c));
   await new Promise((r) => git(['init', '-q']).on('exit', r));
   const s = await quotaServer([
     entry('opencode_go', 'ok', [{ name: '30d', used_pct: 20, resets_in: '5d' }], { headroom_pct: 80 }),
-  ], undefined, { FAKE_RECOMMEND_LIGHT: JSON.stringify({ ranking: [{ provider: 'opencode_go', model: 'deepseek-v4.1-flash', score: 120, usable: true }] }) });
+  ], undefined, { FAKE_RECOMMEND_LIGHT: JSON.stringify({ ranking: [{ provider: 'opencode_go', model: 'mimo-v2.6-flash', score: 120, usable: true }] }) });
   try {
     const table = await run(['--role', 'implementer', '--difficulty', 'easy'], { HARNESS_QUOTA_URL: s.url });
     assert.equal(table.code, 0, table.err);
-    assert.match(table.out, /1\. deepseek-flash/);
+    assert.match(table.out, /1\. mimo-flash/);
     assert.match(table.out, /2\. ali-qwen-flash/);
-    assert.match(table.out, /1\. deepseek-flash.*band 0 — 120 spare calls\/day/);
+    assert.match(table.out, /1\. mimo-flash.*band 0 — 120 spare calls\/day/);
     assert.match(table.out, /2\. ali-qwen-flash.*band 2 — not ranked by \/recommend/);
     const pick = await run(['--role', 'implementer', '--difficulty', 'easy', '--pick'], { HARNESS_QUOTA_URL: s.url });
     assert.equal(pick.code, 0);
-    assert.match(pick.out.trim().split('\n').at(-1), /^deepseek-flash$/);
+    assert.match(pick.out.trim().split('\n').at(-1), /^mimo-flash$/);
     const json = await run(['--role', 'implementer', '--difficulty', 'easy', '--json'], { HARNESS_QUOTA_URL: s.url });
-    assert.deepEqual(JSON.parse(json.out).ranked.map((r) => r.name), ['deepseek-flash', 'ali-qwen-flash']);
+    assert.deepEqual(JSON.parse(json.out).ranked.map((r) => r.name), ['mimo-flash', 'ali-qwen-flash']);
   } finally { s.stop(); }
   // /quota answers, /recommend does not: band 2 for all, by preference, and the CLI says so.
   const norec = await quotaServer([entry('opencode_go', 'ok', [])]);
@@ -230,7 +230,7 @@ test('the CLI ranks, picks, and exits 3 when nothing is usable', async () => {
     const t = await run(['--role', 'implementer', '--difficulty', 'easy'], { HARNESS_QUOTA_URL: norec.url });
     assert.equal(t.code, 0, t.err);
     assert.match(t.err, /recommend: not read: .*every model is band 2, by preference/);
-    assert.match(t.out, /1\. deepseek-flash.*band 2/);
+    assert.match(t.out, /1\. mimo-flash.*band 2/);
     assert.match(t.out, /2\. ali-qwen-flash.*band 2/);
   } finally { norec.stop(); }
   const dead = await run(['--role', 'implementer', '--difficulty', 'easy', '--pick'], { HARNESS_QUOTA_URL: 'http://127.0.0.1:9' });

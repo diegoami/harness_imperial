@@ -146,7 +146,7 @@ node /path/to/harness_imperial/adopt.mjs --profile full|review --target . [--dry
   reviewer of another family reviews, and task files are the contracts.
 - **review**, for a simpler repository (L37): only the reviewer. The main session, on Opus, plans
   and implements; the PR body is the contract, and related changes may share a PR. GLM-5.3 Flash
-  reviews, then Luna, then DeepSeek V4.1 Flash, then the user: there is no Claude reviewer. A
+  reviews, then Luna, then MiMo V2.6 Flash, then the user: there is no Claude reviewer. A
   critical PR gets a second opinion (`review.mjs --second-opinion`, Luna). The profile is
   `profiles/review/`: its rules (`CLAUDE.md`), `docs/review.md`, and `profile.json`, which lists the
   template files it takes and the reviewers it sets.
@@ -165,21 +165,21 @@ for l in task bug fix triage:needed post-playable review-round:1 review-round:2 
 
 Each role runs its OpenCode models, then Claude, by the owner's decisions of 2026-10-02 (L27) and
 2026-10-04 (L42):
-- GLM-5.3 Flash on Z.AI's coding plan (`zai-coding-plan/glm-5.3-flash`) implements, then DeepSeek
-  V4.1 Flash on OpenCode Go (`opencode-go/deepseek-v4.1-flash`), then Claude Sonnet. Z.AI needs
+- GLM-5.3 Flash on Z.AI's coding plan (`zai-coding-plan/glm-5.3-flash`) implements, then MiMo
+  V2.6 Flash on OpenCode Go (`opencode-go/mimo-v2.6-flash`), then Claude Sonnet. Z.AI needs
   `opencode auth login`; Go needs `opencode console login`.
 - GPT-5.6 Luna on the direct OpenAI route (`openai/gpt-5.6-luna`, L51) reviews, then Claude Opus. Luna now shares OpenAI's main quota with Sol (L65); its own limit surfaces only as `when_exhausted.usable_models` in `/quota/openai`. OpenAI
   needs `opencode auth login`.
 
 Each runs at effort `high`, never `max`, except GPT-6.1 Sol: used sparingly, at `low` (`medium` at
-most). A hard task's review runs `review.mjs --hard`: GLM-5.3, then MiniMax-M3, DeepSeek V4 Pro
+most). A hard task's review runs `review.mjs --hard`: GLM-5.3, then MiniMax-M3, MiMo V2.6 Pro
 and Luna, so one
 provider's quota never blocks it (L39). Sol reviews first only with `--hard --sol`: a guard task and
 a hard task's last round (L41).
 - Candidates are registered on watch, outside the default chains (L35): GPT-6 Sol and GPT-6.1 Sol
-  (`openai/`), DeepSeek V4 Pro (`opencode-go/`), and GLM-5.3 and GLM-5.3 Flash on Z.AI's plan
+  (`openai/`), MiMo V2.6 Pro (`opencode-go/`), and GLM-5.3 and GLM-5.3 Flash on Z.AI's plan
   (`zai-coding-plan/`). They run by an explicit `--model` or `--reviewer`, or, for GLM-5.3 and
-  DeepSeek V4 Pro, through `--hard`, and for GPT-6.1 Sol through `--hard --sol`; each prints its
+  MiMo V2.6 Pro, through `--hard`, and for GPT-6.1 Sol through `--hard --sol`; each prints its
   `watch` note: GLM ended long implementer runs early before (L27), so that is what to look for.
 - Go's own GPT-6 Luna is out too. A third-party proxy behind it returned `Bad Request` in long agent
   loops, which the direct route did not.

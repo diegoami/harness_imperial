@@ -16,7 +16,7 @@
   "overlay": ["CLAUDE.md", "docs/review.md", "docs/environment.md"],
   "adapt": ["CLAUDE.md"],
   "harness": {
-    "models": ["glm-flash", "luna", "deepseek-flash"],
-    "reviewer": { "chain": ["glm-flash", "luna", "deepseek-flash"], "secondOpinion": "luna", "claudeFallback": null, "hard": null, "sol": null }
+    "models": ["glm-flash", "luna", "mimo-flash"],
+    "reviewer": { "chain": ["glm-flash", "luna", "mimo-flash"], "secondOpinion": "luna", "claudeFallback": null, "hard": null, "sol": null }
   }
 }

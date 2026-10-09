@@ -11,7 +11,7 @@
 //
 // The models are harness.json's reviewer.chain, then its claudeFallback (the full profile: GPT-5.6
 // Luna on the direct OpenAI route, then Claude Opus; the review profile: GLM-5.3 Flash, Luna and
-// DeepSeek V4.1 Flash, then the owner). It is never the implementer's model family: --exclude
+// MiMo V2.6 Flash, then the owner). It is never the implementer's model family: --exclude
 // (implement.mjs prints the name on its "implemented by:" line, or "claude"), else a model:<name>
 // label on the PR or --issue. Runs use the scripts' own OpenCode data directory.
 //
@@ -28,7 +28,7 @@
 // anything runs (#23). Only the lines before the pasted task file's title (`# T<nn>`) are read (#32).
 //
 // --hard (a hard task, L39) runs reviewer.hard instead of reviewer.chain: GLM-5.3 (Z.AI), then
-// DeepSeek V4 Pro (Go) and Luna, so that one provider's quota cannot block a hard review. --sol adds
+// MiniMax-M3, MiMo V2.6 Pro (Go) and Luna, so that one provider's quota cannot block a hard review. --sol adds
 // reviewer.sol (GPT-6.1 Sol) before them, for a guard task and a hard task's last round only (L41).
 // The review's header names each model that failed before it, so a light substitute is visible.
 // --second-opinion (for a critical PR, #39): after the first review, reviewer.secondOpinion reviews the

@@ -12,7 +12,7 @@ yourself, check whether a delegate below does it better or cheaper.
 
 | Work | Delegate | How | Key |
 | --- | --- | --- | --- |
-| Code: implement a task or a fix | OpenCode GLM-5.3 Flash, then DeepSeek V4.1 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | Z.AI's login (`opencode auth login`) and OpenCode Go's (`opencode console login`) to implement; OpenAI's (`opencode auth login`) to review |
+| Code: implement a task or a fix | OpenCode GLM-5.3 Flash, then MiMo V2.6 Flash, then a Claude Sonnet agent | `/run-task` → `tools/harness/implement.mjs` | Z.AI's login (`opencode auth login`) and OpenCode Go's (`opencode console login`) to implement; OpenAI's (`opencode auth login`) to review |
 | Review a PR | GPT-5.6 Luna on OpenAI, through OpenCode (default), then a Claude Opus agent; never the implementer's family | `/run-task` → `tools/harness/review.mjs`, or Agent | as above |
 | Repeated decisions with known answers (triage, routing, gating, labelling) | Jev | `/jev` → `tools/harness/jev.mjs` | `OPENROUTER_API_KEY` |
 | Images: sprites, icons, maps, mockups, illustrations | An image model on OpenRouter | pick one with `models.mjs openrouter --output image` | `OPENROUTER_API_KEY` |
@@ -45,7 +45,7 @@ another way, or tell the user what is missing (`docs/environment.md`).
    editing `harness.json` for quota.
    When a task needs both an implementer and a reviewer, use `/recommend`'s `pair` field
    (`curl -s 'localhost:8765/recommend?tier=heavy' | jq .pair`): `pair.implementer` and
-   `pair.reviewer`, the reviewer from another family (claude, openai, glm, deepseek, minimax;
+   `pair.reviewer`, the reviewer from another family (claude, openai, glm, mimo, minimax;
    each free model its own). Add `review_tier=light` for a lighter reviewer; `private=0` is for
    code that is not private (the free OpenRouter models may then be in the pair). With
    `tier=heavy`, the same response also offers `free_reviewer` — a free second opinion on the

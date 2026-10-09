@@ -45,7 +45,7 @@ test('the review profile installs only the reviewer, with its own reviewers and 
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(files(dir), [...profile.files, ...profile.overlay, 'harness.json', 'harness.lock'].sort());
   const config = JSON.parse(fs.readFileSync(path.join(dir, 'harness.json'), 'utf8'));
-  assert.deepEqual(config.reviewer.chain, ['glm-flash', 'luna', 'deepseek-flash']);
+  assert.deepEqual(config.reviewer.chain, ['glm-flash', 'luna', 'mimo-flash']);
   assert.equal(config.reviewer.secondOpinion, 'luna');
   assert.equal(config.reviewer.claudeFallback, null);
   assert.equal(config.implementer, undefined);

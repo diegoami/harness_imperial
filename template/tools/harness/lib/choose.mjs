@@ -13,7 +13,7 @@ import { excludeImplementers } from './chain.mjs';
 
 // The preference names for a role and difficulty: the `chooser` block when it has them, else the
 // committed chains (implementer easy: implementer.chain; implementer hard: the chain with
-// deepseek first, as docs/models.md pairs it; reviewer easy: reviewer.chain; reviewer hard:
+// mimo-flash first, as docs/models.md pairs it; reviewer easy: reviewer.chain; reviewer hard:
 // reviewer.hard). Unknown names are the caller's usage error, caught here so the block cannot
 // silently rot.
 export function chooserOrder(config, { role, difficulty }) {
@@ -26,7 +26,7 @@ export function chooserOrder(config, { role, difficulty }) {
   }
   if (role === 'implementer') {
     const chain = [...(config.implementer?.chain ?? [])];
-    return difficulty === 'easy' ? chain : [...new Set(['deepseek-flash', ...chain])];
+    return difficulty === 'easy' ? chain : [...new Set(['mimo-flash', ...chain])];
   }
   const rev = config.reviewer ?? {};
   return difficulty === 'easy' ? [...(rev.chain ?? [])] : [...(rev.hard ?? rev.chain ?? [])];

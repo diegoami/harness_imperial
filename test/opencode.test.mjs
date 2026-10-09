@@ -294,12 +294,12 @@ test('openCodeHome copies auth.json when the copy is missing or older, never ove
 });
 
 test('listedModels and loginHint: Go not logged in, or an unknown id', async () => {
-  const { env } = setup('ok', { FAKE_OC_MODELS: '["opencode-go/deepseek-v4.1-flash", "openrouter/x"]' });
+  const { env } = setup('ok', { FAKE_OC_MODELS: '["opencode-go/mimo-v2.6-flash", "openrouter/x"]' });
   const { listed, errors } = await listedModels(opencode, ['opencode-go', 'opencode-go', 'anthropic'], { env, cwd: os.tmpdir() });
-  assert.deepEqual([...listed], ['opencode-go/deepseek-v4.1-flash']);
+  assert.deepEqual([...listed], ['opencode-go/mimo-v2.6-flash']);
   assert.equal(errors.size, 0);                              // "Provider not found" is a missing login
   assert.match(loginHint('opencode-go/nope', listed, '/d'), /is not in `opencode models opencode-go`: check the id/);
-  assert.match(loginHint('opencode-go/deepseek-v4.1-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
+  assert.match(loginHint('opencode-go/mimo-v2.6-flash', new Set(), '/d'), /OpenCode Go is not logged in for \/d\. Run `opencode console login` with XDG_DATA_HOME=\/d/);
   // An Alibaba run refused for its key names the data directory whose auth.json may override the variable.
   assert.match(keyProblem('Error: Invalid API-key provided.', 'alibaba-token-plan/qwen3.8-max', '/d'), /auth\.json in \/d may hold a stale Alibaba entry.*Tell the owner which XDG_DATA_HOME/);
   assert.equal(keyProblem('Error: Invalid API-key provided.', 'openai/gpt-5.6-luna', '/d'), null);
@@ -312,7 +312,7 @@ test('an `opencode models` that fails for another reason is an OpenCode failure,
   const { env } = setup('ok', { FAKE_OC_MODELS_ERROR: 'Error: Unexpected error: no such column: project_id' });
   const { listed, errors } = await listedModels(opencode, ['opencode-go'], { env, cwd: os.tmpdir() });
   assert.equal(listed.size, 0);
-  const hint = loginHint('opencode-go/deepseek-v4.1-flash', listed, '/d', errors);
+  const hint = loginHint('opencode-go/mimo-v2.6-flash', listed, '/d', errors);
   assert.match(hint, /`opencode models opencode-go` failed with exit 1: Error: Unexpected error: no such column: project_id/);
   assert.match(hint, /not a missing login/);
   assert.doesNotMatch(hint, /console login/);

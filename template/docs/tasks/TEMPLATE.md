@@ -4,7 +4,7 @@
   (runs the original under a gated carve-out, process.md §10; its lettered preconditions are
   Done-when lines, its table and gate named in Scope)
 - **Issue**: #<n> · **Branch**: `task/T<nn>-<slug>` · **Merge after**: T<nn>, …
-- **Implementer**: opencode (the default, `glm-flash`, then `deepseek-flash`; or `<model>` from harness.json) · **Claude fallback**: sonnet | opus. A model heavier than the default: the reason here (L46)
+- **Implementer**: opencode (the default, `glm-flash`, then `mimo-flash`; or `<model>` from harness.json) · **Claude fallback**: sonnet | opus. A model heavier than the default: the reason here (L46)
 - **Reviewer**: opencode (the default, `luna`: GPT-5.6 Luna on OpenAI), then claude opus | claude (opus | sonnet); never the implementer's family
 - **Evidence**: the reports, fixtures or investigations this task rests on, with links.
 - **Owns**: directories or files, e.g. `src/Calendar/**`, `tests/Calendar/**`. A task that measures

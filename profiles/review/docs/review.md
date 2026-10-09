@@ -11,7 +11,7 @@ rules; `docs/environment.md` holds the logins.
 | --- | --- | --- |
 | 1 | GLM-5.3 Flash (`glm-flash`) | Z.AI Coding Plan, `zai-coding-plan/glm-5.3-flash` |
 | 2, on failure | GPT-5.6 Luna (`luna`) | the direct OpenAI route, `openai/gpt-5.6-luna` (OpenAI's main quota; alone when OpenAI is exhausted, L51, L65) |
-| 3, on failure | DeepSeek V4.1 Flash (`deepseek-flash`) | OpenCode Go, `opencode-go/deepseek-v4.1-flash` |
+| 3, on failure | MiMo V2.6 Flash (`mimo-flash`) | OpenCode Go, `opencode-go/mimo-v2.6-flash` |
 | then | the user | no Claude reviewer (`claudeFallback: null`) |
 
 There is no `--hard` chain here (`reviewer.hard` and `reviewer.sol` are null): a critical PR gets a

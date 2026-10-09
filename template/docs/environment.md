@@ -33,7 +33,7 @@ Then run `npm test` in the harness repository. The tests against the real OpenCo
 
 ## OpenCode Go
 
-The second implementer, DeepSeek V4.1 Flash, is OpenCode Go's (`opencode-go/…`), a subscription. They are not OpenCode Zen's pay-per-token `opencode/…` models. Go comes from a console
+The second implementer, MiMo V2.6 Flash, is OpenCode Go's (`opencode-go/…`), a subscription. They are not OpenCode Zen's pay-per-token `opencode/…` models. Go comes from a console
 (organisation) login, not from a key; `opencode auth login` and `OPENCODE_API_KEY` reach only Zen
 (IC2 #551):
 1. `opencode console login`, then approve the URL and code it prints in the browser;
@@ -67,8 +67,8 @@ the plan.
 
 Where the machine runs quota-tracker, a local service, it reports how much subscription quota is
 left on each provider: `claude` (the main session and Claude agents), `openai` (Sol and Luna, via
-OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit)
-and `minimax` (the MiniMax Token Plan's own pool). Alibaba's Token Plan (DeepSeek, Qwen and GLM;
+OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (MiMo), `openrouter` (prepaid credit)
+and `minimax` (the MiniMax Token Plan's own pool). Alibaba's Token Plan (Qwen and GLM;
 its Kimi and MiniMax models are Team-edition only and unused) is one of those, and it is missing
 from this list: quota-tracker stopped checking it (Alibaba flagged the console checks as unusual
 activity), so `/quota/alibaba` returns `not_monitored` with `pricing` only — see the Alibaba
@@ -126,9 +126,8 @@ The models per provider, heavy and light:
 | claude | `claude --model opus` | `claude --model sonnet` |
 | openai | `opencode -m openai/gpt-6.1-sol` | `opencode -m openai/gpt-5.6-luna` |
 | zai | `opencode -m zai-coding-plan/glm-5.3` | `opencode -m zai-coding-plan/glm-5.3-flash` |
-| opencode_go | `opencode -m opencode-go/deepseek-v4-pro` | `opencode -m opencode-go/deepseek-v4.1-flash` |
-| openrouter | `opencode -m openrouter/deepseek/deepseek-v4-pro` | `opencode -m openrouter/deepseek/deepseek-v4.1-flash` |
-| alibaba (DeepSeek) | `opencode -m alibaba-token-plan/deepseek-v4-pro-0813` (only the dated id gets the night discount) | `opencode -m alibaba-token-plan/deepseek-v4.1-flash` |
+| opencode_go | `opencode -m opencode-go/mimo-v2.6-pro` | `opencode -m opencode-go/mimo-v2.6-flash` |
+| openrouter | `opencode -m openrouter/xiaomi/mimo-v2.6-pro` | `opencode -m openrouter/xiaomi/mimo-v2.6-flash` |
 | alibaba (Qwen) | `opencode -m alibaba-token-plan/qwen3.8-max` | `opencode -m alibaba-token-plan/qwen3.8-flash` |
 | alibaba (GLM) | `opencode -m alibaba-token-plan/glm-5.3` | none on alibaba (zai has `glm-5.3-flash`) |
 | minimax | `opencode -m minimax/MiniMax-M3` | `opencode -m minimax/MiniMax-M2.7` |
@@ -148,8 +147,8 @@ provider for that directory. Never print, copy or edit the key or an `auth.json`
 - "Invalid API-key": the data directory's `auth.json` may hold a stale Alibaba entry (the scripts
   copy yours into theirs). Tell the owner which `XDG_DATA_HOME` the run used.
 The owner's plan is the Personal edition: the Kimi and MiniMax models OpenCode lists for this
-provider are Team-only and fail. From 22:00 to 08:00 UTC+8, DeepSeek models use 50% fewer credits
-and Qwen models 60% fewer. A quick check that the key works:
+provider are Team-only and fail. From 22:00 to 08:00 UTC+8, Qwen models use 60% fewer
+credits. A quick check that the key works:
 `opencode run -m alibaba-token-plan/qwen3.8-flash "Reply with just: ok"`.
 
 The MiniMax Token Plan (the `minimax` provider's models above) is separate from Alibaba's pool: its key comes only

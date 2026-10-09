@@ -13,8 +13,12 @@ const FAMILIES = [
 ];
 const modelPart = (id) => String(id).split('/').slice(1).join('/').toLowerCase();
 // The vendor's family when the id names a known vendor, else null: only then may --family name it.
+// The model's own name decides, also behind a vendor segment that is not a family name
+// (openrouter/xiaomi/mimo-v2.6-pro is mimo, Luna's R1 on PR 150).
 export function knownFamilyOf(id) {
-  return FAMILIES.find(([re]) => re.test(modelPart(id)))?.[1] ?? null;
+  const part = modelPart(id);
+  const own = part.split('/').at(-1);
+  return FAMILIES.find(([re]) => re.test(part) || re.test(own))?.[1] ?? null;
 }
 export function familyOf(id) {
   const model = modelPart(id);
@@ -22,14 +26,15 @@ export function familyOf(id) {
 }
 
 // Heavy models run at `low`, or `medium` at most; light ones at `high` (L54, #83). Heavy: Sol, GLM-5.3
-// (not Flash), DeepSeek V4 Pro, Opus, wherever they are served from.
+// (not Flash), DeepSeek V4 Pro, MiMo V2.6 Pro, Opus, wherever they are served from (DeepSeek is
+// blacklisted since 2026-10-09, but still recognised).
 // Exactly the models the rule names (Sol's R2 on PR 94): another GLM or DeepSeek release is not heavy.
 // A dated suffix is the same model, not a release: deepseek-v4-pro-0813 (the only Alibaba id with
 // the night discount) is the named DeepSeek V4 Pro.
 // Qwen 3.8 Max is the heavy model of Alibaba's Token Plan (the owner, 2026-10-05).
 // MiniMax-M3 is the heavy model of the MiniMax Token Plan (the owner, 2026-10-06); its ladder
 // is none/thinking, not the effort ladder, so its entry pins `thinking` itself.
-const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)qwen3\.8-max$/, /(^|\/)minimax-m3$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
+const HEAVY = [/(^|\/)gpt-[\d.]+-sol(-fast)?$/, /(^|\/)glm-5\.3$/, /(^|\/)deepseek-v4-pro(-\d+)?$/, /(^|\/)mimo-v2\.6-pro$/, /(^|\/)qwen3\.8-max$/, /(^|\/)minimax-m3$/, /(^|\/)claude-opus/, /(^|\/)opus$/];
 export const isHeavy = (id) => HEAVY.some((re) => re.test(modelPart(id)));
 const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -71,7 +76,7 @@ export function planSwitch(config, { role, id, variant, name, family, fallback, 
   // `variant` has no default: a model that offers no variants (MiniMax-M2.7) must switch without
   // one, not inherit 'high' (Luna's round-2 R1, PR 115). Callers pass defaultVariant's answer.
   if (!ROLES.includes(role)) throw new Error(`--role must be one of ${ROLES.join(', ')}; got ${role}`);
-  if (!/^[\w.-]+\/[\w./-]+$/.test(String(id ?? ''))) throw new Error(`--model must be a provider/model id, e.g. opencode-go/deepseek-v4.1-flash; got ${id}`);
+  if (!/^[\w.-]+\/[\w./-]+$/.test(String(id ?? ''))) throw new Error(`--model must be a provider/model id, e.g. opencode-go/mimo-v2.6-flash; got ${id}`);
   if (variant === 'max') throw new Error('Effort max is never used: it was slower with no gain (L27). Use high.');
   if (fallback && !['sonnet', 'opus'].includes(fallback)) throw new Error(`--fallback must be sonnet or opus; got ${fallback}`);
   const n = name ?? nameOf(config, id);

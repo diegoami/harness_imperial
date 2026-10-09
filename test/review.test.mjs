@@ -371,7 +371,7 @@ test('a dry run prints the note and the exit code it would use, and posts nothin
 
 test('the OpenAI login missing: exit 3 saying how to log in, before any worktree or run', posix, () => {
   const p = project();
-  const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_MODELS: '["opencode-go/deepseek-v4.1-flash"]' });
+  const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_MODELS: '["opencode-go/mimo-v2.6-flash"]' });
   assert.equal(r.status, 3);
   const home = path.join(p.base, 'oc-home', 'data');
   assert.ok((r.stdout + r.stderr).includes(`luna: openai lists no models for ${home}: it is not logged in there`));
@@ -434,10 +434,10 @@ test('a reviewer on watch says what to look for before it runs (L35)', posix, ()
   assert.doesNotMatch(review(project(), { FAKE_OC_MODE: 'review-ok' }).stdout, /watch:/);
 });
 
-// The review profile's reviewers (#39): GLM-5.3 Flash, then Luna, then DeepSeek; Luna's second opinion; no Claude.
-const PROFILE = { chain: ['glm-flash', 'luna', 'deepseek-flash'], secondOpinion: 'luna', claudeFallback: null };
-const LISTED = JSON.stringify(['zai-coding-plan/glm-5.3-flash', 'openai/gpt-5.6-luna', 'opencode-go/deepseek-v4.1-flash']);
-const modes = (m) => JSON.stringify({ 'zai-coding-plan/glm-5.3-flash': m[0], 'openai/gpt-5.6-luna': m[1], 'opencode-go/deepseek-v4.1-flash': m[2] ?? 'review-ok' });
+// The review profile's reviewers (#39): GLM-5.3 Flash, then Luna, then MiMo; Luna's second opinion; no Claude.
+const PROFILE = { chain: ['glm-flash', 'luna', 'mimo-flash'], secondOpinion: 'luna', claudeFallback: null };
+const LISTED = JSON.stringify(['zai-coding-plan/glm-5.3-flash', 'openai/gpt-5.6-luna', 'opencode-go/mimo-v2.6-flash']);
+const modes = (m) => JSON.stringify({ 'zai-coding-plan/glm-5.3-flash': m[0], 'openai/gpt-5.6-luna': m[1], 'opencode-go/mimo-v2.6-flash': m[2] ?? 'review-ok' });
 const labels = (p) => gh(p).issueLabels['12'] ?? [];
 
 test('a second opinion posts both reviews, and the stricter verdict decides the label (#39)', posix, () => {
@@ -468,7 +468,7 @@ test('the second opinion is never the model that wrote the first review (#39)', 
   const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const bodies = gh(p).comments.map((c) => c.body.split('\n')[0]);
-  assert.deepEqual(bodies, ['T07 review (luna; glm-flash failed: exited without a session (exit 1))', 'T07 review (deepseek-flash, second opinion)']);
+  assert.deepEqual(bodies, ['T07 review (luna; glm-flash failed: exited without a session (exit 1))', 'T07 review (mimo-flash, second opinion)']);
 });
 
 test('no second opinion: the first review is posted, no label, exit 3 to the owner (#39)', posix, () => {
@@ -490,7 +490,7 @@ test('with no Claude reviewer, or when Claude implemented, a failure escalates t
   const s = review(q, { FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude');
   assert.equal(s.status, 3);
   assert.match(s.stderr, /escalate to the owner: Claude implemented this PR/);
-  const t = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'exit2' }, '--exclude', 'deepseek-flash');
+  const t = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'exit2' }, '--exclude', 'mimo-flash');
   assert.match(t.stderr, /use a Claude reviewer \(opus\)/);
   const u = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'review-ok' }, '--second-opinion');
   assert.equal(u.status, 2);
@@ -533,7 +533,7 @@ test('two names for one model never make two opinions, nor retry a failed model 
   withAlias(q);
   const s = review(q, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
   assert.equal(s.status, 0, s.stderr + s.stdout);
-  assert.match(gh(q).comments[1].body, /^T07 review \(deepseek-flash, second opinion\)/);
+  assert.match(gh(q).comments[1].body, /^T07 review \(mimo-flash, second opinion\)/);
 });
 
 test('OpenCode missing says the same as any other failure: the owner, or a Claude reviewer (Sol\'s R1 on PR 41)', posix, () => {
@@ -541,15 +541,15 @@ test('OpenCode missing says the same as any other failure: the owner, or a Claud
   const a = review(project({ chain: ['luna'] }), missing, '--exclude', 'claude');
   assert.equal(a.status, 3);
   assert.match(a.stderr, /OpenCode unavailable: .*escalate to the owner: Claude implemented this PR/);
-  const b = review(project(PROFILE), missing, '--exclude', 'deepseek-flash');
+  const b = review(project(PROFILE), missing, '--exclude', 'mimo-flash');
   assert.match(b.stderr, /escalate to the owner \(harness\.json names no Claude reviewer\)/);
-  const c = review(project({ chain: ['luna'] }), missing, '--exclude', 'deepseek-flash');
+  const c = review(project({ chain: ['luna'] }), missing, '--exclude', 'mimo-flash');
   assert.match(c.stderr, /OpenCode unavailable: .*use a Claude reviewer \(opus\)/);
 });
 
-// --hard (L39, L41): GLM-5.3, then MiniMax-M3, DeepSeek V4 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
-const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'minimax/MiniMax-M3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
-const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'minimax/MiniMax-M3': m[2] ?? 'review-ok', 'opencode-go/deepseek-v4-pro': m[3] ?? 'review-ok', 'openai/gpt-5.6-luna': m[4] ?? 'review-ok' });
+// --hard (L39, L41): GLM-5.3, then MiniMax-M3, MiMo V2.6 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
+const HARD = JSON.stringify(['openai/gpt-6.1-sol', 'zai-coding-plan/glm-5.3', 'minimax/MiniMax-M3', 'opencode-go/mimo-v2.6-pro', 'openai/gpt-5.6-luna']);
+const hardModes = (m) => JSON.stringify({ 'openai/gpt-6.1-sol': m[0] ?? 'review-ok', 'zai-coding-plan/glm-5.3': m[1] ?? 'review-ok', 'minimax/MiniMax-M3': m[2] ?? 'review-ok', 'opencode-go/mimo-v2.6-pro': m[3] ?? 'review-ok', 'openai/gpt-5.6-luna': m[4] ?? 'review-ok' });
 
 test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM cannot run, saying so (L39, L41)', posix, () => {
   const p = project();
@@ -561,10 +561,10 @@ test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM c
   const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2']) }, '--exclude', 'claude', '--hard');
   assert.equal(s.status, 0, s.stderr + s.stdout);
   assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; glm failed: exit 2\)\napprove/);
-  const w = project();                                                           // MiniMax-M3 fails differently: DeepSeek V4 Pro reviews
+  const w = project();                                                           // MiniMax-M3 fails differently: MiMo V2.6 Pro reviews
   const t = review(w, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2', 'permission']) }, '--exclude', 'claude', '--hard');
   assert.equal(t.status, 0, t.stderr + t.stdout);
-  assert.match(gh(w).comments[0].body, /^T07 review \(deepseek-pro; glm failed: exit 2; mm-m3 failed: permission rejected: external_directory \(\/tmp\/\*\)\)\napprove/);
+  assert.match(gh(w).comments[0].body, /^T07 review \(mimo-pro; glm failed: exit 2; mm-m3 failed: permission rejected: external_directory \(\/tmp\/\*\)\)\napprove/);
 });
 
 test('an Alibaba reviewer refused for its key says which data directory\'s auth.json to check, and nothing is posted', posix, () => {
@@ -627,7 +627,7 @@ test('--hard --sol reviews with Sol, and with the hard chain when Sol cannot run
 
 test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s R2 on PR 47)', posix, () => {
   const p = project();
-  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/deepseek-v4-pro', 'openai/gpt-5.6-luna']);
+  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/mimo-v2.6-pro', 'openai/gpt-5.6-luna']);
   const r = review(p, { FAKE_OC_MODELS: notListed, FAKE_OC_MODE: 'review-ok' }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(glm; sol-6\.1 not available\)\napprove/);
@@ -636,7 +636,7 @@ test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s 
   assert.match(gh(q).comments[0].body, /^T07 review \(luna\)\napprove/);
 });
 
-test('--hard skips the implementer\'s family: a GLM implementer gets MiniMax-M3, then DeepSeek V4 Pro, after Sol with --sol (L39, L41)', posix, () => {
+test('--hard skips the implementer\'s family: a GLM implementer gets MiniMax-M3, then MiMo V2.6 Pro, after Sol with --sol (L39, L41)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes([]) }, '--exclude', 'glm', '--hard');
   assert.equal(r.status, 0, r.stderr + r.stdout);
@@ -686,9 +686,9 @@ test('the implementer\'s family never reviews: dropped from the chain, or refuse
 });
 
 test('a model:<name> label on the PR excludes that family without --exclude', posix, () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] }, ['model:deepseek-flash']);
+  const p = project({ chain: ['mimo-flash', 'luna'] }, ['model:mimo-flash']);
   const r = review(p, { FAKE_OC_MODE: 'review-ok' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(luna\)/);
-  assert.doesNotMatch(r.stdout, /attempt: deepseek-flash/);
+  assert.doesNotMatch(r.stdout, /attempt: mimo-flash/);
 });
