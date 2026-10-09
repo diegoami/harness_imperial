@@ -4,7 +4,7 @@ mode: all
 permission:
   edit: deny
   external_directory:
-    "/tmp/opencode/*": deny
+    "/tmp/opencode/*": allow
   task:
     "*": deny
   bash:
