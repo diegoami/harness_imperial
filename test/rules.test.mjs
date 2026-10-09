@@ -274,3 +274,41 @@ test('each role\'s two mirror agent files are byte-equal and every agent carries
     assert.doesNotMatch(tb, /^\s*"\/tmp\/opencode\/\*": deny/m, `${b}: the opencode rule is not : deny`);
   }
 });
+
+// Implementer git denies are narrowed to exact-flag forms (#145): `git push --force*` was
+// catching `--force-with-lease` (a SAFE flag) and `git stash*` was catching reads. The narrowed
+// rule set keeps the safety denies against real force-pushes and stash writes, while letting
+// `--force-with-lease` and `git stash list|show` through. `task: "*": deny` was dropped: none of
+// the chain models (GLM-5.3 Flash, DeepSeek V4.1 Flash, Sonnet) use OpenCode's `Task` tool, so
+// the rule was dead weight.
+test('implementer agent-file denies are narrowed: exact flags, no task deny, no trailing-* broad catches (#145)', () => {
+  const files = ['template/.opencode/agents/implementer.md', '.opencode/agents/implementer.md'];
+  for (const f of files) {
+    const text = read(f);
+    // Force-push denies are exact-flag forms (no trailing `*`).
+    assert.match(text, /^    "git push --force": deny/m, `${f}: deny git push --force (exact)`);
+    assert.match(text, /^    "git push -f": deny/m, `${f}: deny git push -f (exact)`);
+    assert.doesNotMatch(text, /^    "git push --force\*": deny/m, `${f}: no longer deny git push --force*`);
+    assert.doesNotMatch(text, /^    "git push -f \*": deny/m, `${f}: no longer deny git push -f *`);
+    // Stash denies: exact two rules, no broad `stash*`.
+    assert.match(text, /^    "git stash": deny/m, `${f}: deny git stash (exact)`);
+    assert.match(text, /^    "git stash push": deny/m, `${f}: deny git stash push`);
+    assert.doesNotMatch(text, /^    "git stash\*": deny/m, `${f}: no longer deny git stash*`);
+    assert.doesNotMatch(text, /^    "git -C \* stash\*": deny/m, `${f}: dead-weight proxy dropped`);
+    // Worktree keeps the broad catch (script owns worktree creation); force-push with `-C`
+    // gets the same narrowing.
+    assert.match(text, /^    "git -C \* push --force": deny/m, `${f}: deny git -C * push --force`);
+    assert.match(text, /^    "git -C \* push -f": deny/m, `${f}: deny git -C * push -f`);
+    // `task: "*": deny` dropped.
+    assert.doesNotMatch(text, /^  task:\n    "\*": deny/m, `${f}: task deny dropped — chain models do not use OpenCode's Task tool`);
+  }
+  // Sanity: the safe flag `--force-with-lease` is allowed by the new rule set. The pattern
+  // `--force` is deny (exact), `--force-with-lease` doesn't begin with `--force` tokenized as a
+  // separate flag (it's `--force-with-lease`), and OpenCode 1.18's matcher treats the YAML as a
+  // glob. The assertion checks the rule literally, not runtime behavior.
+  for (const f of files) {
+    const lines = read(f).split('\n');
+    const denyExact = lines.filter((l) => /^ {4}"git push --force": deny$/.test(l) || /^ {4}"git push -f": deny$/.test(l));
+    assert.equal(denyExact.length, 2, `${f}: exactly two exact-flag force-push denies`);
+  }
+});
