@@ -274,3 +274,34 @@ test('each role\'s two mirror agent files are byte-equal and every agent carries
     assert.doesNotMatch(tb, /^\s*"\/tmp\/opencode\/\*": deny/m, `${b}: the opencode rule is not : deny`);
   }
 });
+
+// Implementer git denies are narrowed to the patterns OpenCode 1.18.34's matcher actually
+// honours (#145): trailing-space-star (`"git push --force *"`) catches `--force` bare, with
+// args, and with `--dry-run`, but NOT `--force-with-lease` (single token, no space). Bare-form
+// `"git push --force"` was bypassed by any args. Broad patterns `"--force*"` and `"stash*"`
+// were catching safe alternatives. `task: "*": deny` was dropped: chain models don't use OpenCode's
+// `Task` tool. The deny set keeps the safety net without killing safe probes.
+test('implementer agent-file denies are narrowed: trailing-space-star with-args, no broad pattern, no task deny (#145)', () => {
+  const files = ['template/.opencode/agents/implementer.md', '.opencode/agents/implementer.md'];
+  for (const f of files) {
+    const text = read(f);
+    // Force-push denies use trailing-space-star: matches `git push --force` bare, with args,
+    // and with `--dry-run`, but not `--force-with-lease` (probed on OpenCode 1.18.34).
+    assert.match(text, /^ {4}"git push --force \*": deny$/m, `${f}: trailing-space-star deny on git push --force *`);
+    assert.match(text, /^ {4}"git push -f \*": deny$/m, `${f}: trailing-space-star deny on git push -f *`);
+    // The OLD broad patterns (`--force*` no-space, `-f *` no-space, `stash*`) are gone. Each
+    // old rule has the same ASCII form as the new one for adjacent lines; the test asserts on
+    // exact-form strict (`deny$`) where no trailing-space was the bug, on the row that
+    // proved fatal under probing.
+    assert.doesNotMatch(text, /^ {4}"git stash\*": deny$/m, `${f}: no "git stash*" (matches reads)`);
+    assert.doesNotMatch(text, /^ {4}"git -C \* stash\*": deny$/m, `${f}: dead-weight proxy dropped`);
+    // Stash denies: bare `git stash` (aliases to push) and trailing-space-star on `git stash push`.
+    assert.match(text, /^ {4}"git stash": deny$/m, `${f}: deny git stash (bare — equivalent to push)`);
+    assert.match(text, /^ {4}"git stash push \*": deny$/m, `${f}: deny git stash push * (bare + args)`);
+    // Force-push with `-C` keeps the same trailing-space-star narrowing.
+    assert.match(text, /^ {4}"git -C \* push --force \*": deny$/m, `${f}: deny git -C * push --force *`);
+    assert.match(text, /^ {4}"git -C \* push -f \*": deny$/m, `${f}: deny git -C * push -f *`);
+    // `task: "*": deny` dropped.
+    assert.doesNotMatch(text, /^ {2}task:\n {4}"\*": deny$/m, `${f}: task deny dropped — chain models do not use OpenCode's Task tool`);
+  }
+});
