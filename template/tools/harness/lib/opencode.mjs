@@ -543,9 +543,24 @@ function stripJsonc(text) {
       const end = text.indexOf('*/', i + 2);
       i = end < 0 ? text.length : end + 1;
       out += ' ';
+    } else if (c === ',' && /^\s*[}\]]/.test(stripComments(text.slice(i + 1)))) {
+      // A trailing comma, outside any string: dropped (Sol's R1 on PR 155, round 2).
     } else out += c;
   }
-  return out.replace(/,(\s*[}\]])/g, '$1');
+  return out;
+}
+
+// The text with its comments blanked, strings untouched: what follows a comma, for stripJsonc.
+function stripComments(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"') return out + text.slice(i);              // what follows is a value, not a } or ]
+    if (c === '/' && text[i + 1] === '/') { while (i < text.length && text[i] !== '\n') i += 1; out += ' '; }
+    else if (c === '/' && text[i + 1] === '*') { const end = text.indexOf('*/', i + 2); i = end < 0 ? text.length : end + 1; out += ' '; }
+    else out += c;
+  }
+  return out;
 }
 
 /**

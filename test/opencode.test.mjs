@@ -653,6 +653,9 @@ test('every run sets continue_loop_on_deny, over the caller\'s own OPENCODE_CONF
   assert.deepEqual(JSON.parse(withContinueOnDeny('{"share":"disabled", /* caller setting */ "experimental":{"continue_loop_on_deny":false,}, // end\n}')),
     { share: 'disabled', experimental: { continue_loop_on_deny: true } });
   assert.deepEqual(JSON.parse(withContinueOnDeny('{"url":"http://x/*y*/", "a":"//b"}')), { url: 'http://x/*y*/', a: '//b', experimental: { continue_loop_on_deny: true } });
+  // A comma before } or ] inside a string is the caller's value, kept byte for byte (Sol's R1 on PR 155, round 2).
+  assert.deepEqual(JSON.parse(withContinueOnDeny(JSON.stringify({ instructions: ['keep,}', 'keep, ]', 'a,/* x */}'] }))).instructions, ['keep,}', 'keep, ]', 'a,/* x */}']);
+  assert.deepEqual(JSON.parse(withContinueOnDeny('{"a":[1,2, /* c */ ], "b":{"c":1, // d\n},}')), { a: [1, 2], b: { c: 1 }, experimental: { continue_loop_on_deny: true } });
   assert.equal(withContinueOnDeny('not json'), null);
   const bad = withAgent('ok', agentMd(''));
   const said = [];
