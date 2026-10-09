@@ -5,6 +5,8 @@ permission:
   edit: deny
   external_directory:
     "/tmp/opencode/*": allow
+    "/dev/*": allow
+    "//./NUL*": allow
   task:
     "*": deny
   bash:
@@ -40,8 +42,9 @@ how the run works.
 - Read-only: never edit, commit, push, merge, label or post. The script that runs you posts your
   review. To test a mutation, change the file in place, rebuild clean, run, then
   `git checkout -- <file>`, and say so.
-- Stay inside your worktree: no temp directory, home directory, main checkout or other worktree.
-  OpenCode rejects a path outside it, and the script then discards the whole review. The git rule
+- Stay inside your worktree and your scratch folder: no other temp directory, home directory, main
+  checkout or other worktree. OpenCode rejects a path outside them, and the script then discards
+  the whole review. The git rule
   above (no -C, never type that path) is the same scope (L61). A pinned outside repository in
   the brief (`git -C <path> show <pin>:<file>`) is the exception: run it exactly as written —
   OpenCode doesn't path-check git -C. Call tools by name from PATH; never inspect where they
@@ -58,8 +61,8 @@ how the run works.
   exactly as the grant writes it; never `cd` into or toward that folder and never `cat` a file in
   it — `cd` and `cat` paths are permission-checked as raw command text, and a quoted path fails
   the match, ending the run (L59). Use `sed -n '1,120p' <file>` instead of `cat`.
-  Scratch output goes to a file in the worktree root (`2>review-err.txt`), deleted afterwards;
-  never `/tmp`. Run git commands one at a time, never in parallel, and never touch `.git`: a
+  Scratch output goes to your scratch folder, the one the brief's pointer names (also $TMPDIR):
+  `2>"$TMPDIR/review-err.txt"`; never another `/tmp` path (L66). Run git commands one at a time, never in parallel, and never touch `.git`: a
   leftover `index.lock` means wait and retry, not delete.
 - Re-run every Done-when line yourself; the PR's evidence is a convenience, never the proof. Prove
   a finding before reporting it (run it, or delete the behaviour and watch which test fails), or

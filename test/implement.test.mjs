@@ -71,7 +71,11 @@ test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)',
   assert.equal(session.projectConfig, 'read');
   // Both sides through realpathSync.native: Windows may give the temp directory as an 8.3 short name.
   const long = (f) => fs.realpathSync.native(f);
-  assert.equal(long(session.agentFile), long(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md')));
+  // The run loads a per-run copy (L66) of the worktree's own agent file, plus its one scratch allow.
+  const own = fs.readFileSync(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md'), 'utf8');
+  assert.equal(session.agentText.replace(/^    "[^"]*harness-run-[^"]*": allow\n/m, ''), own);
+  assert.match(session.agentText, /^    "[^"]*\/harness-run-T07-[^"]*\/\*": allow$/m);
+  assert.match(session.configDir ?? '', /harness-opencode[\\/]T07-[\w.-]+\.config$/);   // the run's own, not the inherited one
 });
 
 test('--copy brings an untracked file into the worktree, its folders created (#90)', posix, async () => {
@@ -296,8 +300,8 @@ test('a run that edited without committing and was rejected keeps its work in a 
   assert.match(r.stdout, /unsaved work saved to: /);
   // Every brief's run rules keep the implementer inside its worktree and committing as it goes (L57).
   const prompt = readSessions(path.join(p.base, "oc.json"))[0].brief.replace(/\s+/g, " ");
-  assert.match(prompt, /Never read, write or redirect to any path outside your worktree: no \/tmp, no home directory, no git internals/);
-  assert.match(prompt, /A test that needs a TMPDIR outside every checkout is run by the main session, not by you\. \(L57\)/);
+  assert.match(prompt, /Never read, write or redirect to any path outside your worktree but your scratch folder: no other \/tmp path, no home directory, no git internals/);
+  assert.match(prompt, /Scratch files go in your scratch folder \(\$TMPDIR, named at the top of this brief\), which is outside every checkout, so a test that needs a TMPDIR outside git uses it too\. .*\(L57, L66\)/);
   assert.match(prompt, /Commit and push after each step, so a run that ends early keeps its work\. \(L57\)/);
 });
 

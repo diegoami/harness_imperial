@@ -123,7 +123,7 @@ test('every reviewer is told a proven bypass of what the task protects is blocki
   for (const f of ['docs/review-brief.md', '../profiles/review/docs/review.md']) {
     assert.match(fs.readFileSync(path.join(root, f), 'utf8').replace(/\s+/g, ' '), /When unsure, say how likely the problem is\. Rate it blocking only if it is likely and would get past what the task protects; otherwise it is a follow-up\. \(L53\)/, f);
   }
-  assert.match(instructions, /Scratch output goes to a file in the worktree root .* never `\/tmp`\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
+  assert.match(instructions, /Scratch output goes to your scratch folder, the one the brief's pointer names \(also \$TMPDIR\): .* never another `\/tmp` path \(L66\)\. Run git commands one at a time, never in parallel, and never touch `\.git`/);
 });
 
 test('the reviewer runs git in its worktree and is never asked to type its path (L30)', posix, () => {
@@ -295,7 +295,9 @@ test('the reviewer\'s agent comes from the main checkout, never from the PR unde
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
   // Both sides through realpathSync.native: Windows may give the temp directory as an 8.3 short name.
-  assert.equal(fs.realpathSync.native(session.agentFile), fs.realpathSync.native(path.join(p.main, '.opencode', 'agents', 'reviewer.md')));
+  // The run loads a per-run copy (L66): the main checkout's file plus this run's one scratch allow.
+  const mainText = fs.readFileSync(path.join(p.main, '.opencode', 'agents', 'reviewer.md'), 'utf8');
+  assert.equal(session.agentText.replace(/^    "[^"]*harness-run-[^"]*": allow\n/m, ''), mainText);
   assert.doesNotMatch(session.agentDescription, /THE PR'S OWN REVIEWER/);
   // and the PR's .opencode/ is not read at all: an opencode.json or a plugin there is ignored too.
   assert.equal(session.projectConfig, 'disabled');
