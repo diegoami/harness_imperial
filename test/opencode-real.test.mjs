@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runOpenCodeWatched, resolveOpenCode, openCodeVersion, versionProblem, scratchAllow, withScratchAllow } from '../template/tools/harness/lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, openCodeVersion, versionProblem, scratchAllow, withScratchAllow, withContinueOnDeny } from '../template/tools/harness/lib/opencode.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let opencode = null;
@@ -184,4 +184,13 @@ test('real OpenCode: the per-run allow admits this run\'s folder only, and the n
   }
   // Without the run's config dir, its own folder is rejected too: the per-run copy is what allows it.
   assert.equal(denied(read(path.join(own, 'f'), false)), true, 'its own folder, without the per-run copy');
+});
+
+// #146: the run's OPENCODE_CONFIG_CONTENT must reach OpenCode's resolved config, or a denied call
+// ends the run again (OpenCode 1.18.34 breaks its loop on a denial unless the flag is true).
+test('real OpenCode: the run\'s config content sets experimental.continue_loop_on_deny (#146)', { skip }, () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'oc-deny-')));
+  const out = execFileSync(opencode.exe, [...opencode.prefix, 'debug', 'config'],
+    { cwd: dir, env: { ...clean(process.env), OPENCODE_CONFIG_CONTENT: withContinueOnDeny(undefined) }, encoding: 'utf8', timeout: 90_000, maxBuffer: 64 << 20 });
+  assert.equal(JSON.parse(out.slice(out.indexOf('{'))).experimental?.continue_loop_on_deny, true);
 });

@@ -60,6 +60,22 @@ if (cmd === 'export') {
   const messages = process.env.FAKE_OC_BIG_EXPORT ? [{ text: 'x'.repeat(4 << 20) }] : [];
   // A rejected tool call, as OpenCode 1.18.34 records it.
   if (s.rejected) messages.push({ parts: [{ type: 'tool', tool: 'read', state: { status: 'error', error: 'The user rejected permission to use this specific tool call.' } }] });
+  // Denied calls (#146), each as OpenCode 1.18.34 records it, then the model's own text unless the
+  // run stopped at the last one.
+  for (const d of s.denials ?? []) {
+    const error = d.kind === 'denied' ? 'The user has specified a rule which prevents you from using this specific tool call. Here are some of the relevant rules []'
+      : 'The user rejected permission to use this specific tool call.';
+    const input = d.inputObject ?? (d.tool === 'bash' ? { command: d.input } : { filePath: d.input });
+    messages.push({ info: { role: 'assistant' }, parts: [{ type: 'tool', tool: d.tool, state: { status: 'error', input, error } }] });
+  }
+  // FAKE_OC_DENY_AFTER: what follows the last denial instead of the model's own text (Sol's R1 on PR 155).
+  const after = process.env.FAKE_OC_DENY_AFTER ? JSON.parse(process.env.FAKE_OC_DENY_AFTER) : [{ info: { role: 'assistant' }, parts: [{ type: 'text', text: 'went on' }] }];
+  if (s.denials?.length && s.recovered) messages.push(...after);
+  // FAKE_OC_EXPORT_STALE: the first export, the live one, holds no denials yet (Sol's R3 on PR 155).
+  if (process.env.FAKE_OC_EXPORT_STALE) {
+    const flag = `${process.env.FAKE_OC_STATE}.stale-served`;
+    if (!fs.existsSync(flag)) { fs.writeFileSync(flag, '1'); process.stdout.write(JSON.stringify({ messages: [], info: { agent: s.agent } })); process.exit(0); }
+  }
   process.stdout.write(JSON.stringify({ messages, info: { agent: s.agent } }));
   process.exit(0);
 }
@@ -92,11 +108,14 @@ const pointer = rest.at(-1);
 const named = pointer.match(/\.harness-brief-([\w.-]+)\.md/);
 const briefFile = named ? path.join(arg('--dir') ?? '.', `.harness-brief-${named[1]}.md`) : null;
 const brief = briefFile && fs.existsSync(briefFile) ? fs.readFileSync(briefFile, 'utf8') : null;
+// FAKE_OC_DENIALS gives any mode's session denied calls (#146); FAKE_OC_DENIALS_MODEL, one model's only.
+const deniedHere = process.env.FAKE_OC_DENIALS && (!process.env.FAKE_OC_DENIALS_MODEL || process.env.FAKE_OC_DENIALS_MODEL === arg('--model'))
+  ? { denials: JSON.parse(process.env.FAKE_OC_DENIALS), recovered: !process.env.FAKE_OC_DENY_STOPPED } : {};
 const createSession = (recordedAgent = agent, extra = {}) => {
-  mine = { ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
+  mine = { ...deniedHere, ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
     dataHome: process.env.XDG_DATA_HOME ?? null, prompt: pointer, agentFile, brief,
     tmpdir: process.env.TMPDIR ?? null, temp: process.env.TEMP ?? null, tmp: process.env.TMP ?? null,
-    configDir: process.env.OPENCODE_CONFIG_DIR ?? null,
+    configDir: process.env.OPENCODE_CONFIG_DIR ?? null, configContent: process.env.OPENCODE_CONFIG_CONTENT ?? null,
     agentText: (() => { try { return agentFile ? fs.readFileSync(agentFile, 'utf8') : null; } catch { return null; } })(),
     projectConfig: process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' ? 'disabled' : 'read',
     agentDescription: agentFile ? fs.readFileSync(agentFile, 'utf8').match(/^description: (.*)$/m)?.[1] ?? null : null };
@@ -214,6 +233,23 @@ switch (mode) {
     createSession(agent, { rejected: true });
     process.stderr.write('\x1b[0m$ \x1b[0mcat /tmp/notes.txt\n! permission requested: external_directory (/tmp/*); auto-rejecting\n');
     process.stdout.write('report: built nothing\n');
+    process.exit(0);
+    break;
+  }
+  case 'deny':
+  case 'deny-review': {
+    // Denied calls the model saw (#146): FAKE_OC_DENIALS lists them ({tool, input, kind}); the model
+    // goes on after the last unless FAKE_OC_DENY_STOPPED; FAKE_OC_DENY_HANG keeps the run going.
+    const denials = JSON.parse(process.env.FAKE_OC_DENIALS || '[]');
+    createSession(agent, { denials, recovered: !process.env.FAKE_OC_DENY_STOPPED });
+    for (const d of denials) {
+      process.stderr.write(d.kind === 'denied'
+        ? '\x1b[91m\x1b[1mError: \x1b[0mThe user has specified a rule which prevents you from using this specific tool call.\n'
+        : `\x1b[93m\x1b[1m! \x1b[0mpermission requested: external_directory (${path.dirname(d.input)}/*); auto-rejecting\n`);
+    }
+    if (process.env.FAKE_OC_DENY_HANG) { forever(); break; }
+    const header = (brief ?? pointer).split('\n')[0];
+    process.stdout.write(mode === 'deny-review' ? `${header}\napprove\n\nR1: fine\n\napprove\n` : 'report: built it\n');
     process.exit(0);
     break;
   }

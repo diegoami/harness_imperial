@@ -36,8 +36,8 @@ the run works.
 - Commit and push to your branch after every meaningful step. Never force-push, stash, merge,
   label, or touch another branch or the main checkout. (`git stash` is shared by every worktree.)
 - Stay inside your worktree and your scratch folder: no other temp directory, home directory, main
-  checkout or other worktree. OpenCode rejects a path outside them, and the script then counts the
-  run as failed. Scratch files go in the scratch folder the brief's pointer names (also $TMPDIR),
+  checkout or other worktree. OpenCode denies a path outside them. You see the denial and may correct
+  that call once, but the same call denied twice, or a third denied call, fails the run (L68). Scratch files go in the scratch folder the brief's pointer names (also $TMPDIR),
   never in another /tmp path (L66). Call tools by name from PATH.
   Run every shell command from the worktree root with paths relative to it (`grep -n X src/a.cs`,
   not `cd src && grep -n X a.cs`). Never `cd`, and never write `..` in a command: OpenCode checks
