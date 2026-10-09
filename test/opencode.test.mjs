@@ -715,3 +715,71 @@ test('a stale first export does not use up the marks: the next poll reads the re
   assert.equal(r.stopped, 'permission-rejected-x3-distinct');
   assert.ok(Date.now() - started < 15_000, `took ${Date.now() - started} ms`);
 });
+
+// L66b (#139): every failed run keeps its scratch folder and names it; one predicate decides.
+const keptAt = (where, what) => {
+  assert.ok(where, `${what}: the folder is named`);
+  assert.match(path.basename(where), /^harness-run-test-[0-9a-f]{12}$/, what);
+  assert.ok(fs.existsSync(where), `${what}: the folder is still there`);
+};
+const thrown = async (promise) => { try { await promise; } catch (e) { return e; } assert.fail('the run did not throw'); };
+
+test('scratch kept and named on a startup throw: no session in time (#139, Sol\'s R7 on PR 137)', async () => {
+  const e = await thrown(runIn(withAgent('no-session', agentMd('')), { startupTimeoutMs: 300 }));
+  assert.ok(infra(/^no session in/)(e), String(e));
+  keptAt(e.scratch, 'startup');
+});
+
+test('scratch kept and named when OpenCode exits without a session (#139)', async () => {
+  const e = await thrown(runIn(withAgent('exit-no-session', agentMd(''))));
+  assert.ok(infra(/^exited without a session/)(e), String(e));
+  keptAt(e.scratch, 'no session');
+});
+
+test('scratch kept and named on an idle throw (#139, Sol\'s R6 on PR 137)', async () => {
+  const e = await thrown(runIn(withAgent('idle', agentMd(''))));
+  assert.ok(infra(/^session idle for/)(e), String(e));
+  keptAt(e.scratch, 'idle');
+});
+
+test('scratch kept and named on a total-timeout throw (#139, Sol\'s R7 on PR 137)', async () => {
+  const e = await thrown(runIn(withAgent('slow', agentMd('')), { idleTimeoutMs: 0, totalTimeoutMs: 1200 }));
+  assert.ok(infra(/^no exit in/)(e), String(e));
+  keptAt(e.scratch, 'total');
+});
+
+test('scratch kept and named when OpenCode cannot be started (#139)', async () => {
+  const s = withAgent('ok', agentMd(''));
+  const e = await thrown(runIn(s, { opencode: { exe: path.join(s.dir, 'no-such-opencode'), prefix: [] } }));
+  assert.ok(infra(/^opencode not found/)(e), String(e));
+  keptAt(e.scratch, 'spawn');
+});
+
+test('scratch kept and named when the run\'s setup throws, before any brief is written (#139)', async () => {
+  const s = withAgent('ok', agentMd(''));
+  const realWrite = fs.writeFileSync;
+  fs.writeFileSync = (f, ...a) => { if (String(f).includes('.harness-brief-')) throw new Error('disk full'); return realWrite(f, ...a); };
+  let e;
+  try { e = await thrown(runIn(s)); } finally { fs.writeFileSync = realWrite; }
+  assert.match(e.message, /disk full/);
+  keptAt(e.scratch, 'setup');
+  assert.deepEqual(fs.readdirSync(path.join(s.dir, 'logs')).filter((n) => n.endsWith('.config')), [], 'its config dir removed');
+});
+
+test('scratch attach on agent fallback: a run that exits 0 on the default agent keeps its folder, files and brief (#139, Sol\'s R8 on PR 137)', async () => {
+  for (const [name, s] of [['load-failure', withAgent('fallback', agentMd(''))], ['fallback', isolated(setup('fallback'))]]) {
+    const r = await runIn(s);
+    assert.equal(r.exitCode, 0, name);
+    assert.equal(r.agentFallback, true, name);
+    keptAt(r.scratch, name);
+    assert.equal(r.files.length, 3, `${name}: its log files and brief are kept`);
+    assert.ok(r.briefFile && fs.existsSync(r.briefFile) && path.dirname(r.briefFile) === path.join(s.dir, 'logs'), `${name}: the brief is kept with the logs`);
+    assert.equal(fs.readdirSync(s.dir).some((n) => n.startsWith('.harness-brief-')), false, `${name}: and not left in the worktree`);
+  }
+});
+
+test('scratch kept on a run the watch stopped, and on a stopped-at-denial run; removed on a run that went past a denial (#139, #146)', async () => {
+  keptAt((await deny([D('/etc/a'), D('/etc/a')])).scratch, 'after-retry');
+  keptAt((await deny([D('/etc/a')], { FAKE_OC_DENY_STOPPED: '1' })).scratch, 'stopped at the denial');
+  assert.equal((await deny([D('/etc/a')])).scratch, null);
+});
