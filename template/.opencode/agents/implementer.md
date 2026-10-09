@@ -10,7 +10,7 @@ permission:
     "git push --force *": deny
     "git push -f *": deny
     "git stash": deny
-    "git stash push": deny
+    "git stash push *": deny
     "git worktree *": deny
     "git -C * push --force *": deny
     "git -C * push -f *": deny

@@ -295,9 +295,9 @@ test('implementer agent-file denies are narrowed: trailing-space-star with-args,
     // proved fatal under probing.
     assert.doesNotMatch(text, /^ {4}"git stash\*": deny$/m, `${f}: no "git stash*" (matches reads)`);
     assert.doesNotMatch(text, /^ {4}"git -C \* stash\*": deny$/m, `${f}: dead-weight proxy dropped`);
-    // Stash denies: bare `git stash` (aliases to push) and bare `git stash push`.
+    // Stash denies: bare `git stash` (aliases to push) and trailing-space-star on `git stash push`.
     assert.match(text, /^ {4}"git stash": deny$/m, `${f}: deny git stash (bare — equivalent to push)`);
-    assert.match(text, /^ {4}"git stash push": deny$/m, `${f}: deny git stash push (bare)`);
+    assert.match(text, /^ {4}"git stash push \*": deny$/m, `${f}: deny git stash push * (bare + args)`);
     // Force-push with `-C` keeps the same trailing-space-star narrowing.
     assert.match(text, /^ {4}"git -C \* push --force \*": deny$/m, `${f}: deny git -C * push --force *`);
     assert.match(text, /^ {4}"git -C \* push -f \*": deny$/m, `${f}: deny git -C * push -f *`);
