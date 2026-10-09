@@ -123,7 +123,7 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
         the same kind of defect again, in new or unchanged code (a sibling the last round missed
         counts). Then the next round goes one step up the ladder: a light OpenCode model → a
         heavy one → a Claude Opus agent (where the owner pairs by difficulty: GLM-5.3 Flash →
-        DeepSeek V4.1 Flash → Opus), and Sonnet → Opus; never down within a task. At the top
+        MiMo V2.6 Flash → Opus), and Sonnet → Opus; never down within a task. At the top
         there is no stronger model: the round fixes the class as below, and changes the approach
         when the class needs it (as golden screenshots did in malpaco T02), saying so on the task file.
         - The round count does not reset, and the reviewer stays of another family: with Opus

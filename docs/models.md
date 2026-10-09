@@ -22,10 +22,8 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | `luna` | GPT-5.6 Luna, `openai/gpt-5.6-luna`, the direct OpenAI route, on OpenAI's main quota like Sol, running alone when OpenAI is exhausted (L51, L65) | OpenAI | **easy reviewer** of small, simple PRs, the `harness.json` default |
 | `sol-6.1` | GPT-6.1 Sol, `openai/gpt-6.1-sol`, effort `low` | OpenAI | **reviewer of complex work**: `--reviewer sol-6.1` (the owner, 2026-10-04, below), and `--hard --sol` for a guard task and a hard task's last round (L41); still on watch (L35) |
 | `sol` | GPT-6 Sol, `openai/gpt-6-sol`, effort `low` | OpenAI | on watch; the hard reviewer at Isle Wars before 6.1 |
-| `deepseek-flash` | DeepSeek V4.1 Flash, `opencode-go/deepseek-v4.1-flash` | DeepSeek | **hard implementer** of real runs in the scratch project (`--model deepseek-flash`); second in the default chain |
-| `deepseek-pro` | DeepSeek V4 Pro, `opencode-go/deepseek-v4-pro` | DeepSeek | on watch; not in a pair |
-| `ali-deepseek-pro` | DeepSeek V4 Pro (0813), `alibaba-token-plan/deepseek-v4-pro-0813`, Alibaba's Token Plan; only the dated id gets the night discount | DeepSeek | on watch; probed only, not in a pair |
-| `ali-deepseek-flash` | DeepSeek V4.1 Flash, `alibaba-token-plan/deepseek-v4.1-flash`, Alibaba's Token Plan | DeepSeek | on watch; probed only, not in a pair |
+| `mimo-flash` | MiMo V2.6 Flash, `opencode-go/mimo-v2.6-flash`, no variants offered, light | MiMo | **hard implementer** of real runs in the scratch project (`--model mimo-flash`); second in the default chain; on watch: new (the owner, 2026-10-09, L67) |
+| `mimo-pro` | MiMo V2.6 Pro, `opencode-go/mimo-v2.6-pro`, no variants offered, heavy | MiMo | third in `reviewer.hard`; on watch: new (L67) |
 | `glm` | GLM-5.3, `zai-coding-plan/glm-5.3` | GLM | **hard reviewer**, first in `--hard` (L41); on watch |
 | `glm-flash` | GLM-5.3 Flash, `zai-coding-plan/glm-5.3-flash` | GLM | **easy implementer** of real runs in the scratch project; first in the `harness.json` default chain (L42); on watch |
 | `ali-glm` | GLM-5.3, `alibaba-token-plan/glm-5.3`, Alibaba's route: no Z.AI peak multiplier, no night discount | GLM | on watch; probed only, not in a pair |
@@ -41,8 +39,8 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
   Light first: both Sol entries (`sol-6.1`, `sol`) are at `low` in `harness.json`. Going to `medium`
   is a switch through `/switch-model`, with the owner's reason in the commit message. OpenAI credit
   being restored (2026-10-03) is not a reason to raise it: Sol stays sparing (L39).
-- A heavy model runs at `low` (L54): `glm`, `ali-glm` and `ali-qwen-max` do. DeepSeek V4 Pro is heavy
-  but offers only `high` and `max` on both its routes today, so it runs `high` — its lowest offered.
+- A heavy model runs at `low` (L54): `glm`, `ali-glm` and `ali-qwen-max` do. MiMo V2.6 Pro is heavy
+  but offers no variants, so its entry has none, like `mm-m2.7`'s.
 - `ali-qwen-flash` is light but offers no plain `high` (only `low`, `medium`, `xhigh`), so it runs at
   `medium`.
 - Light first: both Sol entries (`sol-6.1`, `sol`) are at `low` in `harness.json`. Going to
@@ -55,11 +53,13 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
 - GLM-5.3-highspeed, which the Z.AI plan refuses;
 - GPT-6 Astra (`openai/gpt-6-astra…`), listed by OpenAI since 2026-10-04: the owner said to steer
   clear of it.
+- DeepSeek (V4 Pro, V4.1 Flash), on every route (Go, OpenRouter, Alibaba): blacklisted by the owner
+  on 2026-10-09; MiMo took its places (L67). What it showed is kept below as history.
 
 **Routes:**
 - GLM runs on the Z.AI Coding Plan (`zai-coding-plan/…`) and, as `ali-glm`, on Alibaba's Token Plan.
-- DeepSeek runs on OpenCode Go and, as `ali-deepseek-pro`/`ali-deepseek-flash`, on Alibaba's Token
-  Plan; Qwen runs only on Alibaba's.
+- MiMo runs on OpenCode Go (also listed on OpenRouter as `openrouter/xiaomi/…`, whose paid models are
+  never used); Qwen runs only on Alibaba's Token Plan.
 - MiniMax runs on the MiniMax Token Plan (`minimax/…`), key from `MINIMAX_API_KEY` — a family of
   its own, so it can review any of the others' work. Its quota is a 5-hour and a weekly window
   (quota-tracker's `/quota/minimax`); no time-of-day pricing is known.
@@ -67,13 +67,13 @@ Every model runs at effort `high`, never `max` (L27), with these exceptions:
 
 **Pricing by time of day** (the owner, 2026-10-06; Alibaba's numbers marked limited-time by the
 vendor). Long batch runs: on weekday mornings (Central Europe) prefer Alibaba or OpenCode Go over
-Z.AI's GLM; in the afternoon and evening Alibaba's Qwen and DeepSeek are at their cheapest — but
+Z.AI's GLM; in the afternoon and evening Alibaba's Qwen is at its cheapest — but
 quota-tracker no longer reports on Alibaba (its Token Plan entry, below), so the pool's state is
 unknown and an ali-* run is not for a long loop.
 quota-tracker exposes this live: `curl -s localhost:8765/quota/alibaba | jq .pricing` answers
 `discount_now` and `next_change_at`; `/quota/alibaba` returns `not_monitored` (Alibaba flagged the
 tracker as unusual activity), so only `pricing` is reported. `/quota/zai`'s `peak_now` covers Z.AI.
-Check it before a long run on an `ali-qwen-*`/`ali-deepseek-*` entry or Z.AI's `glm` (ali-glm has
+Check it before a long run on an `ali-qwen-*` entry or Z.AI's `glm` (ali-glm has
 no discount, so time doesn't matter for it); when the discount or off-peak window is not on, prefer
 another entry or schedule after `next_change_at`. If the tracker doesn't answer, run as usual;
 don't block on it.
@@ -84,8 +84,8 @@ don't block on it.
   quota or rate error, stop using Alibaba until the next day and report it; do not retry.
   `bl auth login` is no longer needed.
   From 22:00 to 08:00 UTC+8 — 16:00–02:00 Central Europe in summer time, 15:00–01:00 in winter
-  — `qwen3.8-max` and `qwen3.8-flash` use 60% fewer credits, and `deepseek-v4-pro-0813` and
-  `deepseek-v4.1-flash` 50% fewer (only the dated pro id gets it). `glm-5.3` has no discount.
+  — `qwen3.8-max` and `qwen3.8-flash` use 60% fewer credits (Alibaba's DeepSeek ids too, but
+  DeepSeek is blacklisted). `glm-5.3` has no discount.
 - **Z.AI GLM Coding Plan**: peak hours are Monday to Friday, 14:00–18:00 UTC+8 (08:00–12:00
   Central European summer time). In peak hours `glm-5.3` uses 3× quota (1× off-peak) and
   `glm-5.3-flash` 1.2× (0.4× off-peak); weekends are off-peak all day. A promotion bills everything
@@ -103,12 +103,12 @@ follows the work's difficulty. Claude writes every PR here, so here only the rev
 | Difficulty | Writes | Reviews | If the reviewer is unavailable |
 | --- | --- | --- | --- |
 | Easy, the default | Claude, the main session | GPT-5.6 Luna (`luna`) | escalate: no Claude reviewer may review here |
-| Hard | Claude, the main session | `--hard`: GLM-5.3; `--hard --sol`: GPT-6.1 Sol, for a guard task and the last round (L41) | the rest of `reviewer.hard`: MiniMax-M3, then DeepSeek V4 Pro, then Luna, by itself (L39) |
+| Hard | Claude, the main session | `--hard`: GLM-5.3; `--hard --sol`: GPT-6.1 Sol, for a guard task and the last round (L41) | the rest of `reviewer.hard`: MiniMax-M3, then MiMo V2.6 Pro, then Luna, by itself (L39) |
 
 The review always runs through `review.mjs` from the root, with `--exclude claude`.
 
 **Speedups: a hard review never waits for one provider (L39).** `--hard` runs `reviewer.hard`:
-GLM-5.3 (Z.AI), then MiniMax-M3 (the owner, 2026-10-06), then DeepSeek V4 Pro (Go), then Luna. `--hard --sol` puts GPT-6.1 Sol
+GLM-5.3 (Z.AI), then MiniMax-M3 (the owner, 2026-10-06), then MiMo V2.6 Pro (Go), then Luna. `--hard --sol` puts GPT-6.1 Sol
 (`reviewer.sol`) before them. The next model runs only when one produced no review, such as when
 the OpenAI quota is used up (Isle Wars T08 lost Sol and Luna together that way). The implementer's
 family is skipped; the posted header names each model that failed or could not run before the one
@@ -130,7 +130,7 @@ research deliverables, plans with many acceptance lines. Luna (GPT-5.6) reviews 
 Here almost every PR is a harness change, so the main session names Sol (`--reviewer sol-6.1`).
 `reviewer.hard`'s committed order (L41) is unchanged until the owner decides otherwise.
 
-**When OpenCode Go runs low** (the owner, 2026-10-04): DeepSeek goes last in every chain, and
+**When OpenCode Go runs low** (the owner, 2026-10-04): MiMo goes last in every chain, and
 OpenAI fills in (Sol at `low`, or Luna; never Astra). The main session makes it a local, uncommitted
 edit of the main checkout's `harness.json`, records it in its memory notes, and reverts it with
 `git checkout -- harness.json` when the owner says Go is back. While it stands, the root and template
@@ -150,7 +150,7 @@ Wars, Sol found bypasses that the implementer's own tests missed.
 
 **Real runs in the scratch project** (`~/projects/harness-scratch`, never this repository) use
 Isle Wars' full pairs: easy, GLM-5.3 Flash implements (`--model glm-flash`) and Luna reviews; hard,
-DeepSeek V4.1 Flash implements and GLM-5.3 reviews (`--hard`), GPT-6.1 Sol for a guard task and the
+MiMo V2.6 Flash implements and GLM-5.3 reviews (`--hard`), GPT-6.1 Sol for a guard task and the
 last round (`--hard --sol`). GLM-5.3 Flash is on watch (L27, L35): a stall is diagnosed before any
 fallback.
 

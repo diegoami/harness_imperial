@@ -44,7 +44,7 @@ test('a heavy review moves the implementer up, in both profiles (L38)', () => {
 test('Sol runs at low or medium effort, never high, and only by --sol: the hard chain starts with GLM-5.3 (L39, L41)', () => {
   const c = JSON.parse(read('template/harness.json'));
   for (const m of ['sol', 'sol-6.1']) assert.ok(['low', 'medium'].includes(c.models[m].variant), `${m} at ${c.models[m].variant}`);
-  assert.deepEqual(c.reviewer.hard, ['glm', 'mm-m3', 'deepseek-pro', 'luna']);   // mm-m3 second since 2026-10-06, the owner's call
+  assert.deepEqual(c.reviewer.hard, ['glm', 'mm-m3', 'mimo-pro', 'luna']);   // mm-m3 second since 2026-10-06, the owner's call
   assert.equal(c.reviewer.sol, 'sol-6.1');
 });
 
@@ -58,15 +58,35 @@ test('measurements are committed and pushed as made, never deleted, in every bri
   assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A task that measures owns a tracked path for its outputs/);
 });
 
-test('the default implementer is GLM-5.3 Flash, then DeepSeek V4.1 Flash, then Sonnet; GLM-5.3 Flash stays on watch (L42)', () => {
+test('the default implementer is GLM-5.3 Flash, then MiMo V2.6 Flash, then Sonnet; GLM-5.3 Flash stays on watch (L42)', () => {
   const c = JSON.parse(read('template/harness.json'));
-  assert.deepEqual(c.implementer.chain, ['glm-flash', 'deepseek-flash']);
+  assert.deepEqual(c.implementer.chain, ['glm-flash', 'mimo-flash']);
   assert.equal(c.implementer.claudeFallback, 'sonnet');
   assert.equal(c.models['glm-flash'].id, 'zai-coding-plan/glm-5.3-flash');
   assert.ok(c.models['glm-flash'].watch, 'glm-flash keeps its watch note');
   for (const f of ['template/docs/process.md', 'template/docs/tasks/TEMPLATE.md', 'README.md']) {
-    assert.match(read(f).replace(/\s+/g, ' '), /GLM-5\.3 Flash|`glm-flash`, then `deepseek-flash`/, f);
+    assert.match(read(f).replace(/\s+/g, ' '), /GLM-5\.3 Flash|`glm-flash`, then `mimo-flash`/, f);
   }
+});
+
+test('DeepSeek is named by no harness.json, profile or default doc; MiMo takes its places (L67)', () => {
+  const c = JSON.parse(read('template/harness.json'));
+  const p = JSON.parse(read('profiles/review/profile.json'));
+  for (const [f, text] of [['template/harness.json', read('template/harness.json')], ['harness.json', read('harness.json')],
+    ['profiles/review/profile.json', read('profiles/review/profile.json')]]) {
+    for (const [name, m] of Object.entries(JSON.parse(text).models ?? {})) assert.doesNotMatch(`${name} ${m.id}`, /deepseek/i, f);
+    assert.doesNotMatch(JSON.stringify([JSON.parse(text).implementer, JSON.parse(text).reviewer, JSON.parse(text).chooser, JSON.parse(text).harness]), /deepseek/i, f);
+  }
+  assert.deepEqual(c.models['mimo-flash'], { ...c.models['mimo-flash'], id: 'opencode-go/mimo-v2.6-flash', family: 'mimo' });
+  assert.deepEqual(c.models['mimo-pro'], { ...c.models['mimo-pro'], id: 'opencode-go/mimo-v2.6-pro', family: 'mimo' });
+  assert.ok(!('variant' in c.models['mimo-flash']) && !('variant' in c.models['mimo-pro']), 'MiMo offers no variants');
+  assert.deepEqual(c.reviewer.hard, ['glm', 'mm-m3', 'mimo-pro', 'luna']);
+  assert.deepEqual(p.harness.reviewer.chain, ['glm-flash', 'luna', 'mimo-flash']);
+  for (const f of ['template/docs/process.md', 'template/docs/environment.md', 'template/docs/tasks/TEMPLATE.md', 'profiles/review/docs/review.md',
+    'template/.claude/skills/delegate/SKILL.md', 'template/.claude/skills/run-task/SKILL.md', 'template/.claude/skills/switch-model/SKILL.md']) {
+    assert.doesNotMatch(read(f), /deepseek/i, f);
+  }
+  assert.match(read('template/docs/lessons.md'), /^\| L67 \| DeepSeek \(V4 Pro, V4\.1 Flash\) is not used on any route/m);
 });
 
 test('Isle Wars\' process rules are in every copy that carries them (L44, L45, L46)', () => {
@@ -189,7 +209,7 @@ test('a brief passes by file in the worktree, never the command line (L60)', () 
   // 2026-10-07: Alibaba's pool is unmonitored, but the two are still described separately, and the
   // section actually says so — otherwise reverting the new sentence to the old "one credit pool …"
   // one would still pass).
-  assert.match(read('template/docs/environment.md'), /Alibaba's Token Plan \(DeepSeek, Qwen and GLM;\s+its Kimi and MiniMax models are Team-edition only and unused\)/);
+  assert.match(read('template/docs/environment.md'), /Alibaba's Token Plan \(Qwen and GLM;\s+its Kimi and MiniMax models are Team-edition only and unused\)/);
   assert.match(read('template/docs/environment.md'), /Alibaba's Token Plan is no longer in quota-tracker/);
   assert.match(read('template/docs/environment.md'), /`minimax` \(the MiniMax Token Plan's own pool\)/);
 });

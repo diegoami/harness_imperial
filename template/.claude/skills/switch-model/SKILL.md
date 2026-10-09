@@ -6,7 +6,7 @@ description: Switch the OpenCode model that implements or reviews (harness.json)
 # /switch-model: change the implementer's or the reviewer's model
 
 Each role runs its OpenCode chain, then Claude: today, GLM-5.3 Flash on Z.AI implements, then
-DeepSeek V4.1 Flash on Go (then Sonnet), and GPT-5.6 Luna on the direct OpenAI route reviews (then
+MiMo V2.6 Flash on Go (then Sonnet), and GPT-5.6 Luna on the direct OpenAI route reviews (then
 Opus). The user decided this on 2026-10-02 (L27) and on 2026-10-04 (L42, L51). A switch changes one role's model; it is the user's decision, so you
 propose it and the user says yes.
 
@@ -28,7 +28,7 @@ propose it and the user says yes.
    - It checks the id against OpenCode's list in the scripts' data directory. On exit 3, give
      the user the login command it prints; the user runs it.
    - The effort, unless `--variant` gives one: `high` for a light model; for a heavy one (Sol,
-     GLM-5.3, DeepSeek V4 Pro, Opus) `low`, else `medium`, else the lowest OpenCode offers (L54).
+     GLM-5.3, MiMo V2.6 Pro, Opus) `low`, else `medium`, else the lowest OpenCode offers (L54).
      `max` is refused.
    - It shows the family and refuses the other role's. `--force` is only for when the user is
      switching both roles.

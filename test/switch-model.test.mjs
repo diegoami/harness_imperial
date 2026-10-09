@@ -45,16 +45,16 @@ test('a switch makes the model the role\'s one model, at high, and keeps every o
 
 test('refused: max effort, the other role\'s family (unless forced), a taken name, a bad role or id', () => {
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', variant: 'max' }), /max is never used/);
-  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro' }), /^Error: Refused: deepseek is also the implementer's family/);
-  const forced = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', force: true });
+  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/mimo-v2.6-pro' }), /^Error: Refused: mimo is also the implementer's family/);
+  const forced = planSwitch(template(), { role: 'reviewer', id: 'opencode-go/mimo-v2.6-pro', force: true });
   assert.match(forced.conflict, /every review would exit 3/);
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/kimi-k3', name: 'luna' }), /already holds openai\/gpt-5\.6-luna/);
   assert.throws(() => planSwitch(template(), { role: 'tester', id: 'opencode-go/kimi-k3' }), /--role must be/);
   // --family cannot carry a model past the family rule (Luna's R1 on PR 17).
-  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', family: 'kimi' }),
-    /^Error: Refused: --family kimi contradicts opencode-go\/deepseek-v4-pro, whose vendor is deepseek/);
-  assert.match(planSwitch(template(), { role: 'reviewer', id: 'opencode-go/deepseek-v4-pro', family: 'kimi', force: true }).conflict,
-    /^deepseek is also the implementer's family/);
+  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'opencode-go/mimo-v2.6-pro', family: 'kimi' }),
+    /^Error: Refused: --family kimi contradicts opencode-go\/mimo-v2.6-pro, whose vendor is mimo/);
+  assert.match(planSwitch(template(), { role: 'reviewer', id: 'opencode-go/mimo-v2.6-pro', family: 'kimi', force: true }).conflict,
+    /^mimo is also the implementer's family/);
   assert.equal(planSwitch(template(), { role: 'reviewer', id: 'opencode-go/space-bunny-free', family: 'bunny' }).entry.family, 'bunny');
   assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'kimi-k3' }), /provider\/model id/);
 });
@@ -92,9 +92,9 @@ test('a heavy model\'s default effort is low, else medium, else its lowest; a li
 
 test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
-    'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), deepseek-flash = opencode-go/deepseek-v4.1-flash (high, family deepseek), then Claude sonnet',
+    'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), mimo-flash = opencode-go/mimo-v2.6-flash (no variant, family mimo), then Claude sonnet',
     'reviewer: luna = openai/gpt-5.6-luna (high, family openai), then Claude opus',
-    'on watch: sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, deepseek-pro = opencode-go/deepseek-v4-pro, ali-deepseek-pro = alibaba-token-plan/deepseek-v4-pro-0813, ali-deepseek-flash = alibaba-token-plan/deepseek-v4.1-flash, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash, mm-m3 = minimax/MiniMax-M3, mm-m2.7 = minimax/MiniMax-M2.7',
+    'on watch: mimo-flash = opencode-go/mimo-v2.6-flash, sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, mimo-pro = opencode-go/mimo-v2.6-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash, mm-m3 = minimax/MiniMax-M3, mm-m2.7 = minimax/MiniMax-M2.7',
   ].join('\n'));
 });
 
@@ -104,7 +104,7 @@ test('showRoles in the review profile: no implementer line, and the owner after 
   const config = { models: Object.fromEntries(p.harness.models.map((m) => [m, t.models[m]])), reviewer: { ...t.reviewer, ...p.harness.reviewer } };
   const shown = showRoles(config).split('\n');
   assert.equal(shown.filter((l) => l.startsWith('implementer')).length, 0);
-  assert.match(shown[0], /^reviewer: glm-flash = zai-coding-plan\/glm-5\.3-flash .*, deepseek-flash = opencode-go\/deepseek-v4\.1-flash \(high, family deepseek\), then the owner$/);
+  assert.match(shown[0], /^reviewer: glm-flash = zai-coding-plan\/glm-5\.3-flash .*, mimo-flash = opencode-go\/mimo-v2\.6-flash \(no variant, family mimo\), then the owner$/);
   assert.match(planSwitch(config, { role: 'reviewer', id: 'openai/gpt-5.6-luna' }).after, /then the owner$/);
   assert.match(showRoles({ reviewer: { chain: [] } }), /then Claude \?$/);       // unsaid stays visible
 });
@@ -125,7 +125,7 @@ function project() {
   fs.copyFileSync(path.join(root, 'harness.json'), path.join(repo, 'harness.json'));
   return { base, repo, config: () => JSON.parse(fs.readFileSync(path.join(repo, 'harness.json'), 'utf8')) };
 }
-const MODELS = JSON.stringify(['opencode-go/deepseek-v4.1-flash', 'opencode-go/deepseek-v4-pro', 'opencode-go/kimi-k3', 'openai/gpt-5.6-luna']);
+const MODELS = JSON.stringify(['opencode-go/mimo-v2.6-flash', 'opencode-go/mimo-v2.6-pro', 'opencode-go/kimi-k3', 'openai/gpt-5.6-luna']);
 function sw(p, env, ...args) {
   return spawnSync(process.execPath, [path.join(root, 'tools/harness/switch-model.mjs'), ...args], {
     cwd: p.repo, encoding: 'utf8',
@@ -154,10 +154,10 @@ test('a switch writes harness.json; a dry run writes nothing', posix, () => {
 
 test('without --variant, a switch writes the lowest effort OpenCode offers for a heavy model, and high for a light one (L54)', posix, () => {
   const p = project();
-  const variants = JSON.stringify({ 'opencode-go/deepseek-v4-pro': ['high', 'max'], 'opencode-go/kimi-k3': ['low', 'high', 'max'] });
-  const heavy = sw(p, { FAKE_OC_VARIANTS: variants }, '--role', 'implementer', '--model', 'opencode-go/deepseek-v4-pro', '--dry-run');
+  const variants = JSON.stringify({ 'opencode-go/mimo-v2.6-pro': ['high', 'max'], 'opencode-go/kimi-k3': ['low', 'high', 'max'] });
+  const heavy = sw(p, { FAKE_OC_VARIANTS: variants }, '--role', 'implementer', '--model', 'opencode-go/mimo-v2.6-pro', '--dry-run');
   assert.equal(heavy.status, 0, heavy.stderr);
-  assert.match(heavy.stdout, /after: {2}deepseek-pro \(opencode-go\/deepseek-v4-pro, high\)/);
+  assert.match(heavy.stdout, /after: {2}mimo-pro \(opencode-go\/mimo-v2\.6-pro, high\)/);
   const sol = sw(p, { FAKE_OC_MODELS: JSON.stringify(['openai/gpt-6.1-sol']), FAKE_OC_VARIANTS: JSON.stringify({ 'openai/gpt-6.1-sol': ['low', 'medium', 'high'] }) },
     '--role', 'reviewer', '--model', 'openai/gpt-6.1-sol', '--dry-run');
   assert.match(sol.stdout, /after: {2}sol-6\.1 \(openai\/gpt-6\.1-sol, low\)/);
@@ -180,14 +180,14 @@ test('a model OpenCode does not list exits 3, with the login command, and writes
 
 test('the other role\'s family is refused with exit 1, and written with --force and a warning', posix, () => {
   const p = project();
-  const refused = sw(p, {}, '--role', 'reviewer', '--model', 'opencode-go/deepseek-v4-pro');
+  const refused = sw(p, {}, '--role', 'reviewer', '--model', 'opencode-go/mimo-v2.6-pro');
   assert.equal(refused.status, 1);
-  assert.match(refused.stderr, /Refused: deepseek is also the implementer's family/);
+  assert.match(refused.stderr, /Refused: mimo is also the implementer's family/);
   assert.deepEqual(p.config().reviewer.chain, ['luna']);
-  const forced = sw(p, {}, '--role', 'reviewer', '--model', 'opencode-go/deepseek-v4-pro', '--force');
+  const forced = sw(p, {}, '--role', 'reviewer', '--model', 'opencode-go/mimo-v2.6-pro', '--force');
   assert.equal(forced.status, 0, forced.stderr);
   assert.match(forced.stdout, /warning \(--force\)/);
-  assert.deepEqual(p.config().reviewer.chain, ['deepseek-pro']);
+  assert.deepEqual(p.config().reviewer.chain, ['mimo-pro']);
 });
 
 test('--probe asks for one word through the runner; a failed probe writes nothing, and no probe directory stays', posix, () => {

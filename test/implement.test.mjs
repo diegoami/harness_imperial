@@ -146,7 +146,7 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement' });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /implemented by: deepseek-flash \(opencode-go\/deepseek-v4.1-flash\)/);
+  assert.match(r.stdout, /implemented by: mimo-flash \(opencode-go\/mimo-v2.6-flash\)/);
   const [session] = readSessions(path.join(p.base, 'oc.json'));
   assert.equal(session.dataHome, path.join(p.base, 'oc-home', 'data'));                // its own data directory
   assert.match(r.stdout, /PR: https:\/\/example.com\/pr\/100/);
@@ -162,12 +162,12 @@ test('an implementer whose provider is out of quota is skipped before it runs; t
   const s = await quotaServer([entry('zai', 'exhausted', [], { available_in: '41m' }), entry('opencode_go', 'ok')]);
   try {
     const p = project();
-    const models = '["zai-coding-plan/glm-5.3-flash", "opencode-go/deepseek-v4.1-flash"]';
+    const models = '["zai-coding-plan/glm-5.3-flash", "opencode-go/mimo-v2.6-flash"]';
     const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: models, HARNESS_QUOTA_URL: s.url });
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.match(r.stdout, /glm-flash: skipped, out of quota: zai is exhausted until it is usable again in 41m \(quota-tracker, L50\)/);
     assert.doesNotMatch(r.stdout, /attempt: glm-flash/);
-    assert.match(r.stdout, /attempt: deepseek-flash/);
+    assert.match(r.stdout, /attempt: mimo-flash/);
   } finally { s.stop(); }
 });
 
@@ -179,13 +179,13 @@ test('a model on watch says what to look for, on the console and in the run log;
   assert.match(r.stdout, line);
   assert.match(fs.readFileSync(path.join(p.base, 'proj-work', 'T07.implementer.log'), 'utf8'), line);
   const q = project();
-  const plain = implement(q, { FAKE_OC_MODE: 'implement' });
+  const plain = implement(q, { FAKE_OC_MODE: 'implement' }, '--model', 'luna');   // not on watch (mimo-flash, second in the chain, is)
   assert.equal(plain.status, 0, plain.stderr + plain.stdout);
   assert.doesNotMatch(plain.stdout, /watch:/);
 });
 
 test('an implementer that stops and reports is not retried, and exits 1', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'stop-report' });
   assert.equal(r.status, 1);
   assert.doesNotMatch(r.stdout, /attempt: luna/);
@@ -194,7 +194,7 @@ test('an implementer that stops and reports is not retried, and exits 1', posix,
 });
 
 test('a failure that left a commit is not retried on the next model', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'commit-fail' });
   assert.equal(r.status, 1);
   assert.doesNotMatch(r.stdout, /attempt: luna/);
@@ -202,18 +202,18 @@ test('a failure that left a commit is not retried on the next model', posix, asy
 });
 
 test('an infrastructure failure that left nothing falls back to the next model', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'exit-no-session', 'openai/gpt-5.6-luna': 'implement' }) });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'exit-no-session', 'openai/gpt-5.6-luna': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /fell back: deepseek-flash: exited without a session/);
+  assert.match(r.stdout, /fell back: mimo-flash: exited without a session/);
   assert.match(r.stdout, /implemented by: luna/);
 });
 
 test('a rejected tool call is a failure, not a clean finish: the next model runs (IC2 #501)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission', 'openai/gpt-5.6-luna': 'implement' }) });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission', 'openai/gpt-5.6-luna': 'implement' }) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /fell back: deepseek-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
+  assert.match(r.stdout, /fell back: mimo-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
   assert.match(r.stdout, /implemented by: luna/);
 });
 
@@ -231,14 +231,14 @@ function throwaway() {
   return { repo, saves: path.join(dir, 'saves'), start: g('rev-parse', 'HEAD'), g };
 }
 const stamp = new Date('2026-10-05T12:00:00Z');
-const at = (t) => ({ name: 'T07', model: 'deepseek-flash', stamp, worktree: t.repo, startSha: t.start, workRoot: t.saves });
+const at = (t) => ({ name: 'T07', model: 'mimo-flash', stamp, worktree: t.repo, startSha: t.start, workRoot: t.saves });
 
 test('the reset saves a tracked change and an untracked file in one patch that applies cleanly (#87, L56)', () => {
   const t = throwaway();
   fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'one\ntwo\n');
   fs.writeFileSync(path.join(t.repo, 'untracked.txt'), 'fresh\n');
   const [patch, more] = resetWorktree(at(t));
-  assert.equal(patch, path.join(t.saves, 'T07.deepseek-flash.2026-10-05T12-00-00.000Z.unsaved.patch'));
+  assert.equal(patch, path.join(t.saves, 'T07.mimo-flash.2026-10-05T12-00-00.000Z.unsaved.patch'));
   assert.equal(more, undefined);                                                    // one patch
   assert.equal(t.g('status', '--porcelain'), '');                                   // reset as before
   t.g('apply', '--check', patch);
@@ -266,7 +266,7 @@ test('a staged version that differs from the working copy is saved on its own fi
   t.g('add', 'tracked.txt');
   fs.writeFileSync(path.join(t.repo, 'tracked.txt'), 'one\n');                    // the working copy is back at the start
   const patches = resetWorktree(at(t));
-  assert.deepEqual(patches, [path.join(t.saves, 'T07.deepseek-flash.2026-10-05T12-00-00.000Z.staged.unsaved.patch')]);
+  assert.deepEqual(patches, [path.join(t.saves, 'T07.mimo-flash.2026-10-05T12-00-00.000Z.staged.unsaved.patch')]);
   t.g('apply', '--check', patches[0]);
   t.g('apply', patches[0]);
   assert.equal(fs.readFileSync(path.join(t.repo, 'tracked.txt'), 'utf8'), 'staged-only\n');
@@ -284,12 +284,12 @@ test('a staged version that differs from the working copy is saved on its own fi
 });
 
 test('a run that edited without committing and was rejected keeps its work in a patch the exit names (#87)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'permission' }) });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'permission' }) });
   assert.equal(r.status, 3, r.stderr + r.stdout);
   const m = r.stderr.match(/Unsaved work was saved before the reset: (\S+\.unsaved\.patch)\./);
   assert.ok(m, r.stderr);
-  assert.match(path.basename(m[1]), /^T07\.deepseek-flash\.\d{4}-\d\d-\d\dT[\d-]+\.\d{3}Z\.unsaved\.patch$/);
+  assert.match(path.basename(m[1]), /^T07\.mimo-flash\.\d{4}-\d\d-\d\dT[\d-]+\.\d{3}Z\.unsaved\.patch$/);
   const text = fs.readFileSync(m[1], 'utf8');
   assert.match(text, /\+edited, not committed/);
   assert.match(text, /\+untracked work/);
@@ -302,17 +302,17 @@ test('a run that edited without committing and was rejected keeps its work in a 
 });
 
 test('an exit 1 after a later attempt committed still names the earlier attempt\'s patch (#87)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'commit-fail' }) });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'commit-fail' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
-  assert.match(r.stderr, /after committing, pushing or opening a PR .* Unsaved work was saved before the reset: \S+T07\.deepseek-flash\.\S+\.unsaved\.patch\./);
+  assert.match(r.stderr, /after committing, pushing or opening a PR .* Unsaved work was saved before the reset: \S+T07\.mimo-flash\.\S+\.unsaved\.patch\./);
 });
 
 test('the no-PR exit 1 names the patch a failed attempt saved (Sol\'s R3 on PR 100)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/deepseek-v4.1-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'stop-report' }) });
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'stop-report' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
-  assert.match(r.stderr, /No open PR .* Unsaved work was saved before the reset: \S+T07\.deepseek-flash\.\S+\.unsaved\.patch\./);
+  assert.match(r.stderr, /No open PR .* Unsaved work was saved before the reset: \S+T07\.mimo-flash\.\S+\.unsaved\.patch\./);
 });
 
 test('implement.mjs --self-test checks the reset\'s save on a throwaway repository (#87)', () => {
@@ -333,14 +333,14 @@ test('an Alibaba implementer refused for its key says which data directory\'s au
 });
 
 test('a rejection from cd or .. says so in the failure, naming L31 (#14)', posix, async () => {
-  const p = project({ chain: ['deepseek-flash'] });
+  const p = project({ chain: ['mimo-flash'] });
   const r = implement(p, { FAKE_OC_MODE: 'permission-cd' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /permission rejected: external_directory \(\/tmp\/\*\); the rejected command used cd or \.\.: run commands from the worktree root.*\(L31\)/);
 });
 
 test('the same failure twice stops the chain with exit 3', posix, async () => {
-  const p = project({ chain: ['deepseek-flash', 'spare', 'luna'] });
+  const p = project({ chain: ['mimo-flash', 'spare', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'no-session' });
   assert.equal(r.status, 3);
   assert.match(r.stderr, /same failure twice: no-session/);
@@ -351,7 +351,7 @@ test('a model OpenCode does not list exits 3 with the fallback, before any workt
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["opencode-go/spare-model"]' });
   assert.equal(r.status, 3);
-  assert.match(r.stdout + r.stderr, /deepseek-flash: opencode-go\/deepseek-v4.1-flash is not in `opencode models opencode-go`/);
+  assert.match(r.stdout + r.stderr, /mimo-flash: opencode-go\/mimo-v2.6-flash is not in `opencode models opencode-go`/);
   assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
   assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
 });

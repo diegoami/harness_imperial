@@ -32,8 +32,9 @@ opencode models zai-coding-plan; opencode models openai; opencode models opencod
 
 Where the machine runs quota-tracker, a local service, it reports how much subscription quota is
 left on each provider: `claude` (the main session), `openai` (Sol and Luna, via
-OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (DeepSeek), `openrouter` (prepaid credit) and
-`alibaba` (Alibaba's Token Plan: DeepSeek, Qwen, GLM, Kimi and MiniMax, one monthly pool).
+OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (MiMo), `openrouter` (prepaid credit) and
+`alibaba` (Alibaba's Token Plan: Qwen, GLM, Kimi and MiniMax, one monthly pool). DeepSeek is
+blacklisted on every route (the owner, 2026-10-09).
 Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one;
@@ -82,9 +83,8 @@ The models per provider, heavy and light:
 | claude | `claude --model opus` | `claude --model sonnet` |
 | openai | `opencode -m openai/gpt-6.1-sol` | `opencode -m openai/gpt-5.6-luna` |
 | zai | `opencode -m zai-coding-plan/glm-5.3` | `opencode -m zai-coding-plan/glm-5.3-flash` |
-| opencode_go | `opencode -m opencode-go/deepseek-v4-pro` | `opencode -m opencode-go/deepseek-v4.1-flash` |
-| openrouter | `opencode -m openrouter/deepseek/deepseek-v4-pro` | `opencode -m openrouter/deepseek/deepseek-v4.1-flash` |
-| alibaba (DeepSeek) | `opencode -m alibaba-token-plan/deepseek-v4-pro` | `opencode -m alibaba-token-plan/deepseek-v4.1-flash` |
+| opencode_go | `opencode -m opencode-go/mimo-v2.6-pro` | `opencode -m opencode-go/mimo-v2.6-flash` |
+| openrouter | `opencode -m openrouter/xiaomi/mimo-v2.6-pro` | `opencode -m openrouter/xiaomi/mimo-v2.6-flash` |
 | alibaba (Qwen) | `opencode -m alibaba-token-plan/qwen3.8-max` | `opencode -m alibaba-token-plan/qwen3.8-flash` |
 | alibaba (GLM) | `opencode -m alibaba-token-plan/glm-5.3` | none on alibaba (zai has `glm-5.3-flash`) |
 
@@ -102,8 +102,8 @@ provider for that directory. Never print, copy or edit the key or an `auth.json`
 - "Invalid API-key": the data directory's `auth.json` may hold a stale Alibaba entry (the scripts
   copy yours into theirs). Tell the owner which `XDG_DATA_HOME` the run used.
 The owner's plan is the Personal edition: the Kimi and MiniMax models OpenCode lists for this
-provider are Team-only and fail. From 22:00 to 08:00 UTC+8, DeepSeek models use 50% fewer credits
-and Qwen models 60% fewer. A quick check that the key works:
+provider are Team-only and fail. From 22:00 to 08:00 UTC+8, Qwen models use 60% fewer
+credits. A quick check that the key works:
 `opencode run -m alibaba-token-plan/qwen3.8-flash "Reply with just: ok"`.
 
 The tracker also keeps the usage history: `curl -s 'localhost:8765/usage?since=7d'` gives, per
@@ -143,7 +143,7 @@ login. Where the service is not installed, go on without it, and count a usage-l
 | --- | --- | --- |
 | GLM-5.3 Flash, first | `opencode auth login`, then Z.AI Coding Plan (an API key; OpenCode also reads `ZHIPU_API_KEY`) | `opencode models zai-coding-plan` lists `zai-coding-plan/glm-5.3-flash` |
 | GPT-5.6 Luna, second and the second opinion | `opencode auth login`, then OpenAI (a ChatGPT login or an API key) | `opencode models openai` lists `openai/gpt-5.6-luna` |
-| DeepSeek V4.1 Flash, third | `XDG_DATA_HOME="$HOME/.local/share/harness-opencode/data" opencode console login` (OpenCode Go) | `opencode models opencode-go` lists `opencode-go/deepseek-v4.1-flash` |
+| MiMo V2.6 Flash, third | `XDG_DATA_HOME="$HOME/.local/share/harness-opencode/data" opencode console login` (OpenCode Go) | `opencode models opencode-go` lists `opencode-go/mimo-v2.6-flash` |
 
 Before any run the script checks that OpenCode lists each reviewer it may use; one that is not
 listed is skipped, with the command that fixes it, and nothing is billed for it. Never paste a key

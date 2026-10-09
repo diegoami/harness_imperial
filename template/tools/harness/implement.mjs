@@ -12,7 +12,7 @@
 // the handover: a PR exists, the worktree is clean, pushed and detached.
 //
 // The model is harness.json's implementer.chain (one model, by the user's decision of 2026-10-02:
-// DeepSeek V4.1 Flash, then Claude Sonnet); --model runs another alone. Runs use the scripts' own
+// GLM-5.3 Flash, then MiMo V2.6 Flash, then Claude Sonnet); --model runs another alone. Runs use the scripts' own
 // OpenCode data directory, and a model OpenCode does not list there exits 3 before anything is
 // billed. With a longer chain, the next model runs
 // only on an infrastructure failure, and only when the failed run left nothing behind (no new
