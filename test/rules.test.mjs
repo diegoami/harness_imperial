@@ -253,3 +253,24 @@ test('the review profile stops a review cycle after a second one-blocker round, 
     assert.deepEqual(long, [], `${f}: lines past 105 characters`);
   }
 });
+
+// The two agent roles have different rules (edit: allow vs. deny, etc.), so the four agent
+// files form two mirror pairs, not one set. Each role's template + root mirror must be byte-equal;
+// every one of the four matches the current rule set: `/tmp/opencode/*: allow`. OpenCode 1.18.34
+// forces tool-output writes there; the deny was killing runs and losing work (#144). The test pins
+// both halves so a future drift (L66a's per-run allow landing on top, a reviewer rewriting just
+// one mirror, etc.) cannot reintroduce the deny or break byte-equality without tripping the pin.
+test('each role\'s two mirror agent files are byte-equal and every agent carries /tmp/opencode/*: allow (L43 correction, #144)', () => {
+  const pairs = [
+    ['template/.opencode/agents/implementer.md', '.opencode/agents/implementer.md'],
+    ['template/.opencode/agents/reviewer.md',   '.opencode/agents/reviewer.md'],
+  ];
+  for (const [a, b] of pairs) {
+    const ta = read(a), tb = read(b);
+    assert.equal(tb, ta, `${b} drifted from ${a}`);
+    assert.match(ta, /^\s*"\/tmp\/opencode\/\*": allow/m, `${a}: the opencode rule is : allow`);
+    assert.doesNotMatch(ta, /^\s*"\/tmp\/opencode\/\*": deny/m, `${a}: the opencode rule is not : deny`);
+    assert.match(tb, /^\s*"\/tmp\/opencode\/\*": allow/m, `${b}: the opencode rule is : allow`);
+    assert.doesNotMatch(tb, /^\s*"\/tmp\/opencode\/\*": deny/m, `${b}: the opencode rule is not : deny`);
+  }
+});
