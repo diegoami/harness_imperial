@@ -16,6 +16,10 @@ const template = () => JSON.parse(fs.readFileSync(path.join(root, 'harness.json'
 
 test('the family comes from the vendor in the id, not the route', () => {
   assert.equal(familyOf('opencode-go/deepseek-v4.1-flash'), 'deepseek');
+  // Behind a vendor segment that is not a family name, the model's own name decides (Luna's R1 on PR 150).
+  assert.equal(familyOf('openrouter/xiaomi/mimo-v2.6-pro'), 'mimo');
+  assert.equal(familyOf('openrouter/anthropic/claude-sonnet-5-5'), 'anthropic');
+  assert.throws(() => planSwitch(template(), { role: 'reviewer', id: 'openrouter/xiaomi/mimo-v2.6-pro' }), /^Error: Refused: mimo is also the implementer's family/);
   assert.equal(familyOf('openai/gpt-6-luna'), 'openai');
   assert.equal(familyOf('opencode-go/gpt-6-luna'), 'openai');
   assert.equal(familyOf('opencode-go/glm-5.3-flash'), 'glm');

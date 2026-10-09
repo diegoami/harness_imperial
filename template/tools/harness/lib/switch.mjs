@@ -13,8 +13,12 @@ const FAMILIES = [
 ];
 const modelPart = (id) => String(id).split('/').slice(1).join('/').toLowerCase();
 // The vendor's family when the id names a known vendor, else null: only then may --family name it.
+// The model's own name decides, also behind a vendor segment that is not a family name
+// (openrouter/xiaomi/mimo-v2.6-pro is mimo, Luna's R1 on PR 150).
 export function knownFamilyOf(id) {
-  return FAMILIES.find(([re]) => re.test(modelPart(id)))?.[1] ?? null;
+  const part = modelPart(id);
+  const own = part.split('/').at(-1);
+  return FAMILIES.find(([re]) => re.test(part) || re.test(own))?.[1] ?? null;
 }
 export function familyOf(id) {
   const model = modelPart(id);
