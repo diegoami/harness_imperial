@@ -73,7 +73,7 @@ test('the implementer does not inherit the reviewer\'s OpenCode settings (L34)',
   const long = (f) => fs.realpathSync.native(f);
   // The run loads a per-run copy (L66) of the worktree's own agent file, plus its one scratch allow.
   const own = fs.readFileSync(path.join(p.base, 'proj-work', 'T07', '.opencode', 'agents', 'implementer.md'), 'utf8');
-  assert.equal(session.agentText.replace(/^    "[^"]*harness-run-[^"]*": allow\n/m, ''), own);
+  assert.equal(session.agentText.replace(/^    "[^"]*harness-run-[^"]*": allow\r?\n/m, ''), own);
   assert.match(session.agentText, /^    "[^"]*\/harness-run-T07-[^"]*\/\*": allow$/m);
   assert.match(session.configDir ?? '', /harness-opencode[\\/]T07-[\w.-]+\.config$/);   // the run's own, not the inherited one
 });
