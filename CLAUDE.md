@@ -31,3 +31,9 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - Before you retry a delegated run (an OpenCode review here), re-route it, or call it a failure, read
   what it returned: its final message in the session record (`/run-task`, *Read before you retry*;
   L55). Never retry blind.
+- The owner's rules for delegated runs, above every other (2026-10-10): a failed run is never
+  normal; fix its cause (brief, permissions, runner, process) before running again, and fall back
+  to another model only when a provider's API does not respond. A run never loses its work when it
+  dies: progress is kept where it survives (pushed commits, a progress log) and the next run resumes
+  from it. Monitor every run you start and tell the owner, in plain words, its task, current step
+  and progress, on each state change and at least every 30 minutes.
