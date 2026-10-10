@@ -64,9 +64,8 @@ test('the default implementer is GLM-5.3 Flash, then MiMo V2.6 Flash, then Sonne
   assert.equal(c.implementer.claudeFallback, 'sonnet');
   assert.equal(c.models['glm-flash'].id, 'zai-coding-plan/glm-5.3-flash');
   assert.ok(c.models['glm-flash'].watch, 'glm-flash keeps its watch note');
-  for (const f of ['template/docs/process.md', 'template/docs/tasks/TEMPLATE.md', 'README.md']) {
-    assert.match(read(f).replace(/\s+/g, ' '), /GLM-5\.3 Flash|`glm-flash`, then `mimo-flash`/, f);
-  }
+  // The documents name no default model any more: /recommend gives it (L72 corrects L42).
+  assert.match(read('template/docs/lessons.md'), /^\| L42 \| [^|]*\(corrected by L72: /m);
 });
 
 test('DeepSeek is named by no harness.json, profile or default doc; MiMo takes its places (L67)', () => {
@@ -98,12 +97,12 @@ test('Isle Wars\' process rules are in every copy that carries them (L44, L45, L
   const p = flat('template/docs/process.md');
   assert.match(p, /The main session runs each line before dispatch: it fails on `main` and passes on a mock fix\. \(L45\)/);
   assert.match(p, /Before a merge the main session re-runs the check the approval rests on most; a different result is rework\. \(L46\)/);
-  assert.match(p, /a heavier model only with the reason in the task file \(L46\)/);
+  assert.match(p, /a heavier tier only with the reason in the task file \(L46\)/);
   assert.match(p, /a failure in a real run, or the owner's decision with its basis/);
   const s = flat('template/.claude/skills/run-task/SKILL.md');
   assert.match(s, /it must fail on `main` and pass on a mock fix .* \(L45\)/);
   assert.match(s, /Re-run the check the approval rests on most .* A different result is rework, not a merge \(L46\)\. 3\. `gh pr merge/);
-  assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A model heavier than the default: the reason here \(L46\)/);
+  assert.match(flat('template/docs/tasks/TEMPLATE.md'), /A heavier tier than the task needs: the reason here \(L46\)/);
 });
 
 test('the main session watches background work, and never waits on pgrep -f (L48)', () => {
@@ -118,9 +117,6 @@ test('the main session watches background work, and never waits on pgrep -f (L48
 
 test('a model is chosen after a look at its provider\'s quota, and an exhausted one skipped (L50)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
-  assert.match(flat('template/docs/process.md'), /after a look at the provider's quota: skip an exhausted one for the next with quota, saying so \(L50\)/);
-  assert.match(flat('template/.claude/skills/delegate/SKILL.md'), /\*\*Check the quota first\*\* \(L50\)\. .*`curl -s localhost:8765\/avoid` .*`curl -s 'localhost:8765\/recommend\?tier=heavy'` .* Never rank by headroom.* Skip a model whose provider is `exhausted`: name the next model of its chain that has quota/);
-  assert.match(flat('profiles/review/CLAUDE.md'), /Check the quota first \(`docs\/environment\.md`\): skip an exhausted reviewer with `--reviewer` on the next one of the chain that has quota, and say so in the PR\. \(L50\)/);
   for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
     const e = flat(f);
     assert.match(e, /## Quota: quota-tracker/, f);
@@ -136,18 +132,17 @@ test('a model is chosen after a look at its provider\'s quota, and an exhausted 
 
 test('the scripts skip an exhausted provider themselves, and no chain is edited to pause one (L52)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
-  assert.match(flat('template/.claude/skills/delegate/SKILL.md'), /Both scripts also skip such a model themselves and log why \(L52\); never pause a provider by editing `harness\.json` for quota\./);
   for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
     assert.match(flat(f), /`implement\.mjs` and `review\.mjs` ask the service themselves before their chain runs \(`lib\/quota\.mjs`, L52\)/, f);
   }
   assert.match(read('template/docs/lessons.md'), /^\| L52 \| `implement\.mjs` and `review\.mjs` check quota themselves/m);
 });
 
-test('Luna is judged on OpenAI\'s main quota; when_exhausted.usable_models alone lets a model run on an exhausted provider (L65)', () => {
+test('Luna draws on OpenAI\'s main quota; the guides leave quota to /recommend (L65, corrected by L72)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
-    assert.match(flat(f), /`when_exhausted\.usable_models` names it \(today `gpt-5\.6-luna` on OpenAI; L65\)/, f);
-    assert.doesNotMatch(read(f), /gpt-5\.6-luna:7d/, f);
+    assert.match(flat(f), /These are for reading, never for choosing: `\/recommend` weighs them\. GPT-5\.6 Luna has no window of its own: it draws on OpenAI's main quota, like Sol\./, f);
+    assert.doesNotMatch(read(f), /gpt-5\.6-luna:7d|headroom_pct|negative means/, f);
   }
   assert.match(read('template/docs/lessons.md'), /^\| L65 \| Every model is judged on its provider's main quota, GPT-5\.6 Luna included\./m);
 });
@@ -384,4 +379,29 @@ test('the main session tells the owner what the delegated runs are doing (L71)',
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /\*\*Telling the owner \(L71\)\.\*\* For implement and review runs, the watch is `node tools\/harness\/agents\.mjs --watch --until-done` under Monitor/);
   assert.match(read('template/docs/lessons.md'), /^\| L71 \| The owner is told what the delegated runs are doing\./m);
+});
+
+test('model choice follows /recommend and nothing else: the owner\'s rules word for word wherever agents read them (L72, #168)', () => {
+  // The rules as the owner wrote them in #168: the root CLAUDE.md's "## Choosing models" section.
+  const root = read('CLAUDE.md');
+  const rules = root.slice(root.indexOf('## Choosing models\n'));
+  assert.match(rules, /^## Choosing models\n\n1\. Ask the quota service with the tier the work needs:/);
+  assert.match(rules, /3\. A review on its own \(the implementation was done earlier\): add\n {3}`&exclude_family=<the implementer's family>` and use `pick`\./);
+  assert.match(rules, /6\. Nothing else decides which model to use: no lists, chains, exclusions, score thresholds\n {3}or percentages of your own\./);
+  assert.match(rules, /8\. If the service doesn't answer: run `systemctl --user restart quota-tracker` in WSL and\n {3}retry\. If it still doesn't answer, tell the owner; don't choose a model yourself\.\n$/);
+  const body = rules.split('\n').slice(2).join('\n');
+  assert.match(body, /^1\. Ask the quota service/);
+  // Each copy is exactly the rules: from "1. Ask" to the end of rule 8, then nothing but the end of
+  // the file (AGENTS.md) or the next section (the skill), so no rule can be added or changed there (Luna's R1 on PR 169).
+  const copy = (text, until) => { const i = text.indexOf('1. Ask the quota service'); const j = until ? text.indexOf(until, i) : text.length; return i < 0 || j < 0 ? null : text.slice(i, j).trimEnd() + '\n'; };
+  for (const f of ['AGENTS.md', 'template/AGENTS.md']) assert.equal(copy(read(f)), body, `${f} carries the rules word for word, and nothing after them`);
+  assert.equal(copy(read('template/.claude/skills/delegate/SKILL.md'), '\n## Picking a media model'), body, 'the delegate skill carries the rules word for word');
+  assert.equal(copy(root), body, 'the root CLAUDE.md ends with the rules');
+  assert.match(read('template/CLAUDE.md'), /on the models `\/recommend` gives, nothing else \(L72\)/);
+  assert.match(read('template/docs/lessons.md'), /^\| L72 \| Model choice follows quota-tracker's `\/recommend`, and nothing else/m);
+  for (const n of ['L39', 'L41', 'L50', 'L51', 'L52', 'L65']) assert.match(read('template/docs/lessons.md'), new RegExp(`^\\| ${n} \\| [^|]*\\(corrected by L72: `, 'm'), n);
+  for (const f of ['template/.claude/skills/delegate/SKILL.md', 'template/docs/process.md', 'template/docs/tasks/TEMPLATE.md']) {
+    assert.doesNotMatch(read(f), /next model of its chain|GLM-5\.3 Flash, then MiMo|GPT-5\.6 Luna on OpenAI, through OpenCode \(default\)|`glm-flash`, then `mimo-flash`/, f);   // Luna's R2, R3
+  }
+  assert.doesNotMatch(read('CLAUDE.md'), /which pair for which work/);   // Luna's R4
 });

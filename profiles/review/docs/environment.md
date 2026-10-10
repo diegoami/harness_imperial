@@ -36,28 +36,23 @@ left on each provider: `claude` (the main session), `openai` (Sol and Luna, via
 OpenCode), `zai` (GLM-5.3 and GLM-5.3 Flash), `opencode_go` (MiMo), `openrouter` (prepaid credit) and
 `alibaba` (Alibaba's Token Plan: Qwen, GLM, Kimi and MiniMax, one monthly pool). DeepSeek is
 blacklisted on every route (the owner, 2026-10-09).
-Check it before choosing, recommending or delegating to a model (L50). It is read-only, on
+Check it before choosing, recommending or delegating to a model (L72). It is read-only, on
 localhost, with no auth; results are cached 60 s, and `?refresh` bypasses the cache:
 - `curl -s localhost:8765/quota`, or `/quota/<provider>` for one;
 - `curl -s 'localhost:8765/recommend?tier=heavy'` (or `tier=light`): which model to use.
-  `ranking` is best first, each row with `provider`, `model`, `command`, `score` (spare calls per
-  day until the pool's reset; negative means the pool would run out before its reset at the current
-  demand), `confidence` and `reasons`; `pick` is the first row; `skipped` lists the exhausted or
-  nearly full providers, with why. OpenRouter scores 0 (prepaid); Alibaba is not ranked (occasional
-  use only, in its discount hours). Right after the service restarts, `note` says the statistics
-  are loading: retry after a minute or two. Do not rank by `/best` or `headroom_pct`: percentages
-  are not comparable between providers, whose pools differ hugely in size, are monthly or weekly,
-  and are partly used by Claude sessions running on them as their main model;
+  Follow it by the owner's rules (`/delegate`, *Choosing models*; L72), and nothing else. Each row
+  of `ranking`, `pair.implementer`, `pair.reviewer` and `pick` has `rank`, `provider`, `model`,
+  `family`, `command`, `outlook`, `score`, `covers_pct`, `reliability` and `reasons`; every row in
+  `ranking` is usable, rows in `skipped` are not, and `exclude_family=<family>` drops a family from
+  `ranking`. Right after the service restarts, `note` says the statistics are loading: retry after
+  a minute or two;
 - `curl -s localhost:8765/avoid`: the providers out of quota, with when each is usable again.
 
 Each provider has a `status`: `ok` (under 80% used), `low` (80% or more), `exhausted` (95% or
 more: do not use it until `available_at` / `available_in`), `error` (it could not be checked;
-`error` says why) or `not_configured`. `headroom_pct` is the percent left on its most-used window;
-`windows[]` lists every limit with `used_pct` and when it resets. OpenRouter is prepaid: its
-windows never reset, and `remaining_usd` is the balance. Every model is judged on its
-provider's main window, GPT-5.6 Luna included: it draws on OpenAI's main quota like Sol. Only when a
-provider is `exhausted` can a model still run on a limit of its own, and then the provider's
-`when_exhausted.usable_models` names it (today `gpt-5.6-luna` on OpenAI; L65). Read which pools
+`error` says why) or `not_configured`; `windows[]` lists every limit with `used_pct` and when it
+resets. These are for reading, never for choosing: `/recommend` weighs them. GPT-5.6 Luna has no
+window of its own: it draws on OpenAI's main quota, like Sol. Read which pools
 exist from the windows the endpoint returns, not from this page.
 
 Free models on OpenRouter are a supplement, for smaller tasks and additional reviews (a second
@@ -114,9 +109,6 @@ provider, the models called with their `calls`, `sessions`, `tokens` and `effort
 them (`title`, `project`, `tool`, `data_dir`, `launched_by`). `since` takes `90m`, `24h`, `7d`, `4w`
 or `all`. Use it to check that heavy models ran at the effort L54 asks for.
 
-GPT-5.6 Luna, the reviewer (L51), uses OpenAI's main quota like Sol. When OpenAI is `exhausted`,
-Luna alone can still run while `/quota/openai`'s `when_exhausted.usable_models` lists
-`gpt-5.6-luna` (L65).
 
 If `curl -sf localhost:8765/health` fails where the service is installed:
 1. `systemctl --user restart quota-tracker`, wait a few seconds, and check `/health` again.
