@@ -244,6 +244,23 @@ test('a provider that did not respond, by its record or by OpenCode\'s stderr, f
   }
 });
 
+test('a provider that does not answer `opencode models` is skipped, not a setup failure; the next model implements (L69, Luna\'s R1 on PR 164)', posix, async () => {
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS_ERROR: 'Error: 503 Service Unavailable', FAKE_OC_MODELS_ERROR_PROVIDER: 'opencode-go' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /mimo-flash: skipped, the provider did not respond to `opencode models`: Error: 503 Service Unavailable \(L69\)/);
+  assert.match(r.stdout, /implemented by: luna/);
+  // Every provider down: exit 3, the fallback, never exit 5.
+  const q = project({ chain: ['mimo-flash'] });
+  const all = implement(q, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS_ERROR: 'Error: 503 Service Unavailable' });
+  assert.equal(all.status, 3, all.stderr + all.stdout);
+  assert.match(all.stderr, /^No provider available: /m);
+  // A listing that fails for another reason is still OpenCode failing here: setup, exit 5.
+  const w = project({ chain: ['mimo-flash'] });
+  const other = implement(w, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS_ERROR: 'Error: database is locked' });
+  assert.equal(other.status, 5, other.stderr + other.stdout);
+});
+
 test('a failure through our process never falls back: a session that never started, a 401, a rejected call (L69, IC2 #501)', posix, async () => {
   for (const [mode, reason] of [['exit-no-session', /exited without a session/], ['provider-auth', /exit 1/],
     ['permission', /permission rejected: external_directory \(\/tmp\/\*\)/]]) {

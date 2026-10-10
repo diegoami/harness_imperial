@@ -92,22 +92,30 @@ export function failureKind(reason) {
   return 'process';
 }
 
-// A provider that did not answer, as OpenCode's own stderr says it (never the model's output): a
-// rate limit, an overload, a 5xx, or a network error. Returns the line, or null. A 4xx other than
-// 429 is not one: a refused key, a bad request or an unknown model is our setup to fix.
-export function providerErrorLine(stderr) {
-  const re = /\b(rate[ _-]?limit(ed)?|too many requests|overloaded|service unavailable|bad gateway|gateway timeout|internal server error|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed)\b|\b(status(?: ?code)?[:= ]*|HTTP\/?[\d.]* )(429|5\d\d)\b/i;
-  const line = String(stderr).split(/\r?\n/).find((l) => re.test(l));
-  return line ? line.replace(/\x1b\[[0-9;]*m/g, '').trim().slice(0, 200) : null;
+// A provider that did not answer: a rate limit, an overload, a 5xx, or a network error. Returns the
+// line, or null. A line that names a 4xx other than 429 is never one: a refused key, a bad request
+// or an unknown model is our setup to fix (Luna's R3 on PR 164). In `opencode run`'s stderr, which
+// also carries tool output, only OpenCode's own error line counts (own): it starts with its red
+// bold "Error: " (OpenCode 1.18.34's UI.error, as the denials show); `opencode models` prints no
+// tool output, so its stderr is read whole (own: false).
+const PROVIDER_DOWN = /\b(rate[ _-]?limit(ed)?|too many requests|overloaded|service unavailable|bad gateway|gateway timeout|internal server error|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed)\b|\b(status(?: ?code)?[:= ]*|HTTP\/?[\d.]* )(429|5\d\d)\b/i;
+const CLIENT_ERROR = /\b4(?!29\b)\d\d\b/;
+const OWN_ERROR = /^\x1b\[91m\x1b\[1mError: \x1b\[0m/;
+export function providerErrorLine(text, { own = true } = {}) {
+  const plain = (l) => l.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  const line = String(text).split(/\r?\n/)
+    .find((l) => (!own || OWN_ERROR.test(l)) && PROVIDER_DOWN.test(plain(l)) && !CLIENT_ERROR.test(plain(l)));
+  return line ? plain(line).slice(0, 200) : null;
 }
 
 // The session record's provider error on its last assistant message (OpenCode 1.18.34 records it as
-// info.error), when it says the provider did not answer: an APIError that is retryable, a 429 or a
-// 5xx, or one without a status. A ProviderAuthError or another 4xx is our setup, not this.
+// info.error), when it says the provider did not answer: an APIError with a 429 or a 5xx, or one
+// without a status. A ProviderAuthError or any other 4xx is our setup, not this, even when OpenCode
+// marks it retryable (Luna's R2 on PR 164).
 export function recordProviderError(error) {
   if (!error || typeof error !== 'object' || error.name !== 'APIError') return null;
   const status = Number(error.data?.statusCode);
-  if (status && status !== 429 && status < 500 && error.data?.isRetryable !== true) return null;
+  if (status && status !== 429 && status < 500) return null;
   return `${status || 'no status'}: ${String(error.data?.message ?? 'APIError').slice(0, 200)}`;
 }
 
@@ -265,17 +273,20 @@ export async function modelVariants(cmd, id, { env, cwd, timeoutMs = 60_000 }) {
 export async function listedModels(cmd, providers, { env, cwd, timeoutMs = 60_000 }) {
   const listed = new Set();
   const errors = new Map();
+  const unreachable = new Map();   // a provider whose listing failed because it did not answer (L69)
   for (const p of new Set(providers)) {
     const r = await execBounded(cmd, ['models', p], { cwd, env, timeoutMs });
     if (!r) { errors.set(p, `\`opencode models ${p}\` did not finish in ${Math.round(timeoutMs / 1000)} s`); continue; }
     if (r.code === 0) {
       for (const l of r.stdout.split(/\r?\n/)) if (l.trim()) listed.add(l.trim());
+    } else if (providerErrorLine(r.stderr, { own: false })) {
+      unreachable.set(p, providerErrorLine(r.stderr, { own: false }));
     } else if (!/provider not found/i.test(r.stderr)) {
       const last = r.stderr.replace(/\x1b\[[0-9;]*m/g, '').trim().split(/\r?\n/).at(-1) || '(no output)';
       errors.set(p, `\`opencode models ${p}\` failed with exit ${r.code}: ${last}`);
     }
   }
-  return { listed, errors };
+  return { listed, errors, unreachable };
 }
 
 // Why a model is missing from the list, and the command that fixes it.
@@ -382,15 +393,18 @@ const DENIED = /rejected permission to use this specific tool call|rule which pr
 export function runFailure(run, keyProblem = () => null) {
   const denied = () => `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`;
   if (run.stopped) return denied();
-  // The provider did not answer (L69): the one failure that moves to the next model.
-  if (run.providerError) return `provider error: ${run.providerError}`;
-  if (run.exitCode !== 0) return keyProblem(run.stderr) ?? `exit ${run.exitCode}`;
+  // Evidence of our own failure wins over a provider error in the same run (Luna's R4 on PR 164):
+  // the agent, a denied call, a refused key. Only then does a provider error move the chain (L69).
   if (run.agentFallback) {
     return run.agentLoad === 'load-failure'
       ? 'agent-load-failure: OpenCode ran its default agent although the run gave it the agent file'
       : 'fell back to the default agent';
   }
   if (run.permissionRejected) return denied();
+  const key = run.exitCode !== 0 ? keyProblem(run.stderr) : null;
+  if (key) return key;
+  if (run.providerError) return `provider error: ${run.providerError}`;
+  if (run.exitCode !== 0) return `exit ${run.exitCode}`;
   return null;
 }
 

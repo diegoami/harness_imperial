@@ -129,9 +129,26 @@ test('failureKind: only a proven provider failure may move to the next model (L6
 });
 
 test('providerErrorLine matches a rate limit, an overload, a 5xx or a network error, never a 4xx or a plain number (L69)', () => {
-  for (const l of ['Error: 429 Too Many Requests', 'AI_APICallError: Rate limit reached', 'Error: Overloaded', 'error: status code 503',
-    'HTTP/1.1 502 Bad Gateway', 'TypeError: fetch failed', 'Error: read ECONNRESET', 'getaddrinfo EAI_AGAIN api.z.ai']) assert.ok(providerErrorLine(`x\n${l}\n`), l);
-  for (const l of ['Error: Unauthorized', 'error: status code 401', 'Error: model not found', 'wrote 500 lines', 'exit 1']) assert.equal(providerErrorLine(l), null, l);
+  const own = (l) => `\x1b[91m\x1b[1mError: \x1b[0m${l}`;
+  for (const l of ['429 Too Many Requests', 'AI_APICallError: Rate limit reached', 'Overloaded', 'status code 503',
+    'HTTP/1.1 502 Bad Gateway', 'TypeError: fetch failed', 'read ECONNRESET', 'getaddrinfo EAI_AGAIN api.z.ai']) {
+    assert.equal(providerErrorLine(`x\n${own(l)}\n`), `Error: ${l}`, l);
+    assert.ok(providerErrorLine(`x\nError: ${l}\n`, { own: false }), l);               // `opencode models`, read whole
+  }
+  for (const l of ['Unauthorized', 'status code 401', 'model not found', 'wrote 500 lines', 'exit 1', 'HTTP 401 rate limit exceeded']) {
+    assert.equal(providerErrorLine(own(l)), null, l);
+    assert.equal(providerErrorLine(l, { own: false }), null, l);
+  }
+  // In `opencode run`'s stderr only OpenCode's own error line counts, never a tool's output (Luna's R3 on PR 164).
+  for (const l of ['OpenCode tool output: 503 Service Unavailable', 'Error: 429 Too Many Requests', '  | rate limit exceeded']) assert.equal(providerErrorLine(l), null, l);
+});
+
+test('runFailure: evidence of our own failure wins over a provider error in the same run (L69, Luna\'s R4 on PR 164)', () => {
+  const base = { exitCode: 1, stderr: '', providerError: '503: Service Unavailable', permissionRejected: null, agentFallback: false };
+  assert.equal(runFailure(base), 'provider error: 503: Service Unavailable');
+  assert.equal(runFailure({ ...base, agentFallback: true, agentLoad: 'fallback' }), 'fell back to the default agent');
+  assert.match(runFailure({ ...base, permissionRejected: 'read /etc/x' }), /^permission rejected: read \/etc\/x/);
+  assert.equal(runFailure({ ...base }, () => 'invalid API key for x'), 'invalid API key for x');
 });
 
 test('recordProviderError: a retryable APIError, a 429 or a 5xx; not an auth error or another 4xx (L69)', () => {
@@ -139,6 +156,7 @@ test('recordProviderError: a retryable APIError, a 429 or a 5xx; not an auth err
   assert.equal(recordProviderError({ name: 'APIError', data: { message: 'slow down', statusCode: 429 } }), '429: slow down');
   assert.equal(recordProviderError({ name: 'APIError', data: { message: 'socket closed', isRetryable: true } }), 'no status: socket closed');
   assert.equal(recordProviderError({ name: 'APIError', data: { message: 'Unauthorized', statusCode: 401, isRetryable: false } }), null);
+  assert.equal(recordProviderError({ name: 'APIError', data: { message: 'Unauthorized', statusCode: 401, isRetryable: true } }), null);   // Luna's R2 on PR 164
   assert.equal(recordProviderError({ name: 'APIError', data: { message: 'context too long', statusCode: 400 } }), null);
   assert.equal(recordProviderError({ name: 'ProviderAuthError', data: { message: 'no key' } }), null);
   assert.equal(recordProviderError(undefined), null);

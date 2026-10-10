@@ -99,19 +99,26 @@ export function ensureAgent({ top, commonDir, worktree, agent }) {
 // that directory) is dropped, with the command that fixes it. So is a model whose provider's quota is
 // exhausted, when quota-tracker answers (lib/quota.mjs, L50). Returns { env, usable, problems, setup }:
 // `setup` holds the problems that are ours to fix (the version, a model not listed or not logged
-// in), which stop a run before anything is billed (L69); a quota skip is the provider's, not one.
+// in), which stop a run before anything is billed (L69); a quota skip, or a provider that did not
+// answer `opencode models`, is the provider's, not one.
 export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }) {
   const oc = openCodeHome(env, { log });
   const version = await openCodeVersion(opencode, { env: oc.env, cwd });
   log(`opencode: ${version ?? 'unknown version'} (${opencode.exe})`);
   const bad = versionProblem(version, opencode.exe);
   if (bad) return { env: oc.env, usable: [], problems: [bad], setup: [bad], version };
-  const { listed, errors } = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
+  const { listed, errors, unreachable } = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
   const problems = [];
   const setup = [];
   const quota = await readQuota(env);
   log(quota.off ? `quota: not checked: ${quota.off} (L50)` : `quota: checked (${[...quota.providers.values()].map((p) => `${p.provider} ${p.status}`).join(', ')})`);
   const usable = chain.filter((m) => {
+    // A provider that did not answer `opencode models` is skipped like one out of quota, never setup (Luna's R1 on PR 164).
+    const down = unreachable.get(models[m].id.split('/')[0]);
+    if (down) {
+      problems.push(`${m}: skipped, the provider did not respond to \`opencode models\`: ${down} (L69)`);
+      return false;
+    }
     if (!listed.has(models[m].id)) {
       problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome, errors)}`);
       setup.push(problems.at(-1));
