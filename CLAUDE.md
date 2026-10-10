@@ -37,3 +37,6 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
   dies: progress is kept where it survives (pushed commits, a progress log) and the next run resumes
   from it. Monitor every run you start and tell the owner, in plain words, its task, current step
   and progress, on each state change and at least every 30 minutes.
+- A run never takes the machine down: delegated runs, and any test run on unreviewed code, go under
+  `systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --` (not `ulimit -v`, which breaks
+  OpenCode). A kill by the cap is a process flaw to fix, as above (#151).
