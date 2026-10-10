@@ -379,3 +379,9 @@ test('the lessons L69 and L70 narrow or replace say so on their own rows (Luna\'
   assert.match(l, /^\| L28 \| [^|]*\(narrowed by L69: no review at all is our failure, exit 5\)/m);
   assert.match(l, /^\| L56 \| [^|]*\(replaced by L70: a pushed `wip:` commit, never a reset\)/m);
 });
+
+test('the main session tells the owner what the delegated runs are doing (L71)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /\*\*Telling the owner \(L71\)\.\*\* For implement and review runs, the watch is `node tools\/harness\/agents\.mjs --watch --until-done` under Monitor/);
+  assert.match(read('template/docs/lessons.md'), /^\| L71 \| The owner is told what the delegated runs are doing\./m);
+});

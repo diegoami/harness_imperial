@@ -43,6 +43,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { jobFile, writeJob, updateJob, briefSummary } from './jobs.mjs';
 
 export class OpenCodeInfraError extends Error {
   constructor(reason, message) {
@@ -642,6 +643,8 @@ export async function runOpenCodeWatched({
   // Not os.tmpdir() on POSIX: a caller's TMPDIR (a Claude session's scratchpad) is not where
   // scratch belongs.
   scratchRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp',
+  // What the job record says the run is (#148, L71): { kind, task, model }, from the caller.
+  job = {},
 }) {
   if (args[0] !== 'run') throw new Error(`runOpenCodeWatched runs 'opencode run'; got '${args[0]}'.`);
   const cmd = opencode ?? resolveOpenCode(env);
@@ -708,6 +711,7 @@ export async function runOpenCodeWatched({
     else if (i >= 0) files.splice(i, 1);
   };
   let child = null;
+  let jobEnd = () => {};
   try {
     if (commandLineTooLong(all)) {
       throw new Error('The opencode command line exceeds what Windows allows (32767 characters). Shorten the brief.');
@@ -747,6 +751,13 @@ export async function runOpenCodeWatched({
     const fail = (reason, message) => new OpenCodeInfraError(reason,
       `${message}; files kept: ${files.join(', ')}. stderr tail:\n${tail(errFile)}`);
     log(`opencode: pid ${child.pid}, session title ${title}, output ${outFile}`);
+    // The job record the owner's watch reads (agents.mjs, #148, L71): never a reason for the run to fail.
+    const jobRecord = jobFile(logDir, title);
+    try {
+      writeJob(jobRecord, { title, ...job, about: briefSummary(prompt), workDir, outFile, runnerPid: process.pid, pid: child.pid,
+        opencode: cmd, dataHome: env.XDG_DATA_HOME ?? null, sessionId: null, started: startedMs, updated: Date.now() });
+    } catch { /* no record, no watch */ }
+    jobEnd = (outcome) => updateJob(jobRecord, { ended: Date.now(), updated: Date.now(), outcome });
 
     try {
       await Promise.race([exited, sleep(0)]);
@@ -766,6 +777,7 @@ export async function runOpenCodeWatched({
         throw noSession(`no session in ${secs} s`, `OpenCode created no session within ${secs} s (is stdin closed?); killed pid ${child.pid}`);
       }
       if (session) log(`opencode: session ${session.id} started after ${Math.round(elapsed() / 1000)} s`);
+      if (session) updateJob(jobRecord, { sessionId: session.id, updated: Date.now() });
 
       // Run watch: the total deadline, and the idle watch on the session's `updated` time. A lookup
       // that fails leaves `lastUpdated` unchanged, so the idle clock keeps running.
@@ -819,6 +831,7 @@ export async function runOpenCodeWatched({
       if (!session) {
         session = await lookup(Math.max(0, Math.min(15_000, totalTimeoutMs - elapsed())));
         if (!session) throw noSession(`exited without a session (exit ${exitCode})`, `OpenCode exited with ${exitCode} without creating a session`);
+        updateJob(jobRecord, { sessionId: session.id, updated: Date.now() });
       }
     } catch (e) {
       killTree(child);
@@ -865,6 +878,7 @@ export async function runOpenCodeWatched({
       shelveBrief();
       log(`opencode: ${failure}; files kept: ${files.join(', ')}; scratch kept: ${scratch}`);
     }
+    jobEnd(failure ? `failed: ${failure}` : `ran to the end (exit ${exitCode})`);
     return {
       ...run,
       files: failure ? files : [],
@@ -873,6 +887,7 @@ export async function runOpenCodeWatched({
       seconds: Math.round(elapsed() / 1000),
     };
   } catch (e) {
+    jobEnd(`failed: ${e?.reason ?? e?.message ?? e}`);
     shelveBrief();
     if (child) { try { killTree(child); } catch { /* already dead */ } }
     if (runConfig) fs.rmSync(runConfig, { recursive: true, force: true });
