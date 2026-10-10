@@ -28,6 +28,10 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
    minutes as possibly stuck; check it is alive on its exact PID. The runner kills its own run at
    the idle limit (L10), so for an implement or review run the flag is a warning to read the
    output, not a reason to kill it; for an agent or a plain command it is the only watchdog.
+   **Telling the owner (L71).** For implement and review runs, the watch is
+   `node tools/harness/agents.mjs --watch --until-done` under Monitor: each start, each end with its
+   outcome, and every 30 minutes each running job's task and last three steps arrive as one line;
+   relay them to the owner in plain words. `agents.mjs --status` answers "what are they doing" at any time.
    Never wait with `while pgrep -f '<pattern>'`: the waiting shell's command line contains the
    pattern, so it matches itself and waits forever. Chain jobs in one background command, or
    wait on the PID with `while kill -0 <pid>`. Tell the user at each start, end and flag.
