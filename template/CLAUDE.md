@@ -5,8 +5,8 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
 
 ## Rules
 1. The main session plans, runs `/run-task`, triages and talks to the user. It delegates (`/delegate`):
-   code to OpenCode, review to another model family, repeated decisions to Jev after a trial, and
-   images and audio to OpenRouter or ElevenLabs models, whose ids come from live lists, never memory.
+   code to OpenCode and review to another family, on the models `/recommend` gives, nothing else (L72);
+   repeated decisions to Jev after a trial; images and audio to models from live lists, never memory.
 2. Nobody works in the main checkout but the main session: OpenCode runs in the worktree the script
    makes, Claude agents run with worktree isolation. Never `git stash`.
 3. Status lives in GitHub labels. No document carries a status snapshot.

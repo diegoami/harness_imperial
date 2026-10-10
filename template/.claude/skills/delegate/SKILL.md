@@ -23,50 +23,48 @@ yourself, check whether a delegate below does it better or cheaper.
 The session-start report says which keys are set. A delegate without its key is off; do the work
 another way, or tell the user what is missing (`docs/environment.md`).
 
-## Picking a model
+## Choosing models
+
+For every implementer, reviewer and any other coding model, these rules (the owner's, #168, L72),
+word for word; nothing else decides:
+
+1. Ask the quota service with the tier the work needs:
+   - `tier=heavy`: implementation work, and hard reviews
+   - `tier=light`: small tasks, and simple reviews
+   e.g. `curl -s "http://localhost:8765/recommend?tier=heavy"`
+2. A task that needs an implementer and a reviewer: one call. The implementer is
+   `pair.implementer` and the reviewer is `pair.reviewer` (same tier as the call; for a simple
+   review of heavy work, add `&review_tier=light`). Run each one's `command`.
+3. A review on its own (the implementation was done earlier): add
+   `&exclude_family=<the implementer's family>` and use `pick`.
+4. Any other single model: use `pick`.
+5. If a chosen model can't run, use the next row of `ranking` (in `rank` order). For a
+   reviewer chosen in rule 2, skip rows with the same `family` as the implementer.
+6. Nothing else decides which model to use: no lists, chains, exclusions, score thresholds
+   or percentages of your own. Every row in `ranking` is usable; rows in `skipped` are not.
+7. Record the rows you used and their `reasons` with the run.
+8. If the service doesn't answer: run `systemctl --user restart quota-tracker` in WSL and
+   retry. If it still doesn't answer, tell the owner; don't choose a model yourself.
+
+## Picking a media model
+
+For images, audio and the other OpenRouter and ElevenLabs models `/recommend` does not rank:
 
 1. **Never from memory.** Model ids and prices change faster than any document. List them live:
    - `node tools/harness/models.mjs openrouter --output image`;
-   - `node tools/harness/models.mjs elevenlabs`;
-   - `opencode models opencode-go` for implementers (OpenCode Go), `opencode models openai` for the
-     reviewer.
+   - `node tools/harness/models.mjs elevenlabs`.
 
    Do the same when you are unsure a model still exists. (L25)
-   To change the implementer's or reviewer's model itself, use `/switch-model`.
-2. **Check the quota first** (L50). Where quota-tracker runs (`curl -sf localhost:8765/health`),
-   `curl -s localhost:8765/avoid` lists the providers out of quota and when each is usable again,
-   and `curl -s 'localhost:8765/recommend?tier=heavy'` (or `tier=light`) ranks the models to use:
-   `pick` is the best, `ranking` lists them with `score`, spare calls per day until the pool's reset
-   (negative: it runs out before then at the current demand) (`docs/environment.md`). Never rank by
-   headroom: pools differ in size and period, and Claude sessions draw on some.
-   Skip a model whose provider is `exhausted`: name the next model of its chain that has quota
-   (`--model` for `implement.mjs`, `--reviewer` for `review.mjs`) and say so in the run's report.
-   Both scripts also skip such a model themselves and log why (L52); never pause a provider by
-   editing `harness.json` for quota.
-   When a task needs both an implementer and a reviewer, use `/recommend`'s `pair` field
-   (`curl -s 'localhost:8765/recommend?tier=heavy' | jq .pair`): `pair.implementer` and
-   `pair.reviewer`, the reviewer from another family (claude, openai, glm, mimo, minimax;
-   each free model its own). Add `review_tier=light` for a lighter reviewer; `private=0` is for
-   code that is not private (the free OpenRouter models may then be in the pair). With
-   `tier=heavy`, the same response also offers `free_reviewer` — a free second opinion on the
-   shared 1,000-requests-a-day allowance, lost at 00:00 UTC. Never use a free model for private
-   or client code, secrets or NDA material. A null reviewer means no other family has quota:
-   tell the owner. Project exclusions apply on top: if the suggested reviewer is one the
-   project rules out (rule 3, the family rule), take the next row of `ranking` whose reviewer
-   is from a different family than the implementer. Alibaba is never recommended and never
-   appears in `pair`.
-3. **Choose on the evidence you have.** In order of preference:
-   - this project's own measurements (review rounds and tokens per task, from the merge comments);
+2. **Choose on the evidence you have.** In order of preference:
+   - this project's own measurements;
    - a small trial;
    - the listed price and capabilities.
 
    Vendor benchmarks come last.
-4. **Record the choice where it is used.** Implementer and reviewer models go in `harness.json`,
-   and a task's own choice goes in its task file, with the date and the reason in the commit
-   message. A generated asset gets a sidecar next to it, `<asset>.json`, with the provider, the
-   model id, the prompt, the date and the cost. That records where it came from, and lets it be
-   made again.
-5. **Say the cost first.** Before a batch (many images, a long narration), tell the user the
+3. **Record the choice where it is used.** A generated asset gets a sidecar next to it,
+   `<asset>.json`, with the provider, the model id, the prompt, the date and the cost. That records
+   where it came from, and lets it be made again.
+4. **Say the cost first.** Before a batch (many images, a long narration), tell the user the
    estimated cost from the listed prices, and ask when it is more than a few dollars.
 
 ## Making media

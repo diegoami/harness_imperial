@@ -9,10 +9,8 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - Every behaviour of the runner has a test in `test/`, and each test was checked by breaking the
   behaviour and watching it fail. Do the same for any new one.
 - PRs here are reviewed by the harness itself, as in any project: `node template/tools/harness/review.mjs`
-  from the root, never by a Claude agent (Claude writes them: the family rule), on the model
-  quota-tracker's `/recommend` ranks first for the PR's tier (`heavy` for runner, guard or harness
-  changes, `light` for small ones), passed as `--reviewer`. `/recommend` supersedes every other
-  source that names a model (the owner, 2026-10-10). The root
+  from the root, never by a Claude agent (Claude writes them: the family rule), on the model the
+  rules under *Choosing models* below give (a review on its own: rule 3). The root
   `harness.json` and `.opencode/agents/` are copies of the template's; a test keeps them equal.
 - `npm test` before every push. Commits and PRs as usual; no status in any document.
 - A cloud session here runs `template/.claude/hooks/session-start.sh` (see `.claude/settings.json`):
@@ -43,3 +41,23 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - A run never takes the machine down: delegated runs, and any test run on unreviewed code, go under
   `systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --` (not `ulimit -v`, which breaks
   OpenCode). A kill by the cap is a process flaw to fix, as above (#151).
+
+## Choosing models
+
+1. Ask the quota service with the tier the work needs:
+   - `tier=heavy`: implementation work, and hard reviews
+   - `tier=light`: small tasks, and simple reviews
+   e.g. `curl -s "http://localhost:8765/recommend?tier=heavy"`
+2. A task that needs an implementer and a reviewer: one call. The implementer is
+   `pair.implementer` and the reviewer is `pair.reviewer` (same tier as the call; for a simple
+   review of heavy work, add `&review_tier=light`). Run each one's `command`.
+3. A review on its own (the implementation was done earlier): add
+   `&exclude_family=<the implementer's family>` and use `pick`.
+4. Any other single model: use `pick`.
+5. If a chosen model can't run, use the next row of `ranking` (in `rank` order). For a
+   reviewer chosen in rule 2, skip rows with the same `family` as the implementer.
+6. Nothing else decides which model to use: no lists, chains, exclusions, score thresholds
+   or percentages of your own. Every row in `ranking` is usable; rows in `skipped` are not.
+7. Record the rows you used and their `reasons` with the run.
+8. If the service doesn't answer: run `systemctl --user restart quota-tracker` in WSL and
+   retry. If it still doesn't answer, tell the owner; don't choose a model yourself.

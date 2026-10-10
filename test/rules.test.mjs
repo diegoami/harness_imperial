@@ -118,9 +118,6 @@ test('the main session watches background work, and never waits on pgrep -f (L48
 
 test('a model is chosen after a look at its provider\'s quota, and an exhausted one skipped (L50)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
-  assert.match(flat('template/docs/process.md'), /after a look at the provider's quota: skip an exhausted one for the next with quota, saying so \(L50\)/);
-  assert.match(flat('template/.claude/skills/delegate/SKILL.md'), /\*\*Check the quota first\*\* \(L50\)\. .*`curl -s localhost:8765\/avoid` .*`curl -s 'localhost:8765\/recommend\?tier=heavy'` .* Never rank by headroom.* Skip a model whose provider is `exhausted`: name the next model of its chain that has quota/);
-  assert.match(flat('profiles/review/CLAUDE.md'), /Check the quota first \(`docs\/environment\.md`\): skip an exhausted reviewer with `--reviewer` on the next one of the chain that has quota, and say so in the PR\. \(L50\)/);
   for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
     const e = flat(f);
     assert.match(e, /## Quota: quota-tracker/, f);
@@ -136,7 +133,6 @@ test('a model is chosen after a look at its provider\'s quota, and an exhausted 
 
 test('the scripts skip an exhausted provider themselves, and no chain is edited to pause one (L52)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
-  assert.match(flat('template/.claude/skills/delegate/SKILL.md'), /Both scripts also skip such a model themselves and log why \(L52\); never pause a provider by editing `harness\.json` for quota\./);
   for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
     assert.match(flat(f), /`implement\.mjs` and `review\.mjs` ask the service themselves before their chain runs \(`lib\/quota\.mjs`, L52\)/, f);
   }
@@ -384,4 +380,20 @@ test('the main session tells the owner what the delegated runs are doing (L71)',
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /\*\*Telling the owner \(L71\)\.\*\* For implement and review runs, the watch is `node tools\/harness\/agents\.mjs --watch --until-done` under Monitor/);
   assert.match(read('template/docs/lessons.md'), /^\| L71 \| The owner is told what the delegated runs are doing\./m);
+});
+
+test('model choice follows /recommend and nothing else: the owner\'s rules word for word wherever agents read them (L72, #168)', () => {
+  // The rules as the owner wrote them in #168: the root CLAUDE.md's "## Choosing models" section.
+  const root = read('CLAUDE.md');
+  const rules = root.slice(root.indexOf('## Choosing models\n'));
+  assert.match(rules, /^## Choosing models\n\n1\. Ask the quota service with the tier the work needs:/);
+  assert.match(rules, /3\. A review on its own \(the implementation was done earlier\): add\n {3}`&exclude_family=<the implementer's family>` and use `pick`\./);
+  assert.match(rules, /6\. Nothing else decides which model to use: no lists, chains, exclusions, score thresholds\n {3}or percentages of your own\./);
+  assert.match(rules, /8\. If the service doesn't answer: run `systemctl --user restart quota-tracker` in WSL and\n {3}retry\. If it still doesn't answer, tell the owner; don't choose a model yourself\.\n$/);
+  const body = rules.split('\n').slice(2).join('\n');
+  for (const f of ['AGENTS.md', 'template/AGENTS.md', 'template/.claude/skills/delegate/SKILL.md']) assert.ok(read(f).includes(body), `${f} carries the rules word for word`);
+  assert.match(read('template/CLAUDE.md'), /on the models `\/recommend` gives, nothing else \(L72\)/);
+  assert.match(read('template/docs/lessons.md'), /^\| L72 \| Model choice follows quota-tracker's `\/recommend`, and nothing else/m);
+  for (const n of ['L39', 'L41', 'L50', 'L51', 'L52', 'L65']) assert.match(read('template/docs/lessons.md'), new RegExp(`^\\| ${n} \\| [^|]*\\(corrected by L72: `, 'm'), n);
+  assert.doesNotMatch(read('template/.claude/skills/delegate/SKILL.md'), /next model of its chain/);
 });
