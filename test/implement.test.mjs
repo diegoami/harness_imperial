@@ -328,6 +328,27 @@ test('a wip commit never takes the files --copy brought in: they stay local, unt
   assert.equal(fs.readFileSync(path.join(p.base, 'proj-work', 'T07', 'local/secret.ini'), 'utf8'), 'token=never pushed\n');
 });
 
+test('a wip commit never takes a file --copy brought in through a symlink: the landed path is kept out (Luna\'s R1 on PR 165)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  fs.writeFileSync(path.join(p.main, 'secret.ini'), 'token=never pushed\n');
+  fs.symlinkSync('secret.ini', path.join(p.main, 'link.ini'));
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' }, '--copy', 'link.ini');
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  const files = git(p.origin, 'ls-tree', '-r', '--name-only', 'task/T07-calendar').split('\n');
+  assert.ok(files.includes('new-file.txt'), files.join(' '));
+  assert.ok(!files.includes('secret.ini') && !files.includes('link.ini'), files.join(' '));
+});
+
+test('a refused push of the model\'s own commits, with nothing left to wip, is named in the exit (Luna\'s R2 on PR 165)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  const hook = path.join(p.origin, 'hooks', 'pre-receive');
+  fs.writeFileSync(hook, '#!/bin/sh\nwhile read old new ref; do git log -1 --format=%s "$new" | grep -q "^feature" && { echo "refused" >&2; exit 1; }; done; exit 0\n');
+  fs.chmodSync(hook, 0o755);
+  const r = implement(p, { FAKE_OC_MODE: 'commit-fail' });
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.match(r.stderr, /task\/T07-calendar could not be pushed: the run's commits are in the worktree \S+ only\./);
+});
+
 test('a push the remote refuses leaves the wip commit in the worktree, and the exit says so (L70)', posix, async () => {
   const p = project({ chain: ['mimo-flash'] });
   const hook = path.join(p.origin, 'hooks', 'pre-receive');

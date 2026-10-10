@@ -98,6 +98,7 @@ if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${
 // refused too: the lexical check above is fooled by a tracked symlink whose target is outside,
 // but mkdirSync and copyFileSync follow symlinks, so the script would otherwise create the
 // destination outside the worktree (Luna's R2 on PR 91, both sides).
+const copied = [];   // the worktree paths --copy wrote: local files no wip commit takes (L70)
 for (const f of a.copy) {
   // 1. Lexical gate (cheap, no I/O): the path leaves the checkout or the worktree lexically.
   // Required (not best-effort) so a swap with the realpath gate changes the error text on
@@ -133,6 +134,7 @@ for (const f of a.copy) {
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.copyFileSync(realF, dest);
+  copied.push(rel);   // where the file landed: the resolved path, not the one asked for (Luna's R1 on PR 165)
 }
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);
@@ -218,7 +220,7 @@ const result = await runChain({
   },
   // Every failed attempt's work is committed and pushed, never reset (L70; #87 before it).
   save: async (r) => {
-    const s = saveProgress({ worktree, branch, model: attemptModel, cause: failureClass(r.reason), reason: r.reason, startSha, workRoot, name, keepOut: a.copy, log: say });
+    const s = saveProgress({ worktree, branch, model: attemptModel, cause: failureClass(r.reason), reason: r.reason, startSha, workRoot, name, keepOut: copied, log: say });
     if (s.commit) wips.push(s.commit.slice(0, 12));
     unpushed = !s.pushed;   // a later push carries the earlier commits
     patches.push(...s.patches);
@@ -227,7 +229,9 @@ const result = await runChain({
 
 say(`run log: ${logFile}`);
 // Every exit after the chain names the wip commits and any patch its saves left (L70, #87; Sol's R3 on PR 100).
+// A refused push is named even without a wip commit: the model's own commits are then local only (Luna's R2 on PR 165).
 const saved = `${wips.length ? ` The stopped runs' work is on ${branch}: wip commit${wips.length > 1 ? 's' : ''} ${wips.join(', ')}${unpushed ? ', not pushed: it is in the worktree only' : ''}.` : ''}`
+  + `${unpushed && !wips.length ? ` ${branch} could not be pushed: the run's commits are in the worktree ${worktree} only.` : ''}`
   + `${patches.length ? ` Uncommitted work was saved as a patch: ${patches.join(', ')}.` : ''}`;
 const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
 if (!result.ok) {
