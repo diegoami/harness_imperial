@@ -139,11 +139,11 @@ test('the scripts skip an exhausted provider themselves, and no chain is edited 
   assert.match(read('template/docs/lessons.md'), /^\| L52 \| `implement\.mjs` and `review\.mjs` check quota themselves/m);
 });
 
-test('Luna is judged on OpenAI\'s main quota; when_exhausted.usable_models alone lets a model run on an exhausted provider (L65)', () => {
+test('Luna draws on OpenAI\'s main quota; the guides leave quota to /recommend (L65, corrected by L72)', () => {
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   for (const f of ['template/docs/environment.md', 'profiles/review/docs/environment.md']) {
-    assert.match(flat(f), /`when_exhausted\.usable_models` names it \(today `gpt-5\.6-luna` on OpenAI; L65\)/, f);
-    assert.doesNotMatch(read(f), /gpt-5\.6-luna:7d/, f);
+    assert.match(flat(f), /These are for reading, never for choosing: `\/recommend` weighs them\. GPT-5\.6 Luna has no window of its own: it draws on OpenAI's main quota, like Sol\./, f);
+    assert.doesNotMatch(read(f), /gpt-5\.6-luna:7d|headroom_pct|negative means/, f);
   }
   assert.match(read('template/docs/lessons.md'), /^\| L65 \| Every model is judged on its provider's main quota, GPT-5\.6 Luna included\./m);
 });
