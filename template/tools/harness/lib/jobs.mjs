@@ -89,14 +89,29 @@ const alive = (pid) => {
 
 // Whether a job belongs to a repository: its worktree lies in the repository's work root (where
 // implement.mjs and review.mjs put every worktree) or the checkout itself (Luna's R2 on PR 166).
-export function inRoots(job, roots) {
-  const w = path.resolve(String(job.workDir ?? '')).toLowerCase();
-  return roots.some((r) => { const root = path.resolve(r).toLowerCase(); return w === root || w.startsWith(root + path.sep); });
+// Paths compare in one form: the real path of the deepest part that exists (a Windows 8.3 short
+// name or git's / becomes the long form), then the rest; case folds on Windows only, where paths
+// are case-insensitive (Luna's R1 and R3 on PR 166, round 2).
+export function canonical(p, platform = process.platform) {
+  let head = path.resolve(String(p ?? ''));
+  const rest = [];
+  while (!fs.existsSync(head) && path.dirname(head) !== head) { rest.unshift(path.basename(head)); head = path.dirname(head); }
+  let real = head;
+  try { real = fs.realpathSync.native(head); } catch { /* keep the resolved form */ }
+  const full = path.join(real, ...rest);
+  return platform === 'win32' ? full.toLowerCase() : full;
+}
+
+export function inRoots(job, roots, platform = process.platform) {
+  const w = canonical(job.workDir, platform);
+  return roots.some((r) => { const root = canonical(r, platform); return w === root || w.startsWith(root + path.sep); });
 }
 
 // Every job record in logDir: running ones, and those that ended within `keepMs`. A record whose
-// runner died without writing an outcome is reported as stopped. Older finished records are removed.
-export function listJobs(logDir, { now = Date.now(), keepMs = 24 * 3600_000 } = {}) {
+// runner died without writing an outcome is reported as stopped, and so is one still "running" past
+// `staleMs`: the runner kills every run within hours (L10), so its pid now belongs to another
+// process (Luna's R2 on PR 166, round 2). Older finished records are removed.
+export function listJobs(logDir, { now = Date.now(), keepMs = 24 * 3600_000, staleMs = 6 * 3600_000 } = {}) {
   let names = [];
   try { names = fs.readdirSync(logDir).filter((n) => n.endsWith('.job.json')); } catch { return []; }
   const jobs = [];
@@ -105,6 +120,7 @@ export function listJobs(logDir, { now = Date.now(), keepMs = 24 * 3600_000 } = 
     let job;
     try { job = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
     if (!job.ended && !alive(job.runnerPid)) job = { ...job, ended: job.updated ?? job.started, outcome: 'stopped: its runner is gone' };
+    else if (!job.ended && now - job.started > staleMs) job = { ...job, ended: job.updated ?? job.started, outcome: `stopped: no outcome after ${Math.round(staleMs / 3600_000)}h, a stale record` };
     if (job.ended && now - job.ended > keepMs) { fs.rmSync(file, { force: true }); continue; }
     jobs.push({ ...job, file });
   }

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runOpenCodeWatched } from '../template/tools/harness/lib/opencode.mjs';
-import { briefSummary, lastSteps, describeJob, listJobs, writeJob, jobFile } from '../template/tools/harness/lib/jobs.mjs';
+import { briefSummary, lastSteps, describeJob, listJobs, writeJob, jobFile, inRoots, canonical } from '../template/tools/harness/lib/jobs.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fake = path.join(here, 'fake-opencode.mjs');
@@ -78,9 +78,13 @@ test('listJobs: a runner that died without an outcome is reported stopped; a rec
   writeJob(jobFile(dir, 'dead'), { title: 'dead', runnerPid: 2 ** 22 + 12345, started: now - 1000, updated: now - 500 });
   writeJob(jobFile(dir, 'old'), { title: 'old', runnerPid: process.pid, started: now - 3 * 86_400_000, ended: now - 2 * 86_400_000, outcome: 'x' });
   writeJob(jobFile(dir, 'live'), { title: 'live', runnerPid: process.pid, started: now });
+  // Live pid, but "running" for a day: the pid was reused (Luna's R2 on PR 166, round 2).
+  writeJob(jobFile(dir, 'stale'), { title: 'stale', runnerPid: process.pid, started: now - 86_400_000 + 1000 });
   const jobs = listJobs(dir, { now });
-  assert.deepEqual(jobs.map((j) => j.title), ['dead', 'live']);
-  assert.equal(jobs[0].outcome, 'stopped: its runner is gone');
+  assert.deepEqual(jobs.map((j) => j.title), ['stale', 'dead', 'live']);
+  assert.equal(jobs[1].outcome, 'stopped: its runner is gone');
+  assert.equal(jobs[0].outcome, 'stopped: no outcome after 6h, a stale record');
+  assert.equal(jobs[2].ended, undefined);
   assert.equal(fs.existsSync(jobFile(dir, 'old')), false);
 });
 
@@ -158,6 +162,18 @@ test('agents.mjs shows this repository\'s jobs by default, every project\'s with
   assert.match(all.stdout, /T07[\s\S]*T99/);
   // Outside a repository, without --all: refused.
   assert.equal(spawnSync(process.execPath, [agents, '--status', '--dir', logDir], { encoding: 'utf8', cwd: base }).status, 2);
+});
+
+test('inRoots: one path form, case folded on Windows only (Luna\'s R1 and R3 on PR 166, round 2)', () => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-roots-')));
+  const root = path.join(base, 'proj-work');
+  fs.mkdirSync(root);
+  assert.equal(inRoots({ workDir: path.join(root, 'T07') }, [root]), true);           // a worktree not yet made
+  assert.equal(inRoots({ workDir: `${root.replaceAll(path.sep, '/')}/T07` }, [root]), true);   // git's /
+  assert.equal(inRoots({ workDir: path.join(base, 'proj-work2', 'T07') }, [root]), false);     // a prefix is not a parent
+  // POSIX keeps case: another project whose path differs only in case is not this one.
+  assert.equal(inRoots({ workDir: path.join(base, 'PROJ-WORK', 'T07') }, [root], 'linux'), false);
+  assert.equal(canonical('/X/Y', 'win32'), canonical('/x/y', 'win32'));
 });
 
 test('agents.mjs refuses a bad call with exit 2', () => {
