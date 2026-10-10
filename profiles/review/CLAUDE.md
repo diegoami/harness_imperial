@@ -27,8 +27,8 @@ PR. How a review is run is `docs/review.md`; the L-numbers are harness_imperial'
    after the second such round, stop. No further review until you have swept the whole diff for
    that class, fixed what you found, and recorded the pattern in the model-trials record (create
    one if there is none); the review after that is the last before escalation. (L49)
-6. Any failure escalates to the user: a review that did not run (exit 3), one posted but not acted
-   on (exit 4), a reviewer that cannot run a Done-when line. Never fall back to a Claude reviewer.
+6. Any failure escalates to the user: a review that did not run (exit 3 or 5), one posted but not
+   acted on (exit 4), a reviewer that cannot run a Done-when line. Never fall back to a Claude reviewer.
 7. Relay review findings in full, never a subset.
 8. A test proves behaviour only if it fails when the behaviour is removed. (L9)
 9. Never `git stash`; never force-push or rewrite `main` without the user. (L19)

@@ -3,7 +3,8 @@
 // FAKE_OC_STATE: the file that names OpenCode's session store (fake-state.mjs).
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
 //   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission | permission-dirty | invalid-key |
-//   permission-review | permission-quoted | permission-plain | review-ok | review-cut
+//   permission-review | permission-quoted | permission-plain | review-ok | review-cut |
+//   provider-error | provider-stderr | provider-dirty | provider-auth | idle-tool | commit-provider (L69)
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
@@ -42,7 +43,10 @@ if (cmd === 'session') {
 if (cmd === 'models') {
   const ids = JSON.parse(process.env.FAKE_OC_MODELS
     || '["opencode-go/mimo-v2.6-flash", "openai/gpt-5.6-luna", "openai/gpt-6-luna", "opencode-go/spare-model"]');
-  if (process.env.FAKE_OC_MODELS_ERROR) { process.stderr.write(`${process.env.FAKE_OC_MODELS_ERROR}\n`); process.exit(1); }
+  // FAKE_OC_MODELS_ERROR_PROVIDER: only that provider's listing fails.
+  if (process.env.FAKE_OC_MODELS_ERROR && (!process.env.FAKE_OC_MODELS_ERROR_PROVIDER || process.env.FAKE_OC_MODELS_ERROR_PROVIDER === rest[0])) {
+    process.stderr.write(`${process.env.FAKE_OC_MODELS_ERROR}\n`); process.exit(1);
+  }
   const mine = ids.filter((id) => !rest[0] || id.startsWith(`${rest[0]}/`));
   if (!mine.length) { process.stderr.write(`Error: Provider not found: ${rest[0]}\n`); process.exit(1); }
   // --verbose: each id, then its JSON with the efforts FAKE_OC_VARIANTS (id -> list) gives it.
@@ -71,6 +75,10 @@ if (cmd === 'export') {
   // FAKE_OC_DENY_AFTER: what follows the last denial instead of the model's own text (Sol's R1 on PR 155).
   const after = process.env.FAKE_OC_DENY_AFTER ? JSON.parse(process.env.FAKE_OC_DENY_AFTER) : [{ info: { role: 'assistant' }, parts: [{ type: 'text', text: 'went on' }] }];
   if (s.denials?.length && s.recovered) messages.push(...after);
+  // What the session was doing when it stopped (L69), as OpenCode 1.18.34 records it: an assistant
+  // message not yet completed with a tool still running, or the provider's error on the last one.
+  if (s.running) messages.push({ info: { role: 'assistant', time: { created: s.created } }, parts: [{ type: 'tool', tool: 'bash', state: { status: 'running', input: { command: s.running } } }] });
+  if (s.apiError) messages.push({ info: { role: 'assistant', time: { created: s.created, completed: s.created }, error: s.apiError }, parts: [] });
   // FAKE_OC_EXPORT_STALE: the first export, the live one, holds no denials yet (Sol's R3 on PR 155).
   if (process.env.FAKE_OC_EXPORT_STALE) {
     const flag = `${process.env.FAKE_OC_STATE}.stale-served`;
@@ -139,6 +147,29 @@ switch (mode) {
   }
   case 'no-session': forever(); break;
   case 'idle': createSession(); forever(); break;
+  case 'idle-tool': createSession(agent, { running: 'npm test' }); forever(); break;
+  case 'provider-dirty':
+    // A provider that stopped answering after the implementer edited without committing (#87, L69).
+    fs.appendFileSync('README.md', 'edited, not committed\n');
+    fs.writeFileSync('new-file.txt', 'untracked work\n');
+    // falls through
+  case 'provider-error':
+    createSession(agent, { apiError: { name: 'APIError', data: { message: 'Service Unavailable', statusCode: 503, isRetryable: true } } });
+    process.stderr.write('\x1b[91m\x1b[1mError: \x1b[0mService Unavailable\n');
+    process.exit(1);
+    break;
+  case 'provider-stderr':
+    // No error in the record; OpenCode's own stderr names the rate limit.
+    createSession();
+    process.stderr.write('\x1b[91m\x1b[1mError: \x1b[0mAPICallError: 429 Too Many Requests: rate limit exceeded\n');
+    process.exit(1);
+    break;
+  case 'provider-auth':
+    // A 401 is our setup (a stale key), not a provider that did not answer.
+    createSession(agent, { apiError: { name: 'APIError', data: { message: 'Unauthorized', statusCode: 401, isRetryable: false } } });
+    process.stderr.write('Error: Unauthorized\n');
+    process.exit(1);
+    break;
   case 'exit-no-session': process.exit(1); break;
   case 'exit2': createSession(); process.exit(2); break;
   case 'fallback':
@@ -171,6 +202,11 @@ switch (mode) {
     break;
   }
   case 'commit-fail': createSession(); commit(); process.exit(1); break;
+  case 'commit-provider':                              // committed, then the provider stopped answering
+    createSession(agent, { apiError: { name: 'APIError', data: { message: 'Service Unavailable', statusCode: 503, isRetryable: true } } });
+    commit();
+    process.exit(1);
+    break;
   case 'invalid-key':                                  // a provider that refused the key
     createSession();
     process.stderr.write('Error: Invalid API-key provided.\n');

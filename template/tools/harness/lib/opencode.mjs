@@ -75,7 +75,48 @@ export function failureClass(reason) {
   if (/^exit -?\d+/.test(r)) return 'non-zero-exit';
   if (/^permission rejected/.test(r)) return 'permission-rejected';
   if (/^no review/.test(r)) return 'no-review';
+  // A provider error by its status, so two providers' different failures are not one cause.
+  if (/^provider error/.test(r)) return `provider-${/^provider error: (\d{3}|no status):/.exec(r)?.[1]?.replace(' ', '-') ?? 'error'}`;
   return r;
+}
+
+// Whether a failed run may move to the next model (the owner, 2026-10-10, L69): only when the
+// provider did not respond, never when it failed through our process (the brief, the permissions,
+// the agent, the runner, the setup), which is fixed before anything runs again. A reason is
+// 'provider' only when the runner proved it: a provider error in the session record or on
+// OpenCode's own stderr, or an idle session with no tool running. Everything else is 'process'.
+export function failureKind(reason) {
+  const r = String(reason);
+  if (/^provider error/.test(r)) return 'provider';
+  if (/^session idle for \d+ s waiting on the provider/.test(r)) return 'provider';
+  return 'process';
+}
+
+// A provider that did not answer: a rate limit, an overload, a 5xx, or a network error. Returns the
+// line, or null. A line that names a 4xx other than 429 is never one: a refused key, a bad request
+// or an unknown model is our setup to fix (Luna's R3 on PR 164). In `opencode run`'s stderr, which
+// also carries tool output, only OpenCode's own error line counts (own): it starts with its red
+// bold "Error: " (OpenCode 1.18.34's UI.error, as the denials show); `opencode models` prints no
+// tool output, so its stderr is read whole (own: false).
+const PROVIDER_DOWN = /\b(rate[ _-]?limit(ed)?|too many requests|overloaded|service unavailable|bad gateway|gateway timeout|internal server error|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed)\b|\b(status(?: ?code)?[:= ]*|HTTP\/?[\d.]* )(429|5\d\d)\b/i;
+const CLIENT_ERROR = /\b4(?!29\b)\d\d\b/;
+const OWN_ERROR = /^\x1b\[91m\x1b\[1mError: \x1b\[0m/;
+export function providerErrorLine(text, { own = true } = {}) {
+  const plain = (l) => l.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  const line = String(text).split(/\r?\n/)
+    .find((l) => (!own || OWN_ERROR.test(l)) && PROVIDER_DOWN.test(plain(l)) && !CLIENT_ERROR.test(plain(l)));
+  return line ? plain(line).slice(0, 200) : null;
+}
+
+// The session record's provider error on its last assistant message (OpenCode 1.18.34 records it as
+// info.error), when it says the provider did not answer: an APIError with a 429 or a 5xx, or one
+// without a status. A ProviderAuthError or any other 4xx is our setup, not this, even when OpenCode
+// marks it retryable (Luna's R2 on PR 164).
+export function recordProviderError(error) {
+  if (!error || typeof error !== 'object' || error.name !== 'APIError') return null;
+  const status = Number(error.data?.statusCode);
+  if (status && status !== 429 && status < 500) return null;
+  return `${status || 'no status'}: ${String(error.data?.message ?? 'APIError').slice(0, 200)}`;
 }
 
 // OpenCode's own warning when --agent names an agent it cannot find (OpenCode 1.18, stderr):
@@ -232,17 +273,20 @@ export async function modelVariants(cmd, id, { env, cwd, timeoutMs = 60_000 }) {
 export async function listedModels(cmd, providers, { env, cwd, timeoutMs = 60_000 }) {
   const listed = new Set();
   const errors = new Map();
+  const unreachable = new Map();   // a provider whose listing failed because it did not answer (L69)
   for (const p of new Set(providers)) {
     const r = await execBounded(cmd, ['models', p], { cwd, env, timeoutMs });
     if (!r) { errors.set(p, `\`opencode models ${p}\` did not finish in ${Math.round(timeoutMs / 1000)} s`); continue; }
     if (r.code === 0) {
       for (const l of r.stdout.split(/\r?\n/)) if (l.trim()) listed.add(l.trim());
+    } else if (providerErrorLine(r.stderr, { own: false })) {
+      unreachable.set(p, providerErrorLine(r.stderr, { own: false }));
     } else if (!/provider not found/i.test(r.stderr)) {
       const last = r.stderr.replace(/\x1b\[[0-9;]*m/g, '').trim().split(/\r?\n/).at(-1) || '(no output)';
       errors.set(p, `\`opencode models ${p}\` failed with exit ${r.code}: ${last}`);
     }
   }
-  return { listed, errors };
+  return { listed, errors, unreachable };
 }
 
 // Why a model is missing from the list, and the command that fixes it.
@@ -349,13 +393,18 @@ const DENIED = /rejected permission to use this specific tool call|rule which pr
 export function runFailure(run, keyProblem = () => null) {
   const denied = () => `permission rejected: ${run.permissionRejected}${run.permissionHint ? `; ${run.permissionHint}` : ''}`;
   if (run.stopped) return denied();
-  if (run.exitCode !== 0) return keyProblem(run.stderr) ?? `exit ${run.exitCode}`;
+  // Evidence of our own failure wins over a provider error in the same run (Luna's R4 on PR 164):
+  // the agent, a denied call, a refused key. Only then does a provider error move the chain (L69).
   if (run.agentFallback) {
     return run.agentLoad === 'load-failure'
       ? 'agent-load-failure: OpenCode ran its default agent although the run gave it the agent file'
       : 'fell back to the default agent';
   }
   if (run.permissionRejected) return denied();
+  const key = run.exitCode !== 0 ? keyProblem(run.stderr) : null;
+  if (key) return key;
+  if (run.providerError) return `provider error: ${run.providerError}`;
+  if (run.exitCode !== 0) return `exit ${run.exitCode}`;
   return null;
 }
 
@@ -424,7 +473,14 @@ export async function sessionRecord(cmd, { workDir, sessionId, outFile, timeoutM
         recovered: parts.slice(i + 1).some(worked),
       }];
     });
-    return { agent: j.info?.agent ?? null, rejected: denials.some((d) => d.kind === 'rejected'), denials };
+    // What the session was doing when it stopped (L69): a tool still running in its last
+    // assistant message, and the provider error on that message.
+    const lastAssistant = (j.messages ?? []).filter((m) => (m.info?.role ?? m.role) === 'assistant').at(-1);
+    const runningPart = (lastAssistant?.parts ?? []).find((p) => p.type === 'tool' && p.state?.status === 'running');
+    const ri = runningPart?.state?.input ?? {};
+    const running = runningPart ? { tool: runningPart.tool ?? null, input: String(ri.command ?? ri.filePath ?? ri.path ?? JSON.stringify(ri)).slice(0, 200) } : null;
+    const providerError = recordProviderError(lastAssistant?.info?.error);
+    return { agent: j.info?.agent ?? null, rejected: denials.some((d) => d.kind === 'rejected'), denials, running, providerError };
   } catch { return null; }
 }
 
@@ -571,7 +627,9 @@ function stripComments(text) {
  * a short pointer to it (L60): the whole brief never passes through argv, which Windows caps at
  * 32767 characters (IC2's T146/T148 were blocked by it) and Linux per argument at 128 KiB.
  * Returns { output, stdout, stderr, exitCode, sessionId, title, agentFallback, sessionAgent,
- *   agentLoad, permissionRejected, permissionHint, permissionsDenied, stopped, files, briefFile, scratch, seconds }.
+ *   agentLoad, permissionRejected, permissionHint, permissionsDenied, stopped, providerError, files, briefFile, scratch, seconds }.
+ * providerError: the provider's own failure to answer (the record's, else OpenCode's stderr on a
+ * non-zero exit), or null.
  * agentLoad, when the agent fell back: 'load-failure' if the run was given its agent file,
  * 'fallback' if there was none. permissionsDenied: the denied calls the model went past. stopped:
  * the denial verdict the watch killed the run on (its exit code is then the kill's), or null.
@@ -745,9 +803,15 @@ export async function runOpenCodeWatched({
         if (seen && Number(seen.updated) > lastUpdated) lastUpdated = Number(seen.updated);
         const idleFor = Date.now() - lastUpdated;
         if (idleFor >= idleTimeoutMs) {
+          // Read before the kill: a tool still running is our process (a hung test, a server), no
+          // tool running means the model waits on its provider (L69).
+          const atIdle = await sessionRecord(cmd, { workDir, sessionId: session.id, outFile: path.join(logDir, `${title}.export.json`), env, timeoutMs: 30_000 });
+          fs.rmSync(path.join(logDir, `${title}.export.json`), { force: true });
           killTree(child);
           const secs = Math.round(idleTimeoutMs / 1000);
-          throw fail(`session idle for ${secs} s`, `OpenCode session idle for ${Math.round(idleFor / 1000)} s (limit ${secs} s); killed pid ${child.pid}`);
+          const cause = !atIdle ? ' (the session record could not be read)'
+            : atIdle.running ? ` while a tool ran: ${atIdle.running.tool} ${atIdle.running.input}` : ' waiting on the provider';
+          throw fail(`session idle for ${secs} s${cause}`, `OpenCode session idle for ${Math.round(idleFor / 1000)} s (limit ${secs} s)${cause}; killed pid ${child.pid}`);
         }
       }
       await exited;
@@ -789,6 +853,7 @@ export async function runOpenCodeWatched({
       output: `${stdout.trimEnd()}\n${stderr.trimEnd()}`.trim(),
       stdout, stderr, exitCode, sessionId: session.id, title,
       agentFallback, agentLoad, sessionAgent: recordedAgent, permissionRejected, permissionHint, permissionsDenied, stopped: stoppedFor,
+      providerError: record?.providerError ?? (exitCode !== 0 ? providerErrorLine(stderr) : null),
     };
     // One predicate for what failed, the callers' own (#139): what they will not accept keeps its
     // files, its brief and its scratch folder.
