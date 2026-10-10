@@ -9,7 +9,10 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
 - Every behaviour of the runner has a test in `test/`, and each test was checked by breaking the
   behaviour and watching it fail. Do the same for any new one.
 - PRs here are reviewed by the harness itself, as in any project: `node template/tools/harness/review.mjs`
-  from the root, on Luna, never by a Claude agent (Claude writes them: the family rule). The root
+  from the root, never by a Claude agent (Claude writes them: the family rule), on the model
+  quota-tracker's `/recommend` ranks first for the PR's tier (`heavy` for runner, guard or harness
+  changes, `light` for small ones), passed as `--reviewer`. `/recommend` supersedes every other
+  source that names a model (the owner, 2026-10-10). The root
   `harness.json` and `.opencode/agents/` are copies of the template's; a test keeps them equal.
 - `npm test` before every push. Commits and PRs as usual; no status in any document.
 - A cloud session here runs `template/.claude/hooks/session-start.sh` (see `.claude/settings.json`):
