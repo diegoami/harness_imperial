@@ -4,7 +4,7 @@
 // FAKE_OC_MODE (for `run`): ok | read-stdin | no-session | idle | exit-no-session | exit2 |
 //   fallback | quote | slow | utf8 | implement | commit-fail | stop-report | permission | permission-dirty | invalid-key |
 //   permission-review | permission-quoted | permission-plain | review-ok | review-cut |
-//   provider-error | provider-stderr | provider-dirty | provider-auth | idle-tool | commit-provider (L69)
+//   provider-error | provider-stderr | provider-dirty | provider-auth | idle-tool | commit-provider | pr-provider (L69, L70)
 // FAKE_OC_MODES: a JSON map of model id -> mode, which wins over FAKE_OC_MODE.
 // FAKE_GH_STATE: the fake gh's PR list, which `implement` adds to.
 // FAKE_OC_MODELS (for `models <provider>`): a JSON list of the ids OpenCode lists; by default the
@@ -202,6 +202,23 @@ switch (mode) {
     break;
   }
   case 'commit-fail': createSession(); commit(); process.exit(1); break;
+  case 'pr-provider': {                                // opened its PR, then the provider stopped answering
+    createSession(agent, { apiError: { name: 'APIError', data: { message: 'Service Unavailable', statusCode: 503, isRetryable: true } } });
+    commit();
+    git('push', '-q', 'origin', 'HEAD');
+    const head = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.trim();
+    const state = JSON.parse(fs.readFileSync(process.env.FAKE_GH_STATE, 'utf8'));
+    state.prs.push({ number: 100 + state.prs.length, head, url: `https://example.com/pr/${100 + state.prs.length}` });
+    fs.writeFileSync(process.env.FAKE_GH_STATE, JSON.stringify(state));
+    process.exit(1);
+    break;
+  }
+  case 'detach-provider':                              // committed and detached, then the provider stopped answering
+    createSession(agent, { apiError: { name: 'APIError', data: { message: 'Service Unavailable', statusCode: 503, isRetryable: true } } });
+    commit();
+    git('checkout', '-q', '--detach');
+    process.exit(1);
+    break;
   case 'commit-provider':                              // committed, then the provider stopped answering
     createSession(agent, { apiError: { name: 'APIError', data: { message: 'Service Unavailable', statusCode: 503, isRetryable: true } } });
     commit();

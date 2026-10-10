@@ -56,6 +56,43 @@ function diff(worktree, startSha) {
 }
 
 /**
+ * Keeps a stopped run's work where the next run finds it (the owner, 2026-10-10, L70): what the
+ * worktree holds uncommitted becomes one commit, `wip: <model> stopped (<cause>); resume from
+ * here`, with the full reason in its body, and HEAD is pushed to origin/<branch>, the model's own
+ * unpushed commits with it. The worktree ends on <branch> at that commit, so the next attempt (or
+ * a rerun of the script) resumes it instead of starting over. Never a reset. `keepOut` names the
+ * files the script copied in (--copy): local files, never committed or pushed. When the commit
+ * fails, the uncommitted work is saved as a patch instead (saveUnsavedWork); when the push fails,
+ * the commit stays in the worktree, which nothing removes, and the result says so.
+ * Returns { commit, pushed, patches }: commit is the wip commit's sha or null.
+ */
+export function saveProgress({ worktree, branch, model, cause, reason, startSha, workRoot, name, keepOut = [], log = () => {}, stamp }) {
+  const git = (...args) => spawnSync('git', ['-C', worktree, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  let commit = null;
+  let patches = [];
+  if (git('status', '--porcelain').stdout.trim()) {
+    const added = git('add', '-A', '--', '.', ...keepOut.map((f) => `:(exclude,literal)${f.replaceAll('\\', '/')}`));
+    const made = added.status === 0
+      ? git('commit', '-q', '--no-verify', '-m', `wip: ${model} stopped (${cause}); resume from here`, '-m', String(reason).slice(0, 2000)) : added;
+    if (made.status === 0) {
+      commit = git('rev-parse', 'HEAD').stdout.trim();
+      log(`progress: the run's uncommitted work is commit ${commit.slice(0, 12)} (wip)`);
+    } else {
+      log(`progress: could not commit the run's work (${(made.stderr || '').trim().split('\n').at(-1)}); saving a patch`);
+      git('reset', '-q');
+      patches = saveUnsavedWork({ worktree, startSha, workRoot, name, model, log, stamp });
+    }
+  }
+  const head = git('rev-parse', 'HEAD').stdout.trim();
+  const push = git('push', '-q', 'origin', `HEAD:refs/heads/${branch}`);
+  const pushed = push.status === 0;
+  if (pushed) log(`progress: ${branch} pushed at ${head.slice(0, 12)}`);
+  else log(`progress: could not push ${branch} (${(push.stderr || '').trim().split('\n').at(-1)}); the work is committed in ${worktree} only`);
+  git('checkout', '-q', '-B', branch, head);
+  return { commit, pushed, patches };
+}
+
+/**
  * The reset between chain attempts: first save what the failed attempt left uncommitted, then
  * hard-reset to the start commit and drop untracked files, as before. Returns the saved patches.
  */

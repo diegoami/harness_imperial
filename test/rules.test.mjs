@@ -360,9 +360,22 @@ test('a failed run is fixed, never routed around: only a provider that did not r
   const flat = (f) => read(f).replace(/\s+/g, ' ');
   assert.match(flat('template/CLAUDE.md'), /A failed run is fixed, never routed around: only a provider that did not respond moves on \(L69\)\./);
   const p = flat('template/docs/process.md');
-  assert.match(p, /The chain moves on only when the provider did not respond and the run left no work\. \(L12, L69\)/);
+  assert.match(p, /The chain moves on only when the provider did not respond and the run opened no PR\. \(L12, L69\)/);
   assert.match(p, /3: no provider responded; Claude Sonnet takes it\. 5: our process or setup failed; fix, rerun\. \(L69\)/);
   assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /Exit 5: our process or setup failed: .* Never a fallback: find the cause .* then rerun; the rerun resumes the branch the run left\. \(L69\)/);
   assert.match(read('template/docs/lessons.md'), /^\| L69 \| A failed run moves to the next model only when its provider did not respond/m);
   assert.doesNotMatch(flat('template/.claude/skills/run-task/SKILL.md'), /Exit 3: OpenCode unavailable/);
+});
+
+test('a run never loses its work: wip commits, steps that name the next one, and a brief that resumes (L70)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/docs/process.md'), /A stopped run's work is a pushed `wip:` commit, never reset; the next run's brief lists the branch's commits to resume from\. \(L70\)/);
+  assert.match(read('template/docs/lessons.md'), /^\| L70 \| A run never loses its work when it stops\./m);
+});
+
+test('the lessons L69 and L70 narrow or replace say so on their own rows (Luna\'s R3 on PR 165)', () => {
+  const l = read('template/docs/lessons.md');
+  assert.match(l, /^\| L12 \| [^|]*\(narrowed by L69 and L70: only a provider that did not respond moves on/m);
+  assert.match(l, /^\| L28 \| [^|]*\(narrowed by L69: no review at all is our failure, exit 5\)/m);
+  assert.match(l, /^\| L56 \| [^|]*\(replaced by L70: a pushed `wip:` commit, never a reset\)/m);
 });

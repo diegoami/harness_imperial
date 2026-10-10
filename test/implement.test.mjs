@@ -219,19 +219,39 @@ test('an implementer that stops and reports is not retried, and exits 1', posix,
   assert.match(r.stderr, /No open PR/);
 });
 
-test('a failure that left a commit is not retried on the next model: exit 1 after a provider failure, 5 after ours', posix, async () => {
+test('a provider failure after commits: the work is pushed and the next model resumes it (L70)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODE: 'commit-provider' });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'commit-provider', 'openai/gpt-5.6-luna': 'implement' }) });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /implemented by: luna/);
+  assert.match(r.stdout, /progress: task\/T07-calendar pushed at /);
+  // Luna built on MiMo's commit, and was told so.
+  assert.deepEqual(git(p.origin, 'log', '--format=%s', 'main..task/T07-calendar').split('\n'), ['feature', 'feature']);
+  const luna = readSessions(path.join(p.base, 'oc.json')).find((x) => /gpt-5\.6-luna|luna/.test(x.title));
+  assert.match(luna.brief, /RESUME \(from tools\/harness\/implement\.mjs; L70\): branch task\/T07-calendar already holds work, oldest first:\n {2}[0-9a-f]+ feature\n/);
+  assert.match(luna.brief, /Continue from it, never from the start/);
+});
+
+test('a run that detached before it failed: the next model starts on the branch again, at the saved work (L70)', posix, async () => {
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'detach-provider', 'openai/gpt-5.6-luna': 'implement' }) });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /implemented by: luna/);
+  assert.deepEqual(git(p.origin, 'log', '--format=%s', 'main..task/T07-calendar').split('\n'), ['feature', 'feature']);
+});
+
+test('a failure after a PR is not retried on the next model: exit 1 after a provider failure, 5 after ours', posix, async () => {
+  const p = project({ chain: ['mimo-flash', 'luna'] });
+  const r = implement(p, { FAKE_OC_MODE: 'pr-provider' });
   assert.equal(r.status, 1, r.stderr + r.stdout);
   assert.doesNotMatch(r.stdout, /attempt: luna/);
-  assert.match(r.stderr, /provider error: 503: Service Unavailable\) after committing, pushing or opening a PR .*not retrying/);
+  assert.match(r.stderr, /provider error: 503: Service Unavailable\) after opening a PR for task\/T07-calendar; not retrying/);
   const q = project({ chain: ['mimo-flash', 'luna'] });
   const own = implement(q, { FAKE_OC_MODE: 'commit-fail' });
   assert.equal(own.status, 5, own.stderr + own.stdout);
   assert.doesNotMatch(own.stdout, /attempt: luna/);
-  assert.match(own.stderr, /failed through our process \(mimo-flash: exit 1\)\. It committed, pushed or opened a PR on task\/T07-calendar; the worktree/);
+  assert.equal(git(q.origin, 'log', '-1', '--format=%s', 'task/T07-calendar'), 'feature');   // the model's own commit, pushed
 });
-
 test('a provider that did not respond, by its record or by OpenCode\'s stderr, falls back to the next model (L69)', posix, async () => {
   for (const mode of ['provider-error', 'provider-stderr']) {
     const p = project({ chain: ['mimo-flash', 'luna'] });
@@ -273,19 +293,89 @@ test('a failure through our process never falls back: a session that never start
   }
 });
 
-test('a process failure keeps the worktree as the run left it: no reset, no patch, the exit names it (L69)', posix, async () => {
+test('a process failure keeps the run\'s work: a wip commit, pushed; the rerun is told to resume it (L69, L70)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' });
   assert.equal(r.status, 5, r.stderr + r.stdout);
-  const wt = path.join(p.base, 'proj-work', 'T07');
-  // git names the worktree its own way on Windows (/ and maybe a short name): match its tail.
-  assert.match(r.stderr, /the worktree \S+[\\/]proj-work[\\/]T07 is kept as the run left it/);
+  const wip = git(p.origin, 'log', '-1', '--format=%h%n%s%n%b', 'task/T07-calendar').split('\n');
+  assert.equal(wip[1], 'wip: mimo-flash stopped (permission-rejected); resume from here');
+  assert.match(wip.slice(2).join('\n'), /^permission rejected: external_directory \(\/tmp\/\*\)/);
+  assert.match(git(p.origin, 'show', 'task/T07-calendar:README.md'), /edited, not committed/);
+  assert.equal(git(p.origin, 'show', 'task/T07-calendar:new-file.txt'), 'untracked work');
+  assert.ok(git(p.origin, 'ls-tree', '-r', '--name-only', 'task/T07-calendar').split('\n').every((f) => !f.startsWith('.harness-brief')));   // the brief left first (L60)
+  assert.match(r.stderr, new RegExp(`The stopped runs' work is on task/T07-calendar: wip commit ${wip[0].slice(0, 7)}[0-9a-f]*\\.`));
   assert.match(r.stderr, /the rerun resumes task\/T07-calendar/);
-  assert.match(fs.readFileSync(path.join(wt, 'README.md'), 'utf8'), /edited, not committed/);
-  assert.ok(fs.existsSync(path.join(wt, 'new-file.txt')));
-  assert.doesNotMatch(r.stderr, /unsaved\.patch/);
+  const wt = path.join(p.base, 'proj-work', 'T07');
+  assert.equal(git(wt, 'status', '--porcelain'), '');
+  assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'task/T07-calendar');
+  // The rerun, once the cause is fixed, starts from the wip commit and is told so.
+  const again = implement(p, { FAKE_OC_MODE: 'implement' });
+  assert.equal(again.status, 0, again.stderr + again.stdout);
+  const last = readSessions(path.join(p.base, 'oc.json')).at(-1);
+  assert.match(last.brief, /already holds work, oldest first:\n {2}[0-9a-f]+ wip: mimo-flash stopped \(permission-rejected\); resume from here\n/);
+  assert.match(git(p.origin, 'show', 'task/T07-calendar:README.md'), /edited, not committed/);
 });
 
+test('a wip commit never takes the files --copy brought in: they stay local, untracked (L70)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  fs.mkdirSync(path.join(p.main, 'local'), { recursive: true });
+  fs.writeFileSync(path.join(p.main, 'local/secret.ini'), 'token=never pushed\n');
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' }, '--copy', 'local/secret.ini');
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  const files = git(p.origin, 'ls-tree', '-r', '--name-only', 'task/T07-calendar').split('\n');
+  assert.ok(files.includes('new-file.txt'), files.join(' '));                  // the run's own work is in
+  assert.ok(!files.includes('local/secret.ini'), files.join(' '));             // the copied file is not
+  assert.equal(fs.readFileSync(path.join(p.base, 'proj-work', 'T07', 'local/secret.ini'), 'utf8'), 'token=never pushed\n');
+});
+
+test('a wip commit never takes a file --copy brought in through a symlink: the landed path is kept out (Luna\'s R1 on PR 165)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  fs.writeFileSync(path.join(p.main, 'secret.ini'), 'token=never pushed\n');
+  fs.symlinkSync('secret.ini', path.join(p.main, 'link.ini'));
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' }, '--copy', 'link.ini');
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  const files = git(p.origin, 'ls-tree', '-r', '--name-only', 'task/T07-calendar').split('\n');
+  assert.ok(files.includes('new-file.txt'), files.join(' '));
+  assert.ok(!files.includes('secret.ini') && !files.includes('link.ini'), files.join(' '));
+});
+
+test('a wip commit never takes the file a --copy wrote through a symlink already in the worktree (Luna\'s R1 on PR 165, round 2)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  // A tracked symlink in the repository, pointing at a tracked file: the copy writes through it.
+  fs.writeFileSync(path.join(p.main, 'target.ini'), 'tracked\n');
+  fs.symlinkSync('target.ini', path.join(p.main, 'local.ini'));
+  git(p.main, 'add', 'target.ini', 'local.ini');
+  git(p.main, 'commit', '-q', '-m', 'link');
+  git(p.main, 'push', '-q', 'origin', 'main');
+  fs.unlinkSync(path.join(p.main, 'local.ini'));
+  fs.writeFileSync(path.join(p.main, 'local.ini'), 'token=never pushed\n');   // the main checkout's local copy
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' }, '--copy', 'local.ini');
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.equal(git(p.origin, 'show', 'task/T07-calendar:target.ini'), 'tracked');
+  assert.ok(git(p.origin, 'ls-tree', '-r', '--name-only', 'task/T07-calendar').split('\n').includes('new-file.txt'));
+});
+
+test('a refused push of the model\'s own commits, with nothing left to wip, is named in the exit (Luna\'s R2 on PR 165)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  const hook = path.join(p.origin, 'hooks', 'pre-receive');
+  fs.writeFileSync(hook, '#!/bin/sh\nwhile read old new ref; do git log -1 --format=%s "$new" | grep -q "^feature" && { echo "refused" >&2; exit 1; }; done; exit 0\n');
+  fs.chmodSync(hook, 0o755);
+  const r = implement(p, { FAKE_OC_MODE: 'commit-fail' });
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.match(r.stderr, /task\/T07-calendar could not be pushed: the run's commits are in the worktree \S+ only\./);
+});
+
+test('a push the remote refuses leaves the wip commit in the worktree, and the exit says so (L70)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  const hook = path.join(p.origin, 'hooks', 'pre-receive');
+  fs.writeFileSync(hook, '#!/bin/sh\nwhile read old new ref; do git log -1 --format=%s "$new" | grep -q "^wip:" && { echo "no wip here" >&2; exit 1; }; done; exit 0\n');
+  fs.chmodSync(hook, 0o755);
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' });
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.match(r.stdout, /progress: could not push task\/T07-calendar \(.*\); the work is committed in \S+ only/);
+  assert.match(r.stderr, /wip commit [0-9a-f]+, not pushed: it is in the worktree only\./);
+  assert.match(git(path.join(p.base, 'proj-work', 'T07'), 'log', '-1', '--format=%s'), /^wip: mimo-flash stopped/);
+});
 // The reset's save (#87, L56): unit checks on a throwaway repository, then a run end to end.
 function throwaway() {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'unsaved-')));
@@ -352,38 +442,49 @@ test('a staged version that differs from the working copy is saved on its own fi
   for (const p of both) t.g('apply', '--check', p);
 });
 
-test('a run that edited without committing and lost its provider keeps its work in a patch the exit names (#87)', posix, async () => {
+test('a wip commit that cannot be made saves the uncommitted work as a patch the exit names (#87, L70)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'provider-error' }) });
+  // No identity anywhere, and git may not guess one: the runner's commit fails (the fake commits with its own).
+  git(p.main, 'config', '--unset', 'user.name');
+  git(p.main, 'config', '--unset', 'user.email');
+  git(p.main, 'config', 'user.useConfigOnly', 'true');
+  const home = path.join(p.base, 'home');
+  fs.mkdirSync(home);
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'provider-error' }),
+    HOME: home, GIT_CONFIG_GLOBAL: path.join(home, 'none'), GIT_CONFIG_NOSYSTEM: '1' });
   assert.equal(r.status, 3, r.stderr + r.stdout);
-  const m = r.stderr.match(/Unsaved work was saved before the reset: (\S+\.unsaved\.patch)\./);
+  // MiMo's patch first; Luna, which found the same files still there, saved its own after it.
+  const m = r.stderr.match(/Uncommitted work was saved as a patch: (\S+?\.unsaved\.patch)[,.]/);
   assert.ok(m, r.stderr);
   assert.match(path.basename(m[1]), /^T07\.mimo-flash\.\d{4}-\d\d-\d\dT[\d-]+\.\d{3}Z\.unsaved\.patch$/);
   const text = fs.readFileSync(m[1], 'utf8');
   assert.match(text, /\+edited, not committed/);
   assert.match(text, /\+untracked work/);
-  assert.match(r.stdout, /unsaved work saved to: /);
-  // Every brief's run rules keep the implementer inside its worktree and committing as it goes (L57).
-  const prompt = readSessions(path.join(p.base, "oc.json"))[0].brief.replace(/\s+/g, " ");
+  assert.match(r.stdout, /progress: could not commit the run's work/);
+});
+
+test('every brief\'s run rules keep the implementer inside its worktree and committing each step with its next one (L57, L70)', posix, async () => {
+  const p = project();
+  const r = implement(p, { FAKE_OC_MODE: 'implement' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const prompt = readSessions(path.join(p.base, 'oc.json'))[0].brief.replace(/\s+/g, ' ');
   assert.match(prompt, /Never read, write or redirect to any path outside your worktree but your scratch folder: no other \/tmp path, no home directory, no git internals/);
   assert.match(prompt, /Scratch files go in your scratch folder \(\$TMPDIR, named at the top of this brief\), which is outside every checkout, so a test that needs a TMPDIR outside git uses it too\. .*\(L57, L66\)/);
-  assert.match(prompt, /Commit and push after each step, so a run that ends early keeps its work\. \(L57\)/);
+  assert.match(prompt, /Commit and push after each step, so a run that ends early keeps its work, with the message "step <k>: done <what>; next: <what>", so the next run knows where to start\. \(L57, L70\)/);
+  assert.doesNotMatch(prompt, /RESUME/);                                       // a fresh branch has nothing to resume
 });
-
-test('an exit 1 after a later attempt committed still names the earlier attempt\'s patch (#87)', posix, async () => {
+test('an exit 1 after a later attempt opened a PR still names the earlier attempt\'s wip commit (L70)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'commit-provider' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'pr-provider' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
-  assert.match(r.stderr, /after committing, pushing or opening a PR .* Unsaved work was saved before the reset: \S+T07\.mimo-flash\.\S+\.unsaved\.patch\./);
+  assert.match(r.stderr, /after opening a PR for task\/T07-calendar; not retrying\. The main session decides\. The stopped runs' work is on task\/T07-calendar: wip commit [0-9a-f]{12}\./);
 });
-
-test('the no-PR exit 1 names the patch a failed attempt saved (Sol\'s R3 on PR 100)', posix, async () => {
+test('the no-PR exit 1 names the wip commit a failed attempt left (Sol\'s R3 on PR 100, L70)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'stop-report' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
-  assert.match(r.stderr, /No open PR .* Unsaved work was saved before the reset: \S+T07\.mimo-flash\.\S+\.unsaved\.patch\./);
+  assert.match(r.stderr, /No open PR .* The stopped runs' work is on task\/T07-calendar: wip commit [0-9a-f]{12}\./);
 });
-
 test('implement.mjs --self-test checks the reset\'s save on a throwaway repository (#87)', () => {
   const r = spawnSync(process.execPath, [path.join(root, 'tools/harness/implement.mjs'), '--self-test'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr + r.stdout);

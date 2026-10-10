@@ -74,7 +74,9 @@ added. Each behaviour exists because a run failed without it:
 - With a longer chain, they move on only when the provider did not respond (a provider error in
   the session record or on OpenCode's stderr, or an idle session with no tool running) and the run
   left no commit, push or PR, and stop after the same failure twice. Any other failure is ours:
-  exit 5, the worktree kept as the run left it, never another model (L69).
+  exit 5, never another model (L69). A failed run's work is never reset: what it left uncommitted
+  becomes a pushed `wip:` commit, and the next run resumes it, its brief listing the branch's
+  commits (L70).
 - The review never runs on the implementer's model family.
 - The reviewer's agent and OpenCode config come from the main session's checkout, never from the
   PR under review: `OPENCODE_CONFIG_DIR` points there, and `OPENCODE_DISABLE_PROJECT_CONFIG=1` keeps

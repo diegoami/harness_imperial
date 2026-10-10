@@ -14,19 +14,16 @@
 // The model is harness.json's implementer.chain (one model, by the user's decision of 2026-10-02:
 // GLM-5.3 Flash, then MiMo V2.6 Flash, then Claude Sonnet); --model runs another alone. Runs use the scripts' own
 // OpenCode data directory, and a model OpenCode does not list there exits 5 before anything is
-// billed. With a longer chain, the next model runs only when the provider did not respond (L69:
-// a provider error, or an idle session with no tool running), and only when the failed run left
-// nothing behind (no new commit locally or on origin, no new PR), judged against the state before
-// the first attempt, so a resumed rework branch can still fall back. A failure through our process
-// (a denied call, the agent, a hung tool, a timeout, the setup) stops at once with exit 5, the
-// worktree as the run left it: the main session fixes the cause and reruns, which resumes the
-// branch. An implementer that stops and reports has NOT failed: its run exits 0 and is never
-// retried; this script then exits 1 at "no open PR".
-//
-// When a provider failure left nothing behind, the reset between attempts first saves the
-// worktree's uncommitted changes (staged, unstaged and untracked) to
-// <workRoot>/<name>.<model key>.<UTC time>.unsaved.patch, created exclusively (lib/unsaved.mjs,
-// #87). The exit 1, 3 and 5 messages name every patch the run saved.
+// billed. A failed attempt never loses its work (L70): what it left uncommitted becomes a `wip:`
+// commit, pushed to the branch with the model's own commits (lib/unsaved.mjs saveProgress; a patch
+// under <workRoot> only when that commit fails). With a longer chain, the next model runs only when
+// the provider did not respond (L69: a provider error, or an idle session with no tool running) and
+// the failed run opened no PR, and it resumes the saved work. A failure through our process (a
+// denied call, the agent, a hung tool, a timeout, the setup) stops at once with exit 5: the main
+// session fixes the cause and reruns, which resumes the branch. Every attempt on a branch that
+// already holds commits is told so in its brief (the RESUME block): their subjects, oldest first,
+// and to continue from the last `next:`. An implementer that stops and reports has NOT failed: its
+// run exits 0 and is never retried; this script then exits 1 at "no open PR".
 //
 // Exit 0: PR open. Exit 1: the main session decides (read the log). Exit 3: every provider failed
 // to respond; fall back to a Claude implementer. Exit 5: our process or setup failed; fix the
@@ -34,9 +31,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem, runFailure, deniedNote } from './lib/opencode.mjs';
+import { runOpenCodeWatched, resolveOpenCode, OpenCodeInfraError, keyProblem, runFailure, deniedNote, failureClass } from './lib/opencode.mjs';
 import { runChain } from './lib/chain.mjs';
-import { resetWorktree, selfTest as unsavedSelfTest } from './lib/unsaved.mjs';
+import { saveProgress, selfTest as unsavedSelfTest } from './lib/unsaved.mjs';
 import {
   sh, requireTools, repoPaths, loadConfig, parseArgs, envWith, ensureAgent, ocArgs, prepareOpenCode, watchLine,
 } from './lib/common.mjs';
@@ -101,6 +98,7 @@ if (remoteHas) sh('git', ['-C', worktree, 'merge', '-q', '--ff-only', `origin/${
 // refused too: the lexical check above is fooled by a tracked symlink whose target is outside,
 // but mkdirSync and copyFileSync follow symlinks, so the script would otherwise create the
 // destination outside the worktree (Luna's R2 on PR 91, both sides).
+const copied = [];   // the worktree paths --copy wrote: local files no wip commit takes (L70)
 for (const f of a.copy) {
   // 1. Lexical gate (cheap, no I/O): the path leaves the checkout or the worktree lexically.
   // Required (not best-effort) so a swap with the realpath gate changes the error text on
@@ -136,12 +134,16 @@ for (const f of a.copy) {
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.copyFileSync(realF, dest);
+  copied.push(rel);   // where the file landed: the resolved path, not the one asked for (Luna's R1 on PR 165)
+  // ...and, when that path is itself a symlink inside the worktree, the file the copy wrote through it (Luna's R1, round 2).
+  const landed = path.relative(fs.realpathSync(worktree), fs.realpathSync(dest));
+  if (landed !== rel) copied.push(landed);
 }
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);
 
 // 2. The run.
-const prompt = `${fs.readFileSync(a.brief, 'utf8')}
+const brief = `${fs.readFileSync(a.brief, 'utf8')}
 
 ---
 RUN RULES (from tools/harness/implement.mjs; they override the brief where they conflict):
@@ -154,12 +156,25 @@ RUN RULES (from tools/harness/implement.mjs; they override the brief where they 
   checkout). Scratch files go in your scratch folder ($TMPDIR, named at the top of this brief),
   which is outside every checkout, so a test that needs a TMPDIR outside git uses it too. Add files
   to commits by name, never git add -A. (L57, L66)
-- Commit and push after each step, so a run that ends early keeps its work. (L57)
+- Commit and push after each step, so a run that ends early keeps its work, with the message
+  "step <k>: done <what>; next: <what>", so the next run knows where to start. (L57, L70)
 `;
+// The branch's own commits, oldest first: what an earlier run (or round) already did (L70).
+const resumeBlock = () => {
+  const log = sh('git', ['-C', worktree, 'log', '--reverse', '--format=%h %s', 'origin/main..HEAD'], { allowFail: true });
+  if (!log) return '';
+  const lines = log.split('\n');
+  return `
+RESUME (from tools/harness/implement.mjs; L70): branch ${branch} already holds work, oldest first:
+${(lines.length > 40 ? ['…', ...lines.slice(-40)] : lines).map((l) => `  ${l}`).join('\n')}
+Continue from it, never from the start: the last "step <k>: …; next: …" commit names what comes
+next, and a "wip:" commit is what a run left when it stopped (git show --stat HEAD shows it).
+Check what it did before you build on it; do not redo a step that is done.
+`;
+};
 const openPr = () => sh('gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number'], { cwd: top, allowFail: true });
 const originSha = () => sh('git', ['-C', top, 'rev-parse', `origin/${branch}`], { allowFail: true });
 const startSha = sh('git', ['-C', worktree, 'rev-parse', 'HEAD']);
-const startRemote = originSha();
 const startPr = openPr();
 fs.writeFileSync(logFile, '');
 
@@ -168,8 +183,10 @@ fs.writeFileSync(logFile, '');
 // hide that agent, and OPENCODE_CONFIG_DIR would put another in its place.
 const { OPENCODE_CONFIG_DIR: _dir, OPENCODE_DISABLE_PROJECT_CONFIG: _off, ...implementEnv } = pre.env;
 
-const patches = [];        // the unsaved-work patches this run's resets wrote (#87)
-let attemptModel = null;   // the chain key of the attempt whose work a reset saves
+const patches = [];        // the patches a failed wip commit left instead (#87)
+const wips = [];           // the wip commits this run's failed attempts left (L70)
+let unpushed = false;      // a save whose push failed: the work is in the worktree only
+let attemptModel = null;   // the chain key of the attempt whose work a save keeps
 const result = await runChain({
   chain: pre.usable,
   log: say,
@@ -182,7 +199,7 @@ const result = await runChain({
     let output;
     try {
       const run = await runOpenCodeWatched({
-        args: ocArgs(worktree, impl.agent, model), prompt, workDir: worktree, title: `${name}-${m}`,
+        args: ocArgs(worktree, impl.agent, model), prompt: brief + resumeBlock(), workDir: worktree, title: `${name}-${m}`,
         startupTimeoutMs: impl.startupTimeoutSec * 1000, idleTimeoutMs: impl.idleTimeoutSec * 1000,
         totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: implementEnv, log: say,
       });
@@ -199,30 +216,33 @@ const result = await runChain({
     fs.appendFileSync(logFile, `=== ${m} (${model.id}): ${reason ? `failed: ${reason}` : 'ran'} ===\n${watch ? `${watch}\n` : ''}${output}\n`);
     return reason ? { ok: false, reason } : { ok: true, value: output };
   },
+  // A run that opened a PR handed the task over: no other model works on top of it (L12).
   leftWork: async () => {
-    sh('git', ['-C', top, 'fetch', '-q', 'origin']);
     const pr = openPr();
-    return sh('git', ['-C', worktree, 'rev-parse', 'HEAD']) !== startSha
-      || originSha() !== startRemote || (pr && pr !== startPr);
+    return Boolean(pr && pr !== startPr);
   },
-  // Before the hard reset destroys it, the failed attempt's uncommitted work goes to a patch
-  // (lib/unsaved.mjs, #87). Only a provider failure resets; a process failure keeps the worktree.
-  reset: async () => {
-    patches.push(...resetWorktree({ worktree, startSha, workRoot, name, model: attemptModel, log: say }));
+  // Every failed attempt's work is committed and pushed, never reset (L70; #87 before it).
+  save: async (r) => {
+    const s = saveProgress({ worktree, branch, model: attemptModel, cause: failureClass(r.reason), reason: r.reason, startSha, workRoot, name, keepOut: copied, log: say });
+    if (s.commit) wips.push(s.commit.slice(0, 12));
+    unpushed = !s.pushed;   // a later push carries the earlier commits
+    patches.push(...s.patches);
   },
 });
 
 say(`run log: ${logFile}`);
-// Every exit after the chain names the patches its resets saved (#87; Sol's R3 on PR 100).
-const saved = patches.length ? ` Unsaved work was saved before the reset: ${patches.join(', ')}.` : '';
+// Every exit after the chain names the wip commits and any patch its saves left (L70, #87; Sol's R3 on PR 100).
+// A refused push is named even without a wip commit: the model's own commits are then local only (Luna's R2 on PR 165).
+const saved = `${wips.length ? ` The stopped runs' work is on ${branch}: wip commit${wips.length > 1 ? 's' : ''} ${wips.join(', ')}${unpushed ? ', not pushed: it is in the worktree only' : ''}.` : ''}`
+  + `${unpushed && !wips.length ? ` ${branch} could not be pushed: the run's commits are in the worktree ${worktree} only.` : ''}`
+  + `${patches.length ? ` Uncommitted work was saved as a patch: ${patches.join(', ')}.` : ''}`;
 const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
 if (!result.ok) {
   if (result.process) {
-    const kept = result.leftWork ? `It committed, pushed or opened a PR on ${branch}; ` : '';
-    die(5, `The run failed through our process (${reasons}). ${kept}the worktree ${worktree} is kept as the run left it. Read ${logFile}, fix the cause (brief, permissions, agent, runner) and rerun: the rerun resumes ${branch}. No fallback to another model (L69).${saved}`);
+    die(5, `The run failed through our process (${reasons}).${saved} Read ${logFile}, fix the cause (brief, permissions, agent, runner) and rerun: the rerun resumes ${branch} from the worktree ${worktree}. No fallback to another model (L69).`);
   }
-  if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.${saved}`);
-  die(3, `The providers did not respond: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}${saved}`);
+  if (result.leftWork) die(1, `The run failed (${reasons}) after opening a PR for ${branch}; not retrying. The main session decides.${saved}`);
+  die(3, `The providers did not respond: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback} It resumes ${branch}.${saved}`);
 }
 if (reasons) say(`fell back: ${reasons}`);
 // The reviewer must not be this model's family: pass it to review.mjs as --exclude.
