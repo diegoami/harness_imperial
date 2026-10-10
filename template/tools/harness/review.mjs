@@ -174,7 +174,7 @@ const newTree = () => {
 // One review: the chain's models in turn, each in a fresh worktree; a second opinion says so in its header.
 const runReview = async (names, second) => {
   try {
-    return await runChain({ chain: names, log: say, reset: async () => {}, attempt: (m) => attempt(m, second) });
+    return await runChain({ chain: names, log: say, attempt: (m) => attempt(m, second) });
   } finally {
     removeTree();
   }

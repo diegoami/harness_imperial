@@ -4,16 +4,18 @@
 import { failureClass, failureKind } from './opencode.mjs';
 
 /**
- * Tries each model once. The next model runs only when the provider did not respond (failureKind,
- * L69), and only when the failed attempt left nothing behind (leftWork() is false). A failure
- * through our process (the brief, the permissions, the agent, the runner) stops the chain at once,
- * without a reset, so the worktree keeps what the run did: it is fixed, never routed around. Two
- * consecutive provider failures with the same cause stop the chain too.
+ * Tries each model once. Every failed attempt is saved first (save(), L70: the implementer's work
+ * committed and pushed, never reset), whatever its cause. The next model runs only when the
+ * provider did not respond (failureKind, L69), and only when the failed attempt did not hand the
+ * task over (leftWork(), for the implementer a new PR); it then resumes what the attempt saved. A
+ * failure through our process (the brief, the permissions, the agent, the runner) stops the chain
+ * at once: it is fixed, never routed around. Two consecutive provider failures with the same cause
+ * stop the chain too.
  *
  * attempt(name) resolves { ok: true, value } or { ok: false, reason, detail }.
  * Resolves { ok: true, name, value, failures }, or { ok: false, failures, sameCause, leftWork, process }.
  */
-export async function runChain({ chain, attempt, leftWork = async () => false, reset = async () => {}, log = () => {}, kindOf = failureKind }) {
+export async function runChain({ chain, attempt, leftWork = async () => false, save = async () => {}, log = () => {}, kindOf = failureKind }) {
   const failures = [];
   for (const name of chain) {
     log(`attempt: ${name}`);
@@ -22,9 +24,9 @@ export async function runChain({ chain, attempt, leftWork = async () => false, r
     const kind = kindOf(r.reason);
     log(`${name} failed (${kind === 'provider' ? 'the provider did not respond' : 'our process'}): ${r.reason}`);
     failures.push({ name, reason: r.reason, detail: r.detail, kind });
+    await save(r, kind);
     if (kind !== 'provider') return { ok: false, failures, sameCause: null, leftWork: await leftWork(), process: true };
     if (await leftWork()) return { ok: false, failures, sameCause: null, leftWork: true, process: false };
-    await reset();
     const n = failures.length;
     if (n >= 2 && failureClass(failures[n - 1].reason) === failureClass(failures[n - 2].reason)) {
       return { ok: false, failures, sameCause: failureClass(r.reason), leftWork: false, process: false };
