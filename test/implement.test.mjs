@@ -278,7 +278,8 @@ test('a process failure keeps the worktree as the run left it: no reset, no patc
   const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' });
   assert.equal(r.status, 5, r.stderr + r.stdout);
   const wt = path.join(p.base, 'proj-work', 'T07');
-  assert.ok(r.stderr.includes(`the worktree ${wt} is kept as the run left it`), r.stderr);
+  // git names the worktree its own way on Windows (/ and maybe a short name): match its tail.
+  assert.match(r.stderr, /the worktree \S+[\\/]proj-work[\\/]T07 is kept as the run left it/);
   assert.match(r.stderr, /the rerun resumes task\/T07-calendar/);
   assert.match(fs.readFileSync(path.join(wt, 'README.md'), 'utf8'), /edited, not committed/);
   assert.ok(fs.existsSync(path.join(wt, 'new-file.txt')));
