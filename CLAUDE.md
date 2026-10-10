@@ -18,10 +18,10 @@ copies; `test/` tests the tools against fakes of `opencode` and `gh`.
   and what each model has shown. Update it in the same commit as a model change or a lesson from a run.
 - The backlog is this repository's open GitHub issues; the open issue titled "Start here" orders
   them and holds the handover between sessions (status lives on GitHub, never in a file).
-- Merge without asking once another family approved the PR's head and every check is SUCCESS:
-  `gh pr checks` exits 0 on a failed or CANCELLED check and there is no branch protection, so gate
-  on `gh pr checks <n> --json name,state -q '.[] | select(.state != "SUCCESS")'` printing nothing
-  (PR 57 merged red, PR 99 untested). Ask the owner for design decisions and for any escalation:
+- Merge without asking once another family approved the PR's head and every check is SUCCESS.
+  There is no branch protection, and `gh pr checks` exits 0 when the test jobs were CANCELLED (PR 99
+  merged untested; PR 57 merged red), so gate on
+  `gh pr checks <n> --json name,state -q '.[] | select(.state != "SUCCESS")'` printing nothing. Ask the owner for design decisions and for any escalation:
   a third rework round, a weaker Done-when, anything destructive.
 - Every review brief carries a "Blocking means" section written for the PR and, pasted in full,
   the "Report every blocking finding in this one review" section of `template/docs/review-brief.md`.

@@ -151,7 +151,10 @@ its `harness.json`), and three-way merge each other adapted file: `git merge-fil
 at the old pin> <template at the new pin>`. Then diff each adapted file against the new template:
 it must differ only by what its `adapt` line in `harness.lock` names. A file adapted from an older
 pin than the lock's merges without a conflict yet keeps stale upstream text (malpaco PR 12,
-2026-10-09). An adapted file now equal to the template loses its `adapt` line and gets a hash.
+2026-10-09). Last, the new `harness.lock`: `adopt.mjs` hashes every file but its own few adapted
+ones, so each file the project adapts (its `harness.json` too) gets its old `adapt` line back in
+place of its hash line, and an adapted file now equal to the template keeps its hash and loses the
+`adapt` line. The verify line must pass on the result.
 
 - **full**: the whole template, as below. The main session orchestrates: OpenCode implements, a
   reviewer of another family reviews, and task files are the contracts.
