@@ -171,8 +171,21 @@ test('inRoots: one path form, case folded on Windows only (Luna\'s R1 and R3 on 
   assert.equal(inRoots({ workDir: path.join(root, 'T07') }, [root]), true);           // a worktree not yet made
   assert.equal(inRoots({ workDir: `${root.replaceAll(path.sep, '/')}/T07` }, [root]), true);   // git's /
   assert.equal(inRoots({ workDir: path.join(base, 'proj-work2', 'T07') }, [root]), false);     // a prefix is not a parent
-  // POSIX keeps case: another project whose path differs only in case is not this one.
-  assert.equal(inRoots({ workDir: path.join(base, 'PROJ-WORK', 'T07') }, [root], 'linux'), false);
+  // A work root reached through a symlink is the same root: only the real path makes them match (Sol's R3, round 3).
+  const real = path.join(base, 'real-work');
+  fs.mkdirSync(real);
+  let linked = true;
+  try { fs.symlinkSync(real, path.join(base, 'linked-work'), 'dir'); } catch { linked = false; }   // Windows without the privilege
+  if (linked) {
+    assert.equal(inRoots({ workDir: path.join(real, 'T07') }, [path.join(base, 'linked-work')]), true);
+    assert.equal(inRoots({ workDir: path.join(base, 'linked-work', 'T07') }, [real]), true);
+  }
+  // Case: on a case-sensitive filesystem another project whose path differs only in case is not this
+  // one; on Windows (folded) it is the same (Sol's R1, round 3).
+  fs.mkdirSync(path.join(base, 'Case'));
+  const caseSensitive = !fs.existsSync(path.join(base, 'CASE'));
+  if (caseSensitive) assert.equal(inRoots({ workDir: path.join(base, 'PROJ-WORK', 'T07') }, [root], 'linux'), false);
+  assert.equal(inRoots({ workDir: path.join(base, 'PROJ-WORK', 'T07') }, [root], 'win32'), true);
   assert.equal(canonical('/X/Y', 'win32'), canonical('/x/y', 'win32'));
 });
 
@@ -180,4 +193,7 @@ test('agents.mjs refuses a bad call with exit 2', () => {
   assert.equal(spawnSync(process.execPath, [agents], { encoding: 'utf8' }).status, 2);
   assert.equal(spawnSync(process.execPath, [agents, '--status', '--watch'], { encoding: 'utf8' }).status, 2);
   assert.equal(spawnSync(process.execPath, [agents, '--watch', '--every', '10'], { encoding: 'utf8' }).status, 2);
+  // Zero intervals would flood the watch (Sol's R2 on PR 166, round 3).
+  assert.equal(spawnSync(process.execPath, [agents, '--watch', '--all', '--every', '0s'], { encoding: 'utf8', timeout: 10_000 }).status, 2);
+  assert.equal(spawnSync(process.execPath, [agents, '--watch', '--all', '--poll', '0m'], { encoding: 'utf8', timeout: 10_000 }).status, 2);
 });

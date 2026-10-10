@@ -30,8 +30,9 @@ try { a = parseArgs(process.argv.slice(2), { flags: ['status', 'watch', 'until-d
 if (!a.status === !a.watch) die(2, 'Give exactly one of --status or --watch.');
 const duration = (text, fallback) => {
   if (text === undefined) return fallback;
+  // Zero is refused: it would turn the watch into a flood (Sol's R2 on PR 166, round 3).
   const m = /^(\d+)(s|m|h)$/.exec(String(text));
-  if (!m) die(2, `A duration looks like 15s, 30m or 1h; got ${text}`);
+  if (!m || Number(m[1]) === 0) die(2, `A duration is a positive number of s, m or h, like 15s, 30m or 1h; got ${text}`);
   return Number(m[1]) * { s: 1000, m: 60_000, h: 3_600_000 }[m[2]];
 };
 const dir = a.dir ?? path.join(os.tmpdir(), 'harness-opencode');
