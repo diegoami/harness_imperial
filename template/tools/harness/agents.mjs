@@ -13,17 +13,20 @@
 //                                                   has ended and none runs. The main session runs it
 //                                                   under Monitor, so each line reaches the owner.
 //   [--dir <logDir>]                                default: <tmpdir>/harness-opencode, the runner's
+//   [--all]                                         every project's jobs; by default only this
+//                                                   repository's (worktrees under its work root),
+//                                                   since every project on the machine shares logDir
 //
 // Exit 0; 2 on a bad argument.
 
 import os from 'node:os';
 import path from 'node:path';
-import { listJobs, exportSession, lastSteps, describeJob } from './lib/jobs.mjs';
-import { parseArgs } from './lib/common.mjs';
+import { listJobs, exportSession, lastSteps, describeJob, inRoots } from './lib/jobs.mjs';
+import { parseArgs, sh, repoPaths, loadConfig } from './lib/common.mjs';
 
 const die = (code, s) => { console.error(s); process.exit(code); };
 let a;
-try { a = parseArgs(process.argv.slice(2), { flags: ['status', 'watch', 'until-done'] }); } catch (e) { die(2, e.message); }
+try { a = parseArgs(process.argv.slice(2), { flags: ['status', 'watch', 'until-done', 'all'] }); } catch (e) { die(2, e.message); }
 if (!a.status === !a.watch) die(2, 'Give exactly one of --status or --watch.');
 const duration = (text, fallback) => {
   if (text === undefined) return fallback;
@@ -34,13 +37,24 @@ const duration = (text, fallback) => {
 const dir = a.dir ?? path.join(os.tmpdir(), 'harness-opencode');
 const every = duration(a.every, 30 * 60_000);
 const poll = duration(a.poll, 15_000);
+// This repository's jobs only, unless --all: its checkout and its work root.
+const roots = (() => {
+  if (a.all) return null;
+  const top = sh('git', ['rev-parse', '--show-toplevel'], { allowFail: true });
+  if (!top) die(2, 'Not in a git repository: run it from the project, or pass --all.');
+  let config = {};
+  try { config = loadConfig(top); } catch { /* no harness.json: the default work root */ }
+  const { mainRoot, workRoot } = repoPaths(config);
+  return [mainRoot, workRoot];
+})();
+const jobsIn = (now) => listJobs(dir, { now }).filter((j) => !roots || inRoots(j, roots));
 
 const stepsOf = (job) => (job.ended || !job.sessionId ? [] : (() => { const e = exportSession(job); return e ? lastSteps(e) : null; })());
 const line = (job) => describeJob(job, stepsOf(job));
 
 if (a.status) {
   const now = Date.now();
-  const jobs = listJobs(dir, { now });
+  const jobs = jobsIn(now);
   const running = jobs.filter((j) => !j.ended);
   const recent = jobs.filter((j) => j.ended && now - j.ended < 3_600_000);
   if (!running.length) console.log('no in-flight jobs.');
@@ -57,7 +71,7 @@ const seen = new Map();          // title -> { ended, reported }
 const startedAt = Date.now();
 for (;;) {
   const now = Date.now();
-  const jobs = listJobs(dir, { now });
+  const jobs = jobsIn(now);
   for (const j of jobs) {
     const was = seen.get(j.title);
     if (!was) {

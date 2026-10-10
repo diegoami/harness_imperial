@@ -32,17 +32,19 @@ const run = (s, opts = {}) => runOpenCodeWatched({
   job: { kind: 'implement', task: 'T07', model: 'mimo-flash' }, ...opts,
 });
 // The fake answers `export` from its state file; the real OpenCode from the job's data directory.
-const status = (s) => spawnSync(process.execPath, [agents, '--status', '--dir', s.logDir], { encoding: 'utf8', env: s.env });
+const status = (s) => spawnSync(process.execPath, [agents, '--status', '--all', '--dir', s.logDir], { encoding: 'utf8', env: s.env });
 const until = async (cond, ms = 10000) => {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) if (cond()) return true;
   return false;
 };
 
-test('briefSummary: the first paragraph in one line, past front matter, a short header joined to the next, at most 160 characters', () => {
+test('briefSummary: the first paragraph in one line, past front matter, a short header joined to the next, at most 120 characters', () => {
   assert.equal(briefSummary('T07: build the calendar.\r\nIt shows a month.\r\n\r\nMore.'), 'T07: build the calendar. It shows a month.');
   assert.equal(briefSummary('---\ntitle: x\n---\n\n# T07\n\nBuild the calendar.'), 'T07: Build the calendar.');
   assert.equal(briefSummary('PR 7 review (luna)\n\nReview PR 7 at head abc: the calendar.'), 'PR 7 review (luna): Review PR 7 at head abc: the calendar.');
-  assert.equal(briefSummary('x'.repeat(200)).length, 160);
+  assert.equal(briefSummary('x'.repeat(200)).length, 120);
+  assert.equal(briefSummary('x'.repeat(121)).length, 120);                     // Luna's R4 on PR 166
+  assert.equal(briefSummary('x'.repeat(120)), 'x'.repeat(120));
   assert.match(briefSummary('x'.repeat(200)), /…$/);
   assert.equal(briefSummary(''), '(no brief)');
 });
@@ -64,8 +66,10 @@ test('describeJob: a running job and an ended one, in plain words', () => {
     'implement T07 on mimo-flash, running 12m in /w. Task: T07: build it. Now: last steps, newest first: bash npm test (running)');
   assert.match(describeJob({ ...job, sessionId: null }, [], 0), /Now: starting \(no session yet\)$/);
   assert.match(describeJob(job, null, 0), /Now: running \(its session record could not be read\)$/);
+  // A record without its brief (another version, or damaged) still reads as a sentence (Luna's R3 on PR 166).
+  assert.match(describeJob({ ...job, about: undefined }, [], 0), /\. Task: \(no brief recorded\)\. Now: /);
   assert.equal(describeJob({ ...job, ended: 75 * 60_000, outcome: 'ran to the end (exit 0)' }, [], 0),
-    'implement T07 on mimo-flash: finished after 1h15m, ran to the end (exit 0). Task: T07: build it');
+    'implement T07 on mimo-flash: finished after 1h15m, ran to the end (exit 0). Task: T07: build it.');
 });
 
 test('listJobs: a runner that died without an outcome is reported stopped; a record ended over a day ago is removed', () => {
@@ -100,7 +104,8 @@ test('a run keeps a job record: what it is, its session, and how it ended (#148)
 });
 
 test('agents.mjs --status: a running job with its brief and last steps, then the same job ended; none says so (#148)', async () => {
-  const s = setup('ok', { FAKE_OC_STEPS: '60', FAKE_OC_STEP_MS: '100', FAKE_OC_PARTS: JSON.stringify(PARTS) });
+  // A large export, as a long session's is: OpenCode exits before a pipe has taken it all (the fake too).
+  const s = setup('ok', { FAKE_OC_STEPS: '60', FAKE_OC_STEP_MS: '100', FAKE_OC_PARTS: JSON.stringify(PARTS), FAKE_OC_BIG_EXPORT: '1' });
   assert.equal(status(s).stdout, 'no in-flight jobs.\n');
   const going = run(s);
   assert.ok(await until(() => fs.existsSync(s.logDir) && fs.readdirSync(s.logDir).some((n) => n.endsWith('.job.json')
@@ -118,7 +123,7 @@ test('agents.mjs --watch --until-done: a line when a job starts, every --every w
   fs.mkdirSync(s.logDir, { recursive: true });
   // A job that ended before the watch began is not reported.
   writeJob(jobFile(s.logDir, 'earlier'), { title: 'earlier', task: 'T01', runnerPid: process.pid, started: Date.now() - 5000, ended: Date.now() - 4000, outcome: 'x' });
-  const w = spawn(process.execPath, [agents, '--watch', '--until-done', '--poll', '1s', '--every', '1s', '--dir', s.logDir], { stdio: ['ignore', 'pipe', 'pipe'], env: s.env });
+  const w = spawn(process.execPath, [agents, '--watch', '--until-done', '--all', '--poll', '1s', '--every', '1s', '--dir', s.logDir], { stdio: ['ignore', 'pipe', 'pipe'], env: s.env });
   let out = '';
   w.stdout.on('data', (d) => { out += d; });
   const exited = new Promise((r) => w.on('exit', r));
@@ -132,6 +137,27 @@ test('agents.mjs --watch --until-done: a line when a job starts, every --every w
   assert.match(lines.at(-1), /^\d\d:\d\d every watched job has ended\.$/);
   assert.match(out, /^\d\d:\d\d still running: implement T07 on mimo-flash, running 0m in \S+\. Task: T07: build the calendar screen\. Now: last steps, newest first: bash npm test \(running\)/m);
   assert.doesNotMatch(out, /T01/);
+});
+
+test('agents.mjs shows this repository\'s jobs by default, every project\'s with --all (Luna\'s R2 on PR 166)', () => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'harness-agents-repo-')));
+  const repo = path.join(base, 'proj');
+  fs.mkdirSync(repo);
+  spawnSync('git', ['init', '-q', repo]);
+  const logDir = path.join(base, 'logs');
+  fs.mkdirSync(logDir);
+  const now = Date.now();
+  const rec = (title, workDir) => writeJob(jobFile(logDir, title), { title, kind: 'implement', task: title, model: 'm', about: 'x', workDir, runnerPid: process.pid, started: now });
+  rec('T07', path.join(base, 'proj-work', 'T07'));                              // this repository's work root
+  rec('T99', path.join(base, 'other-work', 'T99'));                             // another project's
+  const mine = spawnSync(process.execPath, [agents, '--status', '--dir', logDir], { encoding: 'utf8', cwd: repo });
+  assert.equal(mine.status, 0, mine.stderr);
+  assert.match(mine.stdout, /implement T07 on m/);
+  assert.doesNotMatch(mine.stdout, /T99/);
+  const all = spawnSync(process.execPath, [agents, '--status', '--all', '--dir', logDir], { encoding: 'utf8', cwd: repo });
+  assert.match(all.stdout, /T07[\s\S]*T99/);
+  // Outside a repository, without --all: refused.
+  assert.equal(spawnSync(process.execPath, [agents, '--status', '--dir', logDir], { encoding: 'utf8', cwd: base }).status, 2);
 });
 
 test('agents.mjs refuses a bad call with exit 2', () => {

@@ -5,6 +5,7 @@
 // finished record stays a day, so a watch that polls after the end still reports it.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -24,8 +25,8 @@ export function updateJob(file, fields) {
 }
 
 // The brief's first paragraph, in one line: front matter and blank lines skipped, and a short
-// header line (a review's "PR 7 review (luna)") joined with the paragraph after it. At most 160
-// characters. A header is a short line that does not end a sentence.
+// header line (a review's "PR 7 review (luna)") joined with the paragraph after it. At most 120
+// characters, as #148 asks. A header is a short line that does not end a sentence.
 export function briefSummary(text) {
   let lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
   if (lines[0]?.trim() === '---') {
@@ -35,7 +36,7 @@ export function briefSummary(text) {
   const paragraphs = lines.join('\n').split(/\n\s*\n/).map((p) => p.replace(/\s+/g, ' ').trim().replace(/^#+\s*/, '')).filter(Boolean);
   if (!paragraphs.length) return '(no brief)';
   const first = paragraphs[0].length < 60 && !/[.!?:;]$/.test(paragraphs[0]) && paragraphs[1] ? `${paragraphs[0]}: ${paragraphs[1]}` : paragraphs[0];
-  return first.length > 160 ? `${first.slice(0, 159)}…` : first;
+  return first.length > 120 ? `${first.slice(0, 119)}…` : first;
 }
 
 // One step of the session record in a few words: a tool and its main argument, or the agent's text.
@@ -60,20 +61,38 @@ export function lastSteps(exported, n = 3) {
 }
 
 // The session record of a running job, read with the job's own OpenCode and data directory, or null.
+// Into a file, never a pipe: OpenCode exits before a pipe has taken a large export (the runner's
+// sessionRecord does the same), so a pipe gets a cut-off record that does not parse.
 export function exportSession(job, timeoutMs = 20_000) {
   if (!job.sessionId || !job.opencode) return null;
-  const r = spawnSync(job.opencode.exe, [...(job.opencode.prefix ?? []), 'export', job.sessionId], {
-    cwd: fs.existsSync(job.workDir ?? '') ? job.workDir : undefined, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 256 << 20,
-    env: { ...process.env, ...(job.dataHome ? { XDG_DATA_HOME: job.dataHome } : {}) }, stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  if (r.status !== 0 || !r.stdout) return null;
-  try { return JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))); } catch { return null; }
+  const file = path.join(os.tmpdir(), `harness-export-${process.pid}-${Date.now()}.json`);
+  const fd = fs.openSync(file, 'w');
+  try {
+    const r = spawnSync(job.opencode.exe, [...(job.opencode.prefix ?? []), 'export', job.sessionId], {
+      cwd: fs.existsSync(job.workDir ?? '') ? job.workDir : undefined, timeout: timeoutMs,
+      env: { ...process.env, ...(job.dataHome ? { XDG_DATA_HOME: job.dataHome } : {}) }, stdio: ['ignore', fd, 'ignore'],
+    });
+    fs.closeSync(fd);
+    if (r.status !== 0) return null;
+    const text = fs.readFileSync(file, 'utf8');
+    return JSON.parse(text.slice(text.indexOf('{')));
+  } catch { return null; } finally {
+    try { fs.closeSync(fd); } catch { /* closed */ }
+    fs.rmSync(file, { force: true });
+  }
 }
 
 const alive = (pid) => {
   if (!pid) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 };
+
+// Whether a job belongs to a repository: its worktree lies in the repository's work root (where
+// implement.mjs and review.mjs put every worktree) or the checkout itself (Luna's R2 on PR 166).
+export function inRoots(job, roots) {
+  const w = path.resolve(String(job.workDir ?? '')).toLowerCase();
+  return roots.some((r) => { const root = path.resolve(r).toLowerCase(); return w === root || w.startsWith(root + path.sep); });
+}
 
 // Every job record in logDir: running ones, and those that ended within `keepMs`. A record whose
 // runner died without writing an outcome is reported as stopped. Older finished records are removed.
@@ -101,10 +120,12 @@ const home = (p) => (process.env.HOME && String(p ?? '').startsWith(process.env.
 // One job in plain words, for the owner: what it is, how long it has run, what the brief asks, and
 // what the agent did last (or how it ended).
 export function describeJob(job, steps, now = Date.now()) {
+  // A record written by another version, or damaged, still reads as a sentence (Luna's R3 on PR 166).
+  const about = String(job.about ?? '(no brief recorded)').replace(/\.$/, '');
   const head = `${job.kind ?? 'run'} ${job.task ?? job.title} on ${job.model ?? '?'}`;
-  if (job.ended) return `${head}: finished after ${minutes(job.ended - job.started)}, ${job.outcome ?? 'no outcome recorded'}. Task: ${job.about}`;
+  if (job.ended) return `${head}: finished after ${minutes(job.ended - job.started)}, ${job.outcome ?? 'no outcome recorded'}. Task: ${about}.`;
   const doing = !job.sessionId ? 'starting (no session yet)'
     : steps === null ? 'running (its session record could not be read)'
       : steps.length ? `last steps, newest first: ${steps.join('; ')}` : 'running, no step yet';
-  return `${head}, running ${minutes(now - job.started)} in ${home(job.workDir)}. Task: ${String(job.about).replace(/\.$/, '')}. Now: ${doing}`;
+  return `${head}, running ${minutes(now - job.started)} in ${home(job.workDir)}. Task: ${about}. Now: ${doing}`;
 }
