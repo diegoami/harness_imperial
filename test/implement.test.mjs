@@ -339,6 +339,22 @@ test('a wip commit never takes a file --copy brought in through a symlink: the l
   assert.ok(!files.includes('secret.ini') && !files.includes('link.ini'), files.join(' '));
 });
 
+test('a wip commit never takes the file a --copy wrote through a symlink already in the worktree (Luna\'s R1 on PR 165, round 2)', posix, async () => {
+  const p = project({ chain: ['mimo-flash'] });
+  // A tracked symlink in the repository, pointing at a tracked file: the copy writes through it.
+  fs.writeFileSync(path.join(p.main, 'target.ini'), 'tracked\n');
+  fs.symlinkSync('target.ini', path.join(p.main, 'local.ini'));
+  git(p.main, 'add', 'target.ini', 'local.ini');
+  git(p.main, 'commit', '-q', '-m', 'link');
+  git(p.main, 'push', '-q', 'origin', 'main');
+  fs.unlinkSync(path.join(p.main, 'local.ini'));
+  fs.writeFileSync(path.join(p.main, 'local.ini'), 'token=never pushed\n');   // the main checkout's local copy
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' }, '--copy', 'local.ini');
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.equal(git(p.origin, 'show', 'task/T07-calendar:target.ini'), 'tracked');
+  assert.ok(git(p.origin, 'ls-tree', '-r', '--name-only', 'task/T07-calendar').split('\n').includes('new-file.txt'));
+});
+
 test('a refused push of the model\'s own commits, with nothing left to wip, is named in the exit (Luna\'s R2 on PR 165)', posix, async () => {
   const p = project({ chain: ['mimo-flash'] });
   const hook = path.join(p.origin, 'hooks', 'pre-receive');

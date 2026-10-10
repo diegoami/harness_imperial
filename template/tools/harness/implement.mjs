@@ -135,6 +135,9 @@ for (const f of a.copy) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.copyFileSync(realF, dest);
   copied.push(rel);   // where the file landed: the resolved path, not the one asked for (Luna's R1 on PR 165)
+  // ...and, when that path is itself a symlink inside the worktree, the file the copy wrote through it (Luna's R1, round 2).
+  const landed = path.relative(fs.realpathSync(worktree), fs.realpathSync(dest));
+  if (landed !== rel) copied.push(landed);
 }
 ensureAgent({ top, commonDir, worktree, agent: impl.agent });
 say(`worktree: ${worktree} on ${branch}`);
