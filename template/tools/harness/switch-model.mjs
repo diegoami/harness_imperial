@@ -77,7 +77,7 @@ if (a.probe) {
     const run = await runOpenCodeWatched({
       args, prompt: 'Reply with the single word PONG and nothing else.', workDir: dir, title: `probe-${plan.name}`,
       startupTimeoutMs: 120_000, idleTimeoutMs: 120_000, totalTimeoutMs: 300_000, pollMs: 2_000,
-      opencode, env: pre.env, log: () => {},
+      opencode, env: pre.env, log: () => {}, job: { kind: 'probe', task: `switch to ${plan.name}`, model: plan.name },
     });
     if (run.exitCode !== 0 || !/PONG/i.test(run.stdout)) {
       failure = `probe failed (exit ${run.exitCode}): ${run.output.split(/\r?\n/).slice(-5).join(' | ')}`;

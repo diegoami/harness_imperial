@@ -62,6 +62,7 @@ if (cmd === 'export') {
   // A long session's export is large; the real OpenCode exits before a pipe has taken all of it.
   // So does Node: process.exit() drops what a pipe has not yet taken, but a file is written at once.
   const messages = process.env.FAKE_OC_BIG_EXPORT ? [{ text: 'x'.repeat(4 << 20) }] : [];
+  if (s.parts) messages.push({ info: { role: 'user' }, parts: [{ type: 'text', text: 'the brief' }] }, { info: { role: 'assistant' }, parts: s.parts });
   // A rejected tool call, as OpenCode 1.18.34 records it.
   if (s.rejected) messages.push({ parts: [{ type: 'tool', tool: 'read', state: { status: 'error', error: 'The user rejected permission to use this specific tool call.' } }] });
   // Denied calls (#146), each as OpenCode 1.18.34 records it, then the model's own text unless the
@@ -120,7 +121,8 @@ const brief = briefFile && fs.existsSync(briefFile) ? fs.readFileSync(briefFile,
 const deniedHere = process.env.FAKE_OC_DENIALS && (!process.env.FAKE_OC_DENIALS_MODEL || process.env.FAKE_OC_DENIALS_MODEL === arg('--model'))
   ? { denials: JSON.parse(process.env.FAKE_OC_DENIALS), recovered: !process.env.FAKE_OC_DENY_STOPPED } : {};
 const createSession = (recordedAgent = agent, extra = {}) => {
-  mine = { ...deniedHere, ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
+  // FAKE_OC_PARTS: the agent's steps in the session record, as OpenCode 1.18.34 exports parts (#148).
+  mine = { ...deniedHere, ...(process.env.FAKE_OC_PARTS ? { parts: JSON.parse(process.env.FAKE_OC_PARTS) } : {}), ...extra, id, title, directory: process.cwd(), created: Date.now(), updated: Date.now(), agent: recordedAgent,
     dataHome: process.env.XDG_DATA_HOME ?? null, prompt: pointer, agentFile, brief,
     tmpdir: process.env.TMPDIR ?? null, temp: process.env.TEMP ?? null, tmp: process.env.TMP ?? null,
     configDir: process.env.OPENCODE_CONFIG_DIR ?? null, configContent: process.env.OPENCODE_CONFIG_CONTENT ?? null,

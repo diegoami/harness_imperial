@@ -202,6 +202,7 @@ const result = await runChain({
         args: ocArgs(worktree, impl.agent, model), prompt: brief + resumeBlock(), workDir: worktree, title: `${name}-${m}`,
         startupTimeoutMs: impl.startupTimeoutSec * 1000, idleTimeoutMs: impl.idleTimeoutSec * 1000,
         totalTimeoutMs: impl.totalTimeoutSec * 1000, opencode, env: implementEnv, log: say,
+        job: { kind: a.task ? 'implement' : 'fix', task: a.task ?? `#${a.fix}`, model: m },
       });
       output = run.output;
       // OpenCode's own error stream on a failed run, never the model's output (Luna's R1, round 2).

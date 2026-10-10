@@ -23,6 +23,7 @@ hand work to OpenCode, and the rules that catch model mistakes. Those are the ha
 | `template/tools/harness/post-review.mjs` | Posts a Claude reviewer's returned review through the same reader and writer as `review.mjs` (`lib/post.mjs`), so only one component writes reviews to GitHub. |
 | `template/tools/harness/review.mjs` | Runs a review on OpenCode, never on the implementer's model family, and posts it. `--second-opinion` adds a review by another model for a critical PR; the stricter verdict decides the label. |
 | `template/tools/harness/lib/opencode.mjs` | The watched runner that both use. |
+| `template/tools/harness/agents.mjs`, `lib/jobs.mjs` | What the delegated runs are doing, for the owner (L71): every run keeps a job record next to its logs; `--status` lists each running job's task, model, time, brief and last three steps, and `--watch` reports each start and end and every 30 minutes each running job. |
 | `template/.opencode/agents/` | The OpenCode agents, with the permission deny-lists. |
 | `template/tools/harness/jev.mjs`, `lib/jev.mjs` | Delegates repeated decisions to Jev: `trial` against labels, then `route` the confident ends. |
 | `template/.claude/skills/jev/SKILL.md` | `/jev`: when a decision fits Jev, and the define, label, trial, route procedure. |
