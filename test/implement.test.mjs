@@ -29,7 +29,9 @@ function project(harness = {}) {
   fs.copyFileSync(path.join(root, '.opencode/agents/implementer.md'), path.join(main, '.opencode/agents/implementer.md'));
   const config = JSON.parse(fs.readFileSync(path.join(root, 'harness.json'), 'utf8'));
   config.models.spare = { id: 'opencode-go/spare-model', variant: 'high', family: 'spare' };   // a third model, tests only
-  config.implementer = { ...config.implementer, startupTimeoutSec: 2, idleTimeoutSec: 5, totalTimeoutSec: 20, ...harness };
+  // The tests' own chain: the template's first model (GLM-5.3 Flash) needs a Z.AI login the fake does
+  // not list by default, and a model not logged in now stops the run (L69).
+  config.implementer = { ...config.implementer, chain: ['mimo-flash'], startupTimeoutSec: 2, idleTimeoutSec: 5, totalTimeoutSec: 20, ...harness };
   fs.writeFileSync(path.join(main, 'harness.json'), JSON.stringify(config));
   fs.writeFileSync(path.join(main, 'README.md'), 'project\n');
   git(main, 'add', '.');
@@ -165,7 +167,7 @@ test('a task runs to an open PR, in its own worktree, with the agent kept out of
 test('an implementer whose provider is out of quota is skipped before it runs; the next one implements (L50)', posix, async () => {
   const s = await quotaServer([entry('zai', 'exhausted', [], { available_in: '41m' }), entry('opencode_go', 'ok')]);
   try {
-    const p = project();
+    const p = project({ chain: ['glm-flash', 'mimo-flash'] });
     const models = '["zai-coding-plan/glm-5.3-flash", "opencode-go/mimo-v2.6-flash"]';
     const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: models, HARNESS_QUOTA_URL: s.url });
     assert.equal(r.status, 0, r.stderr + r.stdout);
@@ -197,14 +199,15 @@ test('a run that went on after a denied call implements; the denial is in the lo
   assert.match(fs.readFileSync(path.join(p.base, 'proj-work', 'T07.implementer.log'), 'utf8'), /=== mimo-flash .*: ran ===\n(?:watch: .*\n)?1 denied call, the model went on: read \/etc\/hostname\n/);
 });
 
-test('the same call denied twice fails the model and the next one runs (#146)', posix, async () => {
+test('the same call denied twice fails the run through our process: exit 5, the next model never runs (#146, L69)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
   const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'deny', 'openai/gpt-5.6-luna': 'implement' }),
     FAKE_OC_DENIALS_MODEL: 'opencode-go/mimo-v2.6-flash',
     FAKE_OC_DENIALS: JSON.stringify([{ tool: 'bash', input: 'git stash list', kind: 'denied' }, { tool: 'bash', input: 'git stash list', kind: 'denied' }]) });
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /fell back: mimo-flash: permission rejected: permission-rejected-after-retry: bash git stash list/);
-  assert.match(r.stdout, /implemented by: luna/);
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.match(r.stderr, /failed through our process \(mimo-flash: permission rejected: permission-rejected-after-retry: bash git stash list\)/);
+  assert.match(r.stderr, /No fallback to another model \(L69\)/);
+  assert.doesNotMatch(r.stdout, /attempt: luna/);
 });
 
 test('an implementer that stops and reports is not retried, and exits 1', posix, async () => {
@@ -216,28 +219,53 @@ test('an implementer that stops and reports is not retried, and exits 1', posix,
   assert.match(r.stderr, /No open PR/);
 });
 
-test('a failure that left a commit is not retried on the next model', posix, async () => {
+test('a failure that left a commit is not retried on the next model: exit 1 after a provider failure, 5 after ours', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODE: 'commit-fail' });
-  assert.equal(r.status, 1);
+  const r = implement(p, { FAKE_OC_MODE: 'commit-provider' });
+  assert.equal(r.status, 1, r.stderr + r.stdout);
   assert.doesNotMatch(r.stdout, /attempt: luna/);
-  assert.match(r.stderr, /not retrying/);
+  assert.match(r.stderr, /provider error: 503: Service Unavailable\) after committing, pushing or opening a PR .*not retrying/);
+  const q = project({ chain: ['mimo-flash', 'luna'] });
+  const own = implement(q, { FAKE_OC_MODE: 'commit-fail' });
+  assert.equal(own.status, 5, own.stderr + own.stdout);
+  assert.doesNotMatch(own.stdout, /attempt: luna/);
+  assert.match(own.stderr, /failed through our process \(mimo-flash: exit 1\)\. It committed, pushed or opened a PR on task\/T07-calendar; the worktree/);
 });
 
-test('an infrastructure failure that left nothing falls back to the next model', posix, async () => {
-  const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'exit-no-session', 'openai/gpt-5.6-luna': 'implement' }) });
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /fell back: mimo-flash: exited without a session/);
-  assert.match(r.stdout, /implemented by: luna/);
+test('a provider that did not respond, by its record or by OpenCode\'s stderr, falls back to the next model (L69)', posix, async () => {
+  for (const mode of ['provider-error', 'provider-stderr']) {
+    const p = project({ chain: ['mimo-flash', 'luna'] });
+    const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': mode, 'openai/gpt-5.6-luna': 'implement' }) });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, mode === 'provider-error' ? /fell back: mimo-flash: provider error: 503: Service Unavailable/
+      : /fell back: mimo-flash: provider error: Error: APICallError: 429 Too Many Requests/);
+    assert.match(r.stdout, /mimo-flash failed \(the provider did not respond\)/);
+    assert.match(r.stdout, /implemented by: luna/);
+  }
 });
 
-test('a rejected tool call is a failure, not a clean finish: the next model runs (IC2 #501)', posix, async () => {
+test('a failure through our process never falls back: a session that never started, a 401, a rejected call (L69, IC2 #501)', posix, async () => {
+  for (const [mode, reason] of [['exit-no-session', /exited without a session/], ['provider-auth', /exit 1/],
+    ['permission', /permission rejected: external_directory \(\/tmp\/\*\)/]]) {
+    const p = project({ chain: ['mimo-flash', 'luna'] });
+    const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': mode, 'openai/gpt-5.6-luna': 'implement' }) });
+    assert.equal(r.status, 5, `${mode}: ${r.stderr}${r.stdout}`);
+    assert.match(r.stdout, /mimo-flash failed \(our process\)/);
+    assert.match(r.stderr, reason);
+    assert.doesNotMatch(r.stdout, /attempt: luna/);
+  }
+});
+
+test('a process failure keeps the worktree as the run left it: no reset, no patch, the exit names it (L69)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission', 'openai/gpt-5.6-luna': 'implement' }) });
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /fell back: mimo-flash: permission rejected: external_directory \(\/tmp\/\*\)/);
-  assert.match(r.stdout, /implemented by: luna/);
+  const r = implement(p, { FAKE_OC_MODE: 'permission-dirty' });
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  const wt = path.join(p.base, 'proj-work', 'T07');
+  assert.ok(r.stderr.includes(`the worktree ${wt} is kept as the run left it`), r.stderr);
+  assert.match(r.stderr, /the rerun resumes task\/T07-calendar/);
+  assert.match(fs.readFileSync(path.join(wt, 'README.md'), 'utf8'), /edited, not committed/);
+  assert.ok(fs.existsSync(path.join(wt, 'new-file.txt')));
+  assert.doesNotMatch(r.stderr, /unsaved\.patch/);
 });
 
 // The reset's save (#87, L56): unit checks on a throwaway repository, then a run end to end.
@@ -306,9 +334,9 @@ test('a staged version that differs from the working copy is saved on its own fi
   for (const p of both) t.g('apply', '--check', p);
 });
 
-test('a run that edited without committing and was rejected keeps its work in a patch the exit names (#87)', posix, async () => {
+test('a run that edited without committing and lost its provider keeps its work in a patch the exit names (#87)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'permission' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'provider-error' }) });
   assert.equal(r.status, 3, r.stderr + r.stdout);
   const m = r.stderr.match(/Unsaved work was saved before the reset: (\S+\.unsaved\.patch)\./);
   assert.ok(m, r.stderr);
@@ -326,14 +354,14 @@ test('a run that edited without committing and was rejected keeps its work in a 
 
 test('an exit 1 after a later attempt committed still names the earlier attempt\'s patch (#87)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'commit-fail' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'commit-provider' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
   assert.match(r.stderr, /after committing, pushing or opening a PR .* Unsaved work was saved before the reset: \S+T07\.mimo-flash\.\S+\.unsaved\.patch\./);
 });
 
 test('the no-PR exit 1 names the patch a failed attempt saved (Sol\'s R3 on PR 100)', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'permission-dirty', 'openai/gpt-5.6-luna': 'stop-report' }) });
+  const r = implement(p, { FAKE_OC_MODES: JSON.stringify({ 'opencode-go/mimo-v2.6-flash': 'provider-dirty', 'openai/gpt-5.6-luna': 'stop-report' }) });
   assert.equal(r.status, 1, r.stderr + r.stdout);
   assert.match(r.stderr, /No open PR .* Unsaved work was saved before the reset: \S+T07\.mimo-flash\.\S+\.unsaved\.patch\./);
 });
@@ -351,58 +379,61 @@ test('an Alibaba implementer refused for its key says which data directory\'s au
   config.models.qwen = { id: 'alibaba-token-plan/qwen3.8-flash', variant: 'high', family: 'qwen' };
   fs.writeFileSync(file, JSON.stringify(config));
   const r = implement(p, { FAKE_OC_MODE: 'invalid-key', FAKE_OC_MODELS: JSON.stringify(['alibaba-token-plan/qwen3.8-flash']) });
-  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.equal(r.status, 5, r.stderr + r.stdout);
   assert.match(r.stderr, /qwen: invalid API key for alibaba-token-plan: the auth\.json in \S+ may hold a stale Alibaba entry/);
 });
 
 test('a rejection from cd or .. says so in the failure, naming L31 (#14)', posix, async () => {
   const p = project({ chain: ['mimo-flash'] });
   const r = implement(p, { FAKE_OC_MODE: 'permission-cd' });
-  assert.equal(r.status, 3);
+  assert.equal(r.status, 5);
   assert.match(r.stderr, /permission rejected: external_directory \(\/tmp\/\*\); the rejected command used cd or \.\.: run commands from the worktree root.*\(L31\)/);
 });
 
-test('the same failure twice stops the chain with exit 3', posix, async () => {
+test('the same provider failure twice stops the chain with exit 3', posix, async () => {
   const p = project({ chain: ['mimo-flash', 'spare', 'luna'] });
-  const r = implement(p, { FAKE_OC_MODE: 'no-session' });
+  const r = implement(p, { FAKE_OC_MODE: 'provider-error' });
   assert.equal(r.status, 3);
-  assert.match(r.stderr, /same failure twice: no-session/);
+  assert.match(r.stderr, /The providers did not respond: same failure twice: provider-503/);
+  assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
   assert.doesNotMatch(r.stdout, /attempt: luna/);
 });
 
-test('a model OpenCode does not list exits 3 with the fallback, before any worktree or run', posix, async () => {
-  const p = project();
+test('a model OpenCode does not list exits 5, no fallback, before any worktree or run, even with another model usable (L69)', posix, async () => {
+  const p = project({ chain: ['mimo-flash', 'spare'] });
   const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["opencode-go/spare-model"]' });
-  assert.equal(r.status, 3);
-  assert.match(r.stdout + r.stderr, /mimo-flash: opencode-go\/mimo-v2.6-flash is not in `opencode models opencode-go`/);
-  assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
+  assert.equal(r.status, 5);
+  assert.match(r.stderr, /^Setup: mimo-flash: opencode-go\/mimo-v2.6-flash is not in `opencode models opencode-go`/m);
+  assert.match(r.stderr, /Fix it and rerun; no fallback \(L69\)\. Nothing ran\./);
+  assert.doesNotMatch(r.stderr, /Claude implementer/);
   assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
 });
 
-test('OpenCode Go not logged in: exit 3 with the login command for the scripts\' data directory', posix, async () => {
+test('OpenCode Go not logged in: exit 5 with the login command for the scripts\' data directory', posix, async () => {
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_MODELS: '["openai/gpt-5.6-luna"]' });
-  assert.equal(r.status, 3);
+  assert.equal(r.status, 5);
   const home = path.join(p.base, 'oc-home', 'data');
-  assert.ok((r.stdout + r.stderr).includes(`OpenCode Go is not logged in for ${home}. Run \`opencode console login\` with XDG_DATA_HOME=${home}`));
-  assert.match(r.stderr, /Fall back to a Claude implementer \(sonnet\)/);
+  assert.ok(r.stderr.includes(`OpenCode Go is not logged in for ${home}. Run \`opencode console login\` with XDG_DATA_HOME=${home}`));
+  assert.match(r.stderr, /no fallback \(L69\)/);
   assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
 });
 
-test('a 2.x OpenCode (the desktop app\'s CLI) exits 3 with the fallback, before any worktree or run (#26)', posix, async () => {
+test('a 2.x OpenCode (the desktop app\'s CLI) exits 5, before any worktree or run (#26, L69)', posix, async () => {
   const p = project();
   const r = implement(p, { FAKE_OC_MODE: 'implement', FAKE_OC_VERSION: '2.0.18' });
-  assert.equal(r.status, 3);
-  assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported.*Fall back to a Claude implementer \(sonnet\)/);
+  assert.equal(r.status, 5);
+  assert.match(r.stderr, /Setup: OpenCode 2\.0\.18 at .* is not supported.*no fallback \(L69\)/);
   assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   assert.equal(fs.existsSync(path.join(p.base, 'proj-work', 'T07')), false);
   const ok = implement(project(), { FAKE_OC_MODE: 'implement' });
   assert.match(ok.stdout, /^opencode: 1\.18\.34 \(/m);                             // the version is logged
 });
 
-test('OpenCode missing exits 3 before touching anything', posix, async () => {
+test('OpenCode missing exits 5 before touching anything (L69)', posix, async () => {
   const p = project();
   const r = implement(p, { HARNESS_OPENCODE_EXE: '/no/such/opencode' });
-  assert.equal(r.status, 3);
+  assert.equal(r.status, 5);
+  assert.match(r.stderr, /^Setup: .*no fallback \(L69\)/m);
   assert.equal(fs.existsSync(path.join(p.base, 'proj-work')), false);
 });

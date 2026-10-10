@@ -51,9 +51,9 @@ What the implementer script guarantees, and why:
 - OpenCode starts with stdin closed; without it a run hangs before it starts. (L10)
 - No session in 180 s, no progress in 900 s, or no exit in 3 h kills the run's process tree. (L10)
 - The agent is checked on OpenCode's session record (L11). A denied tool call fails the run only when it ends the run, recurs, or is the third (L26, L68).
-- Each OpenCode model runs at effort high, in the scripts' own data directory (L27, L29). The chain moves on only after an infrastructure failure that left no work. (L12)
+- Each OpenCode model runs at effort high, in the scripts' own data directory (L27, L29). The chain moves on only when the provider did not respond and the run left no work. (L12, L69)
 - Exit 0: a PR is open. 1: the main session reads the log (a stop and report, or an early end).
-  3: OpenCode unavailable, its model not listed, or not logged in; Claude Sonnet takes the task.
+  3: no provider responded; Claude Sonnet takes it. 5: our process or setup failed; fix, rerun. (L69)
 
 ## 4. The implementer brief
 

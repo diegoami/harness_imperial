@@ -1,7 +1,8 @@
 # Environment
 
 What `tools/harness/review.mjs` needs on this machine. A reviewer that cannot run makes the script
-exit 3, and the main session tells the user: there is no Claude reviewer here.
+exit 5 (a missing login, our setup) or 3 (no provider responded), and the main session tells the
+user: there is no Claude reviewer here (L69).
 
 ## The tools
 

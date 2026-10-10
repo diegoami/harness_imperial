@@ -39,9 +39,12 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      - Exit 0: a PR is open. Note the `implemented by:` line.
      - Exit 1: read the log it names. An implementer that stopped and reported goes to step 5,
        or to a task-file amendment on `main` and a re-run.
-     - Exit 3: OpenCode unavailable, its model not listed, or Go not logged in (the message gives
-       the login command). Use the task file's Claude fallback (Sonnet by default), and say so in
-       a comment on the issue.
+     - Exit 3: no provider responded (errors, rate limits, no reply). Use the task file's Claude
+       fallback (Sonnet by default), and say so in a comment on the issue.
+     - Exit 5: our process or setup failed: a denied call, the agent, a hung tool, a timeout, a
+       model not listed or not logged in (the message gives the login command). Never a fallback:
+       find the cause (read the run first, below), fix it (brief, permissions, agent file, runner,
+       login), then rerun; the rerun resumes the branch the run left. (L69)
    - **Read before you retry (L55).** Before a retry, a re-route to another model, or calling a
      run a failure, read what it returned; never retry blind. An OpenCode exit 1 with an empty
      diff looks the same for an early end and for a run that stopped and reported a blocker, and
@@ -78,10 +81,11 @@ For `#<issue>` of a bug labelled `fix`, the bug body replaces the task file, the
      has landed: take it from the local branch (`git rev-parse <branch>`). A brief whose block
      before the task file names another commit exits 2 before anything runs (L33).
      - Exit 0: posted and labelled.
-     - Exit 3: no review came back, or OpenCode or its login is unavailable (read the run's final
-       message first, as under step 2's *Read before you retry*). Nothing was posted:
-       run the Claude reviewer (Opus). If a Claude agent implemented the PR, Claude may not
-       review it either (the family rule): escalate (step 5).
+     - Exit 3: no provider responded (read the run's final message first, as under step 2's
+       *Read before you retry*). Nothing was posted: run the Claude reviewer (Opus). If a Claude
+       agent implemented the PR, Claude may not review it either (the family rule): escalate (step 5).
+     - Exit 5: our process or setup failed (no review in the output, a denied call, a hung tool,
+       a login). Nothing was posted, and no other model runs: fix the cause, then rerun (L69).
      - Exit 4: a review was posted whole under a note (it may be cut off, its verdict is
        unreadable, its verdicts differ, or a finding follows its closing verdict), or an approve
        left a Done-when line unaccounted for or not run (L32). No label was applied. For a

@@ -70,15 +70,17 @@ added. Each behaviour exists because a run failed without it:
 
 `implement.mjs` and `review.mjs` add more guards:
 - Before anything is billed, they check that OpenCode lists their model in that data directory.
-  An unknown id or a missing Go login exits 3, with the command that fixes it.
-- With a longer chain, they move on only after an infrastructure failure that left no commit, push
-  or PR, and stop after the same failure twice.
+  An unknown id or a missing login exits 5, with the command that fixes it, and nothing runs.
+- With a longer chain, they move on only when the provider did not respond (a provider error in
+  the session record or on OpenCode's stderr, or an idle session with no tool running) and the run
+  left no commit, push or PR, and stop after the same failure twice. Any other failure is ours:
+  exit 5, the worktree kept as the run left it, never another model (L69).
 - The review never runs on the implementer's model family.
 - The reviewer's agent and OpenCode config come from the main session's checkout, never from the
   PR under review: `OPENCODE_CONFIG_DIR` points there, and `OPENCODE_DISABLE_PROJECT_CONFIG=1` keeps
   OpenCode from reading the PR's own `.opencode/`. Without them, a PR's own `reviewer.md` is the
   one loaded (checked on 1.18.34), so a PR could loosen its reviewer's permissions (L34).
-- A review is never thrown away (L28). Only output with no review at all falls back.
+- A review is never thrown away (L28). Output with no review at all is our failure: exit 5 (L69).
   - A readable review is posted normalised and acted on. It may come through Markdown decoration, a
     `Verdict:` prefix, punctuation, a where-I-worked block before the verdict, a sign-off after the
     closing verdict (kept), or a single line.
@@ -94,12 +96,13 @@ added. Each behaviour exists because a run failed without it:
 Exit codes, for both scripts:
 - 0: done;
 - 1: the main session decides;
-- 3: OpenCode unavailable, a login missing, or no review, so the caller runs Claude (Sonnet
-  implements, Opus reviews). Except for `review.mjs` when Claude implemented the PR or
+- 3: no provider responded, so the caller runs Claude (Sonnet implements, Opus reviews). Except for `review.mjs` when Claude implemented the PR or
   `claudeFallback` is null: then the caller escalates to the owner, as the message says. With
   `--second-opinion`, exit 3 also means the first review was posted but no second one came back: no
   label, and the owner decides;
-- 4 (`review.mjs` and `post-review.mjs`): a review was posted under a note; read it and decide.
+- 4 (`review.mjs` and `post-review.mjs`): a review was posted under a note; read it and decide;
+- 5: our process or setup failed (a denied call, the agent, a hung tool, a timeout, no review, a
+  login): nothing posted, no fallback; fix the cause and rerun (L69).
 
 The Claude agents' guard blocks a refused command with exit 2, which Claude Code shows the agent as
 the tool's error. The hook runs `node "$CLAUDE_PROJECT_DIR/tools/harness/guard.mjs" <role>`, from the

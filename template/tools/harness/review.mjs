@@ -15,9 +15,9 @@
 // (implement.mjs prints the name on its "implemented by:" line, or "claude"), else a model:<name>
 // label on the PR or --issue. Runs use the scripts' own OpenCode data directory.
 //
-// A review is never thrown away (lib/chain.mjs readReview). Only output with no review at all
-// falls back. A readable review is posted normalised and acted on. One that may be cut off, has no
-// readable verdict, opens and closes with different verdicts, or has a finding after its closing
+// A review is never thrown away (lib/chain.mjs readReview). Output with no review at all is a
+// failure through our process (L69): exit 5, never the next model. A readable review is posted
+// normalised and acted on. One that may be cut off, has no readable verdict, opens and closes with different verdicts, or has a finding after its closing
 // verdict is posted whole, exactly as it arrived, under a note, with no label. Closing keywords lose their '#', and the rewrite is logged.
 //
 // The review accounts for each Done-when line of the task file pasted in the brief (or --done-when
@@ -38,12 +38,14 @@
 // harness.json's claudeFallback: null names no Claude reviewer: an exit 3 then says to escalate to
 // the owner, as it does when Claude implemented the PR.
 //
-// Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: OpenCode
-// unavailable or no review, nothing posted; the caller runs the Claude reviewer (harness.json's
+// Exit 0: posted, and labelled with --apply-label. Exit 1: refused or a defect. Exit 3: every
+// provider failed to respond, nothing posted; the caller runs the Claude reviewer (harness.json's
 // claudeFallback), unless Claude implemented the PR or claudeFallback is null: then the caller
 // escalates to the owner, as the message says. With --second-opinion, exit 3 also means the first
 // review was posted but no second one came back: no label, and the owner decides. Exit 4: posted under a note, no label; the caller reads it on the PR and decides,
-// and never pays for a second review because of it. --dry-run prints
+// and never pays for a second review because of it. Exit 5: our process or setup failed (no
+// review in the output, a denied call, the agent, a hung tool, a timeout, a login): nothing posted
+// (or, for a second opinion, no label); fix the cause and rerun, no fallback (L69). --dry-run prints
 // what would be posted and the exit code it would use, and exits 0; it still runs, and bills, the
 // model.
 
@@ -109,10 +111,10 @@ if (a.reviewer && !chain.length) die(1, `Refused: ${a.reviewer} is the implement
 const fallback = rev.claudeFallback === null ? 'Nothing posted; escalate to the owner (harness.json names no Claude reviewer).'
   : implementedBy.includes('claude') ? 'Nothing posted; escalate to the owner: Claude implemented this PR, so no Claude reviewer may review it.'
     : `Nothing posted; use a Claude reviewer (${rev.claudeFallback ?? 'opus'}).`;
-// OpenCode is looked for only now, so that its absence is reported with the same fallback (Sol's R1 on PR 41).
+// OpenCode is looked for only now, after the arguments are checked; its absence is our setup (L69).
 let opencode;
 try { opencode = resolveOpenCode(); } catch (e) {
-  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} ${fallback}`);
+  if (e instanceof OpenCodeInfraError) die(5, `Setup: ${e.message} Fix it and rerun; no fallback (L69). Nothing posted.`);
   throw e;
 }
 // OpenCode, and every command it runs, in the credential jail (lib/jail.mjs, #68): the reviewer
@@ -130,7 +132,8 @@ const seconds = a['second-opinion'] ? excludeImplementers([...new Set([rev.secon
 const pre = await prepareOpenCode({ opencode, chain: [...new Set([...chain, ...seconds])], models: config.models, env: envWith(a.env), cwd: top, log: say });
 for (const p of pre.problems) say(p);
 const usable = chain.filter((m) => pre.usable.includes(m));
-if (!usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
+if (pre.setup.length) die(5, `Setup: ${pre.setup.join('; ')}. Fix it and rerun; no fallback (L69). Nothing run or posted.`);
+if (!usable.length) die(3, `No provider available: ${pre.problems.join('; ')}. ${fallback}`);
 
 // The reviewer's agent and OpenCode config come from this checkout, the main session's, never from
 // the PR under review: OpenCode reads a project's .opencode/ by default, so a PR's own reviewer.md
@@ -243,7 +246,8 @@ const planOf = (r, list) => planPost({
 });
 
 const result = await runReview(usable, false);
-if (!result.ok) die(3, `OpenCode unavailable: ${why(result)}. ${fallback}`);
+if (!result.ok && result.process) die(5, `The review failed through our process (${failed(result)}). Nothing posted. Read the run's files, fix the cause (brief, permissions, agent, runner) and rerun; no fallback to another model (L69).`);
+if (!result.ok) die(3, `The providers did not respond: ${why(result)}. ${fallback}`);
 const plan = planOf(result, chain);
 if (!a['second-opinion']) {
   publish({ plan, pr: a.pr, issue: a.issue, applyLabel: a['apply-label'], dryRun: a['dry-run'], top, say, die });
@@ -261,7 +265,8 @@ say(`second opinion: ${others.join(', ') || 'no other reviewer left'}`);
 const second = others.length ? await runReview(others, true) : { ok: false, failures: [], sameCause: null };
 const plans = second.ok ? [plan, planOf(second, seconds.filter((m) => !spent.has(idOf(m)) || m === second.name))] : [plan];
 const outcome = second.ok ? combinePlans(plans)
-  : { label: null, code: 3, why: `no second opinion (${why(second) || `only ${result.name} could review`}): escalate to the owner` };
+  : second.process ? { label: null, code: 5, why: `the second opinion failed through our process (${failed(second)}): fix the cause and rerun it (L69)` }
+    : { label: null, code: 3, why: `no second opinion (${why(second) || `only ${result.name} could review`}): escalate to the owner` };
 for (const p of plans) for (const r of p.rewrites) say(`rewrote a closing keyword: ${r}`);
 if (a['dry-run']) {
   for (const p of plans) say(p.body);

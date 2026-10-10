@@ -324,11 +324,12 @@ test('a checkout without the reviewer agent exits 2 before anything runs (#10)',
   assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
 });
 
-test('a 2.x OpenCode exits 3 before any worktree or run, and nothing is posted (#26)', posix, () => {
+test('a 2.x OpenCode exits 5 before any worktree or run, and nothing is posted (#26, L69)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_VERSION: '2.0.18' });
-  assert.equal(r.status, 3);
-  assert.match(r.stderr, /OpenCode 2\.0\.18 at .* is not supported.*use a Claude reviewer \(opus\)/);
+  assert.equal(r.status, 5);
+  assert.match(r.stderr, /Setup: OpenCode 2\.0\.18 at .* is not supported.*no fallback \(L69\)/);
+  assert.doesNotMatch(r.stderr, /Claude reviewer/);
   assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   assert.equal(gh(p).comments.length, 0);
 });
@@ -348,12 +349,12 @@ test('a review that may be cut off is posted under a note, unlabelled, exit 4, a
 test('a flagged review after a failed model: the reason goes in the note, the review stays whole', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, {
-    FAKE_OC_MODES: JSON.stringify({ 'openai/gpt-5.6-luna': 'exit-no-session', 'opencode-go/spare-model': 'ok' }),
+    FAKE_OC_MODES: JSON.stringify({ 'openai/gpt-5.6-luna': 'provider-error', 'opencode-go/spare-model': 'ok' }),
     FAKE_OC_OUTPUT: 'Notes first.\nT07 review (spare)\nrework\n\nR1: the loop in',
   });
   assert.equal(r.status, 4, r.stderr + r.stdout);
   const body = gh(p).comments[0].body;
-  assert.match(body, /^> Note from tools\/harness\/review\.mjs: may be cut off; no label applied \(luna failed: exited without a session/);
+  assert.match(body, /^> Note from tools\/harness\/review\.mjs: may be cut off; no label applied \(luna failed: provider error: 503: Service Unavailable/);
   assert.ok(body.includes('\n\nNotes first.\nT07 review (spare)\nrework\n\nR1: the loop in\n\n— spare, via'));
 });
 
@@ -383,13 +384,13 @@ test('a dry run prints the note and the exit code it would use, and posts nothin
   assert.equal(gh(p).comments.length, 0);
 });
 
-test('the OpenAI login missing: exit 3 saying how to log in, before any worktree or run', posix, () => {
+test('the OpenAI login missing: exit 5 saying how to log in, before any worktree or run (L69)', posix, () => {
   const p = project();
   const r = review(p, { FAKE_OC_MODE: 'review-ok', FAKE_OC_MODELS: '["opencode-go/mimo-v2.6-flash"]' });
-  assert.equal(r.status, 3);
+  assert.equal(r.status, 5);
   const home = path.join(p.base, 'oc-home', 'data');
-  assert.ok((r.stdout + r.stderr).includes(`luna: openai lists no models for ${home}: it is not logged in there`));
-  assert.match(r.stderr, /use a Claude reviewer \(opus\)/);
+  assert.ok(r.stderr.includes(`luna: openai lists no models for ${home}: it is not logged in there`));
+  assert.match(r.stderr, /no fallback \(L69\)\. Nothing run or posted\./);
   assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
   assert.equal(gh(p).comments.length, 0);
 });
@@ -410,7 +411,7 @@ test('the run uses the scripts\' own data directory, with auth.json copied in', 
 test('a review rejected for cd or .. says so, naming L31 (#14)', posix, () => {
   const p = project({ chain: ['luna'] });
   const r = review(p, { FAKE_OC_MODE: 'permission-cd' });
-  assert.equal(r.status, 3);
+  assert.equal(r.status, 5);
   assert.match(r.stderr, /permission rejected: external_directory \(\/tmp\/\*\); the rejected command used cd or \.\..*\(L31\)/);
   assert.equal(gh(p).comments.length, 0);
 });
@@ -426,17 +427,18 @@ test('a review whose tool printed a quoted rejection line is posted: only OpenCo
 test('a review whose tool call was rejected is never posted, even when it looks complete', posix, () => {
   const p = project({ chain: ['luna'] });
   const r = review(p, { FAKE_OC_MODE: 'permission-review' });
-  assert.equal(r.status, 3);
+  assert.equal(r.status, 5);
   assert.match(r.stderr, /permission rejected: external_directory/);
   assert.equal(gh(p).comments.length, 0);
 });
 
-test('no review at all (tool chatter only, an early stop) is the one failure: nothing posted, exit 3', posix, () => {
+test('no review at all (tool chatter only, an early stop) fails through our process: nothing posted, exit 5, no next model (L69)', posix, () => {
   const p = project({ chain: ['luna', 'spare'] });
   const r = review(p, { FAKE_OC_MODE: 'ok', FAKE_OC_OUTPUT: 'reading src/a.js\nrunning the tests\n' });
-  assert.equal(r.status, 3);
-  assert.match(r.stderr, /same failure twice: no-review/);
-  assert.match(r.stderr, /use a Claude reviewer \(opus\)/);
+  assert.equal(r.status, 5);
+  assert.match(r.stderr, /The review failed through our process \(luna failed: no review/);
+  assert.doesNotMatch(r.stdout, /attempt: spare/);
+  assert.doesNotMatch(r.stderr, /Claude reviewer/);
   assert.equal(gh(p).comments.length, 0);
 });
 
@@ -479,32 +481,42 @@ test('a second opinion\'s dry run names a label only with --apply-label (Sol\'s 
 
 test('the second opinion is never the model that wrote the first review (#39)', posix, () => {
   const p = project(PROFILE);
-  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['provider-error', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const bodies = gh(p).comments.map((c) => c.body.split('\n')[0]);
-  assert.deepEqual(bodies, ['T07 review (luna; glm-flash failed: exited without a session (exit 1))', 'T07 review (mimo-flash, second opinion)']);
+  assert.deepEqual(bodies, ['T07 review (luna; glm-flash failed: provider error: 503: Service Unavailable)', 'T07 review (mimo-flash, second opinion)']);
 });
 
 test('no second opinion: the first review is posted, no label, exit 3 to the owner (#39)', posix, () => {
   const p = project(PROFILE);
-  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'exit-no-session', 'exit2']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'provider-error', 'provider-error']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
   assert.equal(r.status, 3, r.stderr + r.stdout);
   assert.match(r.stderr, /no second opinion \(.*luna failed.*\): escalate to the owner/);
   assert.equal(gh(p).comments.length, 1);
   assert.deepEqual(labels(p), []);
 });
 
+test('a second opinion that fails through our process: the first review is posted, no label, exit 5, no third model (L69)', posix, () => {
+  const p = project(PROFILE);
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'permission-review', 'review-ok']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.match(r.stderr, /the second opinion failed through our process \(luna failed: permission rejected: external_directory .*\): fix the cause and rerun it \(L69\)/);
+  assert.doesNotMatch(r.stdout, /attempt: mimo-flash/);
+  assert.equal(gh(p).comments.length, 1);
+  assert.deepEqual(labels(p), []);
+});
+
 test('with no Claude reviewer, or when Claude implemented, a failure escalates to the owner (#39)', posix, () => {
   const p = project(PROFILE);
-  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude');
+  const r = review(p, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODE: 'provider-error' }, '--exclude', 'claude');
   assert.equal(r.status, 3);
   assert.match(r.stderr, /Nothing posted; escalate to the owner \(harness\.json names no Claude reviewer\)/);
   assert.doesNotMatch(r.stderr, /use a Claude reviewer/);
   const q = project({ chain: ['luna'] });
-  const s = review(q, { FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude');
+  const s = review(q, { FAKE_OC_MODE: 'provider-error' }, '--exclude', 'claude');
   assert.equal(s.status, 3);
   assert.match(s.stderr, /escalate to the owner: Claude implemented this PR/);
-  const t = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'exit2' }, '--exclude', 'mimo-flash');
+  const t = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'provider-error' }, '--exclude', 'mimo-flash');
   assert.match(t.stderr, /use a Claude reviewer \(opus\)/);
   const u = review(project({ chain: ['luna'] }), { FAKE_OC_MODE: 'review-ok' }, '--second-opinion');
   assert.equal(u.status, 2);
@@ -532,7 +544,7 @@ test('an earlier approval never survives two reviews that did not both approve (
   assert.deepEqual(labels(q), ['status:approved']);
   const n = project(PROFILE);
   withLabels(n, ['status:approved']);
-  const none = review(n, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'exit-no-session', 'exit2']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
+  const none = review(n, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['review-ok', 'provider-error', 'provider-error']) }, '--exclude', 'claude', '--second-opinion', '--issue', '12', '--apply-label');
   assert.equal(none.status, 3);
   assert.deepEqual(labels(n), []);
 });
@@ -545,20 +557,20 @@ test('two names for one model never make two opinions, nor retry a failed model 
   assert.deepEqual(gh(p).comments.map((c) => c.body.split('\n')[0]), ['T07 review (glm-flash)', 'T07 review (luna, second opinion)']);
   const q = project(PROFILE);
   withAlias(q);
-  const s = review(q, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['exit-no-session', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
+  const s = review(q, { FAKE_OC_MODELS: LISTED, FAKE_OC_MODES: modes(['provider-error', 'review-ok', 'review-ok']) }, '--exclude', 'claude', '--second-opinion');
   assert.equal(s.status, 0, s.stderr + s.stdout);
   assert.match(gh(q).comments[1].body, /^T07 review \(mimo-flash, second opinion\)/);
 });
 
-test('OpenCode missing says the same as any other failure: the owner, or a Claude reviewer (Sol\'s R1 on PR 41)', posix, () => {
+test('OpenCode missing is our setup: exit 5, nothing posted, never a Claude reviewer, whoever implemented (L69)', posix, () => {
   const missing = { HARNESS_OPENCODE_EXE: '/no/such/opencode' };
-  const a = review(project({ chain: ['luna'] }), missing, '--exclude', 'claude');
-  assert.equal(a.status, 3);
-  assert.match(a.stderr, /OpenCode unavailable: .*escalate to the owner: Claude implemented this PR/);
-  const b = review(project(PROFILE), missing, '--exclude', 'mimo-flash');
-  assert.match(b.stderr, /escalate to the owner \(harness\.json names no Claude reviewer\)/);
-  const c = review(project({ chain: ['luna'] }), missing, '--exclude', 'mimo-flash');
-  assert.match(c.stderr, /OpenCode unavailable: .*use a Claude reviewer \(opus\)/);
+  for (const [p, exclude] of [[project({ chain: ['luna'] }), 'claude'], [project(PROFILE), 'mimo-flash'], [project({ chain: ['luna'] }), 'mimo-flash']]) {
+    const r = review(p, missing, '--exclude', exclude);
+    assert.equal(r.status, 5, r.stderr);
+    assert.match(r.stderr, /^Setup: .*no fallback \(L69\)\. Nothing posted\./m);
+    assert.doesNotMatch(r.stderr, /Claude reviewer|escalate/);
+    assert.equal(gh(p).comments.length, 0);
+  }
 });
 
 // --hard (L39, L41): GLM-5.3, then MiniMax-M3, MiMo V2.6 Pro and Luna; --hard --sol puts GPT-6.1 Sol first.
@@ -572,13 +584,19 @@ test('--hard reviews with GLM-5.3, never Sol, and with a third family when GLM c
   assert.match(gh(p).comments[0].body, /^T07 review \(glm\)\napprove/);
   assert.doesNotMatch(r.stdout, /attempt: sol/);
   const q = project();                                                           // GLM fails: MiniMax-M3 reviews
-  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2']) }, '--exclude', 'claude', '--hard');
+  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'provider-error']) }, '--exclude', 'claude', '--hard');
   assert.equal(s.status, 0, s.stderr + s.stdout);
-  assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; glm failed: exit 2\)\napprove/);
+  assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; glm failed: provider error: 503: Service Unavailable\)\napprove/);
   const w = project();                                                           // MiniMax-M3 fails differently: MiMo V2.6 Pro reviews
-  const t = review(w, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'exit2', 'permission']) }, '--exclude', 'claude', '--hard');
+  const t = review(w, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'provider-error', 'provider-stderr']) }, '--exclude', 'claude', '--hard');
   assert.equal(t.status, 0, t.stderr + t.stdout);
-  assert.match(gh(w).comments[0].body, /^T07 review \(mimo-pro; glm failed: exit 2; mm-m3 failed: permission rejected: external_directory \(\/tmp\/\*\)\)\napprove/);
+  assert.match(gh(w).comments[0].body, /^T07 review \(mimo-pro; glm failed: provider error: 503: Service Unavailable; mm-m3 failed: provider error: Error: APICallError: 429 Too Many Requests: rate limit exceeded\)\napprove/);
+  const x = project();                                                           // MiniMax-M3 fails through our process: no substitute (L69)
+  const u = review(x, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['review-ok', 'provider-error', 'permission']) }, '--exclude', 'claude', '--hard');
+  assert.equal(u.status, 5, u.stderr + u.stdout);
+  assert.match(u.stderr, /mm-m3 failed: permission rejected: external_directory/);
+  assert.doesNotMatch(u.stdout, /attempt: mimo-pro/);
+  assert.equal(gh(x).comments.length, 0);
 });
 
 test('an Alibaba reviewer refused for its key says which data directory\'s auth.json to check, and nothing is posted', posix, () => {
@@ -588,7 +606,7 @@ test('an Alibaba reviewer refused for its key says which data directory\'s auth.
   config.models.qwen = { id: 'alibaba-token-plan/qwen3.8-flash', variant: 'high', family: 'qwen' };
   fs.writeFileSync(file, JSON.stringify(config));
   const r = review(p, { FAKE_OC_MODE: 'invalid-key', FAKE_OC_MODELS: JSON.stringify(['alibaba-token-plan/qwen3.8-flash']) }, '--exclude', 'claude', '--reviewer', 'qwen');
-  assert.equal(r.status, 3, r.stderr + r.stdout);
+  assert.equal(r.status, 5, r.stderr + r.stdout);
   assert.match(r.stderr, /qwen failed: invalid API key for alibaba-token-plan: the auth\.json in \S+oc-home[\\/]data may hold a stale Alibaba entry/);
   assert.equal(gh(p).comments.length, 0);
   // A review that only quotes the phrase is a review (Luna's R1, round 2).
@@ -634,17 +652,19 @@ test('--hard --sol reviews with Sol, and with the hard chain when Sol cannot run
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(gh(p).comments[0].body, /^T07 review \(sol-6\.1\)\napprove/);
   const q = project();                                                           // Sol out of quota: GLM-5.3 reviews
-  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2']) }, '--exclude', 'claude', '--hard', '--sol');
+  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['provider-error']) }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(s.status, 0, s.stderr + s.stdout);
-  assert.match(gh(q).comments[0].body, /^T07 review \(glm; sol-6\.1 failed: exit 2\)\napprove/);
+  assert.match(gh(q).comments[0].body, /^T07 review \(glm; sol-6\.1 failed: provider error: 503: Service Unavailable\)\napprove/);
 });
 
-test('a Sol that cannot run at all is named in the substitute\'s header (Sol\'s R2 on PR 47)', posix, () => {
+test('a Sol OpenCode does not list stops a hard review: exit 5, no substitute (L69; a quota skip is named in the header, Sol\'s R2 on PR 47)', posix, () => {
   const p = project();
-  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'opencode-go/mimo-v2.6-pro', 'openai/gpt-5.6-luna']);
+  const notListed = JSON.stringify(['zai-coding-plan/glm-5.3', 'minimax/MiniMax-M3', 'opencode-go/mimo-v2.6-pro', 'openai/gpt-5.6-luna']);
   const r = review(p, { FAKE_OC_MODELS: notListed, FAKE_OC_MODE: 'review-ok' }, '--exclude', 'claude', '--hard', '--sol');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(gh(p).comments[0].body, /^T07 review \(glm; sol-6\.1 not available\)\napprove/);
+  assert.equal(r.status, 5, r.stderr + r.stdout);
+  assert.match(r.stderr, /^Setup: sol-6\.1: openai\/gpt-6\.1-sol is not in `opencode models openai`/m);
+  assert.equal(readSessions(path.join(p.base, 'oc.json')).length, 0);
+  assert.equal(gh(p).comments.length, 0);
   const q = project();                                                           // unchanged without --hard
   review(q, { FAKE_OC_MODE: 'review-ok' });
   assert.match(gh(q).comments[0].body, /^T07 review \(luna\)\napprove/);
@@ -657,19 +677,19 @@ test('--hard skips the implementer\'s family: a GLM implementer gets MiniMax-M3,
   assert.match(gh(p).comments[0].body, /^T07 review \(mm-m3\)/);
   assert.doesNotMatch(r.stdout, /attempt: (glm|sol)/);
   const q = project();
-  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['exit2']) }, '--exclude', 'glm', '--hard', '--sol');
+  const s = review(q, { FAKE_OC_MODELS: HARD, FAKE_OC_MODES: hardModes(['provider-error']) }, '--exclude', 'glm', '--hard', '--sol');
   assert.equal(s.status, 0, s.stderr + s.stdout);
-  assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; sol-6\.1 failed: exit 2\)/);
+  assert.match(gh(q).comments[0].body, /^T07 review \(mm-m3; sol-6\.1 failed: provider error: 503: Service Unavailable\)/);
   assert.doesNotMatch(s.stdout, /attempt: glm\b/);
 });
 
 test('--hard with no reviewer left exits 3, to the owner when Claude implemented; --hard with --reviewer, without reviewer.hard, or --sol without --hard or reviewer.sol, is refused (L39, L41)', posix, () => {
   const p = project();
-  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'exit2' }, '--exclude', 'claude', '--hard', '--sol');
+  const r = review(p, { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'provider-error' }, '--exclude', 'claude', '--hard', '--sol');
   assert.equal(r.status, 3);
   assert.match(r.stderr, /escalate to the owner: Claude implemented this PR/);
   assert.equal(gh(p).comments.length, 0);
-  const glm = review(project(), { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'exit2' }, '--exclude', 'glm', '--hard');
+  const glm = review(project(), { FAKE_OC_MODELS: HARD, FAKE_OC_MODE: 'provider-error' }, '--exclude', 'glm', '--hard');
   assert.equal(glm.status, 3);                                                   // a non-Claude implementer: the Claude fallback
   assert.match(glm.stderr, /use a Claude reviewer \(opus\)/);
   const both = review(project(), { FAKE_OC_MODELS: HARD }, '--hard', '--reviewer', 'luna');

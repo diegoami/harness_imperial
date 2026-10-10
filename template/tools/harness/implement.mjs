@@ -13,20 +13,24 @@
 //
 // The model is harness.json's implementer.chain (one model, by the user's decision of 2026-10-02:
 // GLM-5.3 Flash, then MiMo V2.6 Flash, then Claude Sonnet); --model runs another alone. Runs use the scripts' own
-// OpenCode data directory, and a model OpenCode does not list there exits 3 before anything is
-// billed. With a longer chain, the next model runs
-// only on an infrastructure failure, and only when the failed run left nothing behind (no new
-// commit locally or on origin, no new PR), judged against the state before the first attempt, so a
-// resumed rework branch can still fall back. An implementer that stops and reports has NOT failed:
-// its run exits 0 and is never retried; this script then exits 1 at "no open PR".
+// OpenCode data directory, and a model OpenCode does not list there exits 5 before anything is
+// billed. With a longer chain, the next model runs only when the provider did not respond (L69:
+// a provider error, or an idle session with no tool running), and only when the failed run left
+// nothing behind (no new commit locally or on origin, no new PR), judged against the state before
+// the first attempt, so a resumed rework branch can still fall back. A failure through our process
+// (a denied call, the agent, a hung tool, a timeout, the setup) stops at once with exit 5, the
+// worktree as the run left it: the main session fixes the cause and reruns, which resumes the
+// branch. An implementer that stops and reports has NOT failed: its run exits 0 and is never
+// retried; this script then exits 1 at "no open PR".
 //
-// When an attempt fails and left nothing behind, the reset between attempts first saves the
+// When a provider failure left nothing behind, the reset between attempts first saves the
 // worktree's uncommitted changes (staged, unstaged and untracked) to
 // <workRoot>/<name>.<model key>.<UTC time>.unsaved.patch, created exclusively (lib/unsaved.mjs,
-// #87). The exit 1 and exit 3 messages name every patch the run saved.
+// #87). The exit 1, 3 and 5 messages name every patch the run saved.
 //
-// Exit 0: PR open. Exit 1: the main session decides (read the log). Exit 3: OpenCode unavailable;
-// fall back to a Claude implementer.
+// Exit 0: PR open. Exit 1: the main session decides (read the log). Exit 3: every provider failed
+// to respond; fall back to a Claude implementer. Exit 5: our process or setup failed; fix the
+// cause and rerun, no fallback (the owner, 2026-10-10, L69).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -55,7 +59,7 @@ if (!fs.existsSync(a.brief)) die(2, `Brief not found: ${a.brief}`);
 
 let opencode;
 try { opencode = resolveOpenCode(); } catch (e) {
-  if (e instanceof OpenCodeInfraError) die(3, `OpenCode unavailable: ${e.message} Fall back to a Claude implementer (see harness.json).`);
+  if (e instanceof OpenCodeInfraError) die(5, `Setup: ${e.message} Fix it and rerun; no fallback (L69).`);
   throw e;
 }
 requireTools('git', 'gh');
@@ -69,7 +73,8 @@ for (const m of chain) if (!config.models[m]) die(2, `Unknown model ${m}; harnes
 const fallback = `Fall back to a Claude implementer (${impl.claudeFallback ?? 'sonnet'}).`;
 const pre = await prepareOpenCode({ opencode, chain, models: config.models, env: envWith(a.env), cwd: top, log: say });
 for (const p of pre.problems) say(p);
-if (!pre.usable.length) die(3, `OpenCode unavailable: ${pre.problems.join('; ')}. ${fallback}`);
+if (pre.setup.length) die(5, `Setup: ${pre.setup.join('; ')}. Fix it and rerun; no fallback (L69). Nothing ran.`);
+if (!pre.usable.length) die(3, `No provider available: ${pre.problems.join('; ')}. ${fallback}`);
 
 const name = a.task ?? `fix-${a.fix}`;
 const branch = a.task ? `task/${a.task}-${a.slug}` : `fix/${a.fix}-${a.slug}`;
@@ -201,7 +206,7 @@ const result = await runChain({
       || originSha() !== startRemote || (pr && pr !== startPr);
   },
   // Before the hard reset destroys it, the failed attempt's uncommitted work goes to a patch
-  // (lib/unsaved.mjs, #87), so a run that a rejected tool call ended is not lost.
+  // (lib/unsaved.mjs, #87). Only a provider failure resets; a process failure keeps the worktree.
   reset: async () => {
     patches.push(...resetWorktree({ worktree, startSha, workRoot, name, model: attemptModel, log: say }));
   },
@@ -212,8 +217,12 @@ say(`run log: ${logFile}`);
 const saved = patches.length ? ` Unsaved work was saved before the reset: ${patches.join(', ')}.` : '';
 const reasons = result.failures.map((f) => `${f.name}: ${f.reason}`).join('; ');
 if (!result.ok) {
+  if (result.process) {
+    const kept = result.leftWork ? `It committed, pushed or opened a PR on ${branch}; ` : '';
+    die(5, `The run failed through our process (${reasons}). ${kept}the worktree ${worktree} is kept as the run left it. Read ${logFile}, fix the cause (brief, permissions, agent, runner) and rerun: the rerun resumes ${branch}. No fallback to another model (L69).${saved}`);
+  }
   if (result.leftWork) die(1, `The run failed (${reasons}) after committing, pushing or opening a PR on ${branch}; not retrying. The main session decides.${saved}`);
-  die(3, `OpenCode unavailable: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}${saved}`);
+  die(3, `The providers did not respond: ${result.sameCause ? `same failure twice: ${result.sameCause} (${reasons})` : reasons}. ${fallback}${saved}`);
 }
 if (reasons) say(`fell back: ${reasons}`);
 // The reviewer must not be this model's family: pass it to review.mjs as --exclude.

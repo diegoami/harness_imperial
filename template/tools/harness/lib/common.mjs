@@ -97,27 +97,31 @@ export function ensureAgent({ top, commonDir, worktree, agent }) {
 // Before anything is billed: the scripts' own data directory, the OpenCode version (any major but
 // the supported one is refused, #26), and which models of the chain OpenCode lists there. A model it does not list (an unknown id, or a provider not logged in in
 // that directory) is dropped, with the command that fixes it. So is a model whose provider's quota is
-// exhausted, when quota-tracker answers (lib/quota.mjs, L50). Returns { env, usable, problems }.
+// exhausted, when quota-tracker answers (lib/quota.mjs, L50). Returns { env, usable, problems, setup }:
+// `setup` holds the problems that are ours to fix (the version, a model not listed or not logged
+// in), which stop a run before anything is billed (L69); a quota skip is the provider's, not one.
 export async function prepareOpenCode({ opencode, chain, models, env, cwd, log }) {
   const oc = openCodeHome(env, { log });
   const version = await openCodeVersion(opencode, { env: oc.env, cwd });
   log(`opencode: ${version ?? 'unknown version'} (${opencode.exe})`);
   const bad = versionProblem(version, opencode.exe);
-  if (bad) return { env: oc.env, usable: [], problems: [bad], version };
+  if (bad) return { env: oc.env, usable: [], problems: [bad], setup: [bad], version };
   const { listed, errors } = await listedModels(opencode, chain.map((m) => models[m].id.split('/')[0]), { env: oc.env, cwd });
   const problems = [];
+  const setup = [];
   const quota = await readQuota(env);
   log(quota.off ? `quota: not checked: ${quota.off} (L50)` : `quota: checked (${[...quota.providers.values()].map((p) => `${p.provider} ${p.status}`).join(', ')})`);
   const usable = chain.filter((m) => {
     if (!listed.has(models[m].id)) {
       problems.push(`${m}: ${loginHint(models[m].id, listed, oc.dataHome, errors)}`);
+      setup.push(problems.at(-1));
       return false;
     }
     const block = quota.off ? null : quotaBlock(models[m].id, quota);
     if (block) problems.push(`${m}: skipped, out of quota: ${block} (quota-tracker, L50)`);
     return !block;
   });
-  return { env: oc.env, usable, problems, version };
+  return { env: oc.env, usable, problems, setup, version };
 }
 
 export const ocArgs = (worktree, agent, model) =>

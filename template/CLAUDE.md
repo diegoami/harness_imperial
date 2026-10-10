@@ -11,13 +11,13 @@ before running a task. Tasks are `docs/tasks/T<nn>.md`, indexed in `docs/tasks/R
    makes, Claude agents run with worktree isolation. Never `git stash`.
 3. Status lives in GitHub labels. No document carries a status snapshot.
 4. A question is not a request to edit files. Answer it; propose any fix and wait.
-5. The Done-when is not negotiable by the implementer. It stops and reports; it never weakens an
-   assertion, skips a test or edits its task file. The main session amends a Done-when on `main`
-   with the reason in the commit message.
+5. The Done-when is not negotiable: the implementer stops and reports, never weakens an assertion,
+   skips a test or edits its task file. The main session amends it on `main`, the reason in the commit.
 6. The reviewer is never the implementer's model family. It re-runs every Done-when line itself.
 7. Merge only with an approving review and green CI. Two rework rounds, then escalate. After a heavy
    review, the next round's implementer moves one step up, never down (`/run-task`). (L38)
 8. Relay review findings in full. Read a run's final message before you retry or re-route it (L55).
+   A failed run is fixed, never routed around: only a provider that did not respond moves on (L69).
 9. A test proves behaviour only if it fails without that behaviour; re-take a claim that nothing failed.
 10. A comment asserting behaviour at an edge arrives with the test that visits that edge.
 11. Until the first playable build, schedule only bugs that break play; the rest are `post-playable`.

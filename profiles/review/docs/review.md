@@ -15,8 +15,8 @@ rules; `docs/environment.md` holds the logins.
 | then | the user | no Claude reviewer (`claudeFallback: null`) |
 
 There is no `--hard` chain here (`reviewer.hard` and `reviewer.sol` are null): a critical PR gets a
-second opinion instead. The next model runs only when one produced no review at all; the same
-failure twice stops the chain (L12). A critical PR's second opinion is Luna, or, when Luna wrote the
+second opinion instead. The next model runs only when a provider did not respond; the same
+failure twice stops the chain (L12, L69). A critical PR's second opinion is Luna, or, when Luna wrote the
 first review, the chain's next model. Each reviewer works read-only in a detached worktree of the
 PR's head.
 
@@ -38,7 +38,9 @@ PR's head.
      stop, sweep the whole diff for that class yourself, fix it and record the pattern in the
      model-trials record (create one if there is none) before the next review, which is the last
      before escalation (`CLAUDE.md` rule 5, L49).
-   - exit 3: no review, or no second opinion. Tell the user.
+   - exit 3: no provider responded, or no second opinion. Tell the user.
+   - exit 5: our process or setup failed (no review in the output, a denied call, a login): nothing
+     posted. Tell the user the cause from the message; it is fixed before the next run (L69).
    - exit 4: a review posted but not acted on (cut off, unreadable, an approve that skipped a
      Done-when line). Read it on the PR and tell the user.
 

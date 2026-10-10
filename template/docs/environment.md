@@ -1,7 +1,8 @@
 # Environment
 
 What a session needs so the main session can delegate. Everything here is optional: each missing
-piece turns one delegate off, and the main session falls back to Claude (the scripts exit 3).
+piece turns one delegate off: a missing login stops the scripts with exit 5 and the command that
+fixes it; only a provider that does not respond makes them exit 3, and Claude takes the work (L69).
 
 ## On your desktop
 
@@ -213,7 +214,7 @@ $env:XDG_DATA_HOME = "$HOME\.local\share\harness-opencode\data"; opencode consol
 ```
 
 Check it with the same `XDG_DATA_HOME` and `opencode models opencode-go`. Before any run, each script
-checks that OpenCode lists its model there; if not, it exits 3 with the command that fixes it (this
+checks that OpenCode lists its model there; if not, it exits 5 with the command that fixes it (this
 one for Go, `opencode auth login` for OpenAI), and nothing is billed. The scripts never change their
 own process's environment, only that of the OpenCode processes they start, so nothing needs
 restoring afterwards.
@@ -237,7 +238,7 @@ Contents, Pull requests and Issues.
 
 OpenCode reads both `OPENCODE_API_KEY` and `OPENROUTER_API_KEY` from the environment (checked with
 `opencode auth list` on 1.18.33), so those need no `opencode auth login`. Go is the exception: without
-its console login, `implement.mjs` and `review.mjs` fail over and exit 3, and Claude agents take the work.
+its console login, `implement.mjs` and `review.mjs` stop with exit 5 and the login command (L69).
 
 ## Network
 

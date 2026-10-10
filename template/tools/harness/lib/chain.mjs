@@ -1,32 +1,36 @@
 // The decisions shared by implement.mjs and review.mjs, kept free of git and gh so they can be
 // tested directly.
 
-import { failureClass } from './opencode.mjs';
+import { failureClass, failureKind } from './opencode.mjs';
 
 /**
- * Tries each model once. The next model runs only after an infrastructure failure, and only when
- * the failed attempt left nothing behind (leftWork() is false). Two consecutive failures with the
- * same cause stop the chain: then OpenCode itself is the problem, not the model.
+ * Tries each model once. The next model runs only when the provider did not respond (failureKind,
+ * L69), and only when the failed attempt left nothing behind (leftWork() is false). A failure
+ * through our process (the brief, the permissions, the agent, the runner) stops the chain at once,
+ * without a reset, so the worktree keeps what the run did: it is fixed, never routed around. Two
+ * consecutive provider failures with the same cause stop the chain too.
  *
  * attempt(name) resolves { ok: true, value } or { ok: false, reason, detail }.
- * Resolves { ok: true, name, value, failures }, or { ok: false, failures, sameCause, leftWork }.
+ * Resolves { ok: true, name, value, failures }, or { ok: false, failures, sameCause, leftWork, process }.
  */
-export async function runChain({ chain, attempt, leftWork = async () => false, reset = async () => {}, log = () => {} }) {
+export async function runChain({ chain, attempt, leftWork = async () => false, reset = async () => {}, log = () => {}, kindOf = failureKind }) {
   const failures = [];
   for (const name of chain) {
     log(`attempt: ${name}`);
     const r = await attempt(name);
     if (r.ok) return { ok: true, name, value: r.value, failures };
-    log(`${name} failed: ${r.reason}`);
-    failures.push({ name, reason: r.reason, detail: r.detail });
-    if (await leftWork()) return { ok: false, failures, sameCause: null, leftWork: true };
+    const kind = kindOf(r.reason);
+    log(`${name} failed (${kind === 'provider' ? 'the provider did not respond' : 'our process'}): ${r.reason}`);
+    failures.push({ name, reason: r.reason, detail: r.detail, kind });
+    if (kind !== 'provider') return { ok: false, failures, sameCause: null, leftWork: await leftWork(), process: true };
+    if (await leftWork()) return { ok: false, failures, sameCause: null, leftWork: true, process: false };
     await reset();
     const n = failures.length;
     if (n >= 2 && failureClass(failures[n - 1].reason) === failureClass(failures[n - 2].reason)) {
-      return { ok: false, failures, sameCause: failureClass(r.reason), leftWork: false };
+      return { ok: false, failures, sameCause: failureClass(r.reason), leftWork: false, process: false };
     }
   }
-  return { ok: false, failures, sameCause: null, leftWork: false };
+  return { ok: false, failures, sameCause: null, leftWork: false, process: false };
 }
 
 /**

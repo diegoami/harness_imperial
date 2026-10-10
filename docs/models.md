@@ -109,8 +109,9 @@ The review always runs through `review.mjs` from the root, with `--exclude claud
 
 **Speedups: a hard review never waits for one provider (L39).** `--hard` runs `reviewer.hard`:
 GLM-5.3 (Z.AI), then MiniMax-M3 (the owner, 2026-10-06), then MiMo V2.6 Pro (Go), then Luna. `--hard --sol` puts GPT-6.1 Sol
-(`reviewer.sol`) before them. The next model runs only when one produced no review, such as when
-the OpenAI quota is used up (Isle Wars T08 lost Sol and Luna together that way). The implementer's
+(`reviewer.sol`) before them. The next model runs only when a provider did not respond or is out
+of quota (Isle Wars T08 lost Sol and Luna together that way); any other failure stops with exit 5
+(L69). The implementer's
 family is skipped; the posted header names each model that failed or could not run before the one
 that reviewed, so a light substitute on a hard review is visible; with no reviewer left, the script
 exits 3, and since Claude implements here, the owner decides.

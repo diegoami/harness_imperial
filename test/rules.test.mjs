@@ -355,3 +355,14 @@ test('implementer agent-file denies are narrowed: trailing-space-star with-args,
     assert.doesNotMatch(text, /^ {2}task:\n {4}"\*": deny$/m, `${f}: task deny dropped — chain models do not use OpenCode's Task tool`);
   }
 });
+
+test('a failed run is fixed, never routed around: only a provider that did not respond moves on (L69)', () => {
+  const flat = (f) => read(f).replace(/\s+/g, ' ');
+  assert.match(flat('template/CLAUDE.md'), /A failed run is fixed, never routed around: only a provider that did not respond moves on \(L69\)\./);
+  const p = flat('template/docs/process.md');
+  assert.match(p, /The chain moves on only when the provider did not respond and the run left no work\. \(L12, L69\)/);
+  assert.match(p, /3: no provider responded; Claude Sonnet takes it\. 5: our process or setup failed; fix, rerun\. \(L69\)/);
+  assert.match(flat('template/.claude/skills/run-task/SKILL.md'), /Exit 5: our process or setup failed: .* Never a fallback: find the cause .* then rerun; the rerun resumes the branch the run left\. \(L69\)/);
+  assert.match(read('template/docs/lessons.md'), /^\| L69 \| A failed run moves to the next model only when its provider did not respond/m);
+  assert.doesNotMatch(flat('template/.claude/skills/run-task/SKILL.md'), /Exit 3: OpenCode unavailable/);
+});
