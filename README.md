@@ -144,6 +144,15 @@ already has one of its files with other content, and it records what it copied i
 node /path/to/harness_imperial/adopt.mjs --profile full|review --target . [--dry-run]
 ```
 
+**A bump** to a newer commit: move `harness.lock` and every file it lists aside (check first that
+`grep -E '^[0-9a-f]{64}  ' harness.lock | sha256sum -c --quiet` passes), run `adopt.mjs` from a
+worktree of this repository at the new commit, put back the project's own files (its task index,
+its `harness.json`), and three-way merge each other adapted file: `git merge-file <file> <template
+at the old pin> <template at the new pin>`. Then diff each adapted file against the new template:
+it must differ only by what its `adapt` line in `harness.lock` names. A file adapted from an older
+pin than the lock's merges without a conflict yet keeps stale upstream text (malpaco PR 12,
+2026-10-09). An adapted file now equal to the template loses its `adapt` line and gets a hash.
+
 - **full**: the whole template, as below. The main session orchestrates: OpenCode implements, a
   reviewer of another family reviews, and task files are the contracts.
 - **review**, for a simpler repository (L37): only the reviewer. The main session, on Opus, plans
