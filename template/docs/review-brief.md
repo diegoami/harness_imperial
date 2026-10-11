@@ -37,3 +37,14 @@ every item under "Blocking means", and report all blocking findings together.
 - If you ran out of time or context before covering the whole diff, say which files or
   sections you did not cover. Do not approve in that case.
 ```
+
+## Writing the brief
+
+- Paste the second section from this file, never from a copy kept elsewhere (a scratch file): a
+  session restart once wiped the copy, and a brief went out without the section (harness_imperial
+  PR 152, 2026-10-09).
+- The brief's first line is the review header, `<ID> review (<model>)`, e.g. `PR 124 review
+  (luna)`: `review.mjs` refuses a first line without "review (" with exit 2, so "PR 124 review r2
+  (Luna)" was refused. Name the round in the brief's body.
+- Never exempt a Done-when line in the brief: `review.mjs` does not apply an approve that leaves a
+  Done-when line missing or "not run" (exit 4). In a narrow round, keep every line runnable.

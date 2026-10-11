@@ -405,3 +405,11 @@ test('model choice follows /recommend and nothing else: the owner\'s rules word 
   }
   assert.doesNotMatch(read('CLAUDE.md'), /which pair for which work/);   // Luna's R4
 });
+
+test('writing a review brief: the section pasted from its file, the header line, no exempted Done-when line', () => {
+  const flat = read('template/docs/review-brief.md').replace(/\s+/g, ' ');
+  assert.match(flat, /## Writing the brief - Paste the second section from this file, never from a copy kept elsewhere/);
+  assert.match(flat, /`review\.mjs` refuses a first line without "review \(" with exit 2/);
+  assert.match(flat, /Never exempt a Done-when line in the brief/);
+  assert.match(read('template/docs/environment.md').replace(/\s+/g, ' '), /If `node` is missing in a session, check that hook first\./);
+});

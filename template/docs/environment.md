@@ -11,6 +11,10 @@ nothing. You need:
 - Node 20 or later.
 - `gh`, logged in (`gh auth login`). It needs no `GH_TOKEN`.
 - OpenCode 1.18 (`opencode --version`), logged in to OpenCode Go (next section).
+- `node` and OpenCode on the PATH of every session. The Claude desktop app may start sessions
+  without `~/.bashrc`; a user-level SessionStart hook can add them (on the owner's machine,
+  `~/.claude/hooks/session-path.sh`, wired in `~/.claude/settings.json`, adds nvm's node,
+  `~/.local/bin` and `~/.opencode/bin`). If `node` is missing in a session, check that hook first.
 - Optional: the credential jail (`tools/harness/lib/jail.mjs`, #68), off by default. With
   `"jail": { "enabled": true }` in `harness.json` and bubblewrap installed on Linux or WSL
   (`sudo apt install bubblewrap`), reviewers run without your GitHub credentials; enabled where
