@@ -31,6 +31,7 @@ The names are `harness.json`'s. Both copies, the template's and the root's, are 
 | `ali-qwen-flash` | Qwen 3.8 Flash, `alibaba-token-plan/qwen3.8-flash`, effort `medium` (it offers no plain `high`) | Qwen | on watch; probed only, not in a pair |
 | `mm-m3` | MiniMax-M3, `minimax/MiniMax-M3`, variant `thinking` (it offers only `none` and `thinking`), heavy (L54, the owner 2026-10-06) | MiniMax | **second in `reviewer.hard`**, behind GLM-5.3 (the owner, 2026-10-06): a sixth family, so it reviews any implementer's work; on watch |
 | `mm-m2.7` | MiniMax-M2.7, `minimax/MiniMax-M2.7`, no variants offered, light | MiniMax | on watch; probed only, not in a pair |
+| `kimi` | Kimi K3, `kimi-code-plan-global/k3`, 1M context (never `k3-256k`), no variants | Kimi | on watch; probed only (2026-10-13), not in a pair |
 | (Claude) Opus | the main session | Claude | writes every PR here, so it never reviews one (the family rule) |
 | (Claude) Sonnet | `claudeFallback` of the implementer | Claude | the fallback when OpenCode cannot implement |
 

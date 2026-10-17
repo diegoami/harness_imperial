@@ -73,6 +73,11 @@
       "id": "minimax/MiniMax-M2.7",
       "family": "minimax",
       "watch": "Light (the owner, 2026-10-06); it offers no variants, so no variant field. Probed only (2026-10-06, 4.2 s). Key and quota as mm-m3."
+    },
+    "kimi": {
+      "id": "kimi-code-plan-global/k3",
+      "family": "kimi",
+      "watch": "Kimi K3 with the 1M context (not k3-256k) on the Kimi Coding plan, OpenCode's built-in kimi-code-plan-global provider (the owner, 2026-10-13); runs at high, the harness default for a light-or-unknown model. Probed only (2026-10-13, switch-model --probe --dry-run). Key from KIMI_API_KEY (~/.config/ai-keys.env). Quota: curl -s localhost:8765/quota/kimi (5-hour and monthly windows). A new family: an independent reviewer for GLM, MiMo, Qwen, MiniMax, OpenAI or Claude work."
     }
   },
   "chooser": {

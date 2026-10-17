@@ -98,7 +98,7 @@ test('showRoles says what runs now', () => {
   assert.equal(showRoles(template()), [
     'implementer: glm-flash = zai-coding-plan/glm-5.3-flash (high, family glm), mimo-flash = opencode-go/mimo-v2.6-flash (no variant, family mimo), then Claude sonnet',
     'reviewer: luna = openai/gpt-5.6-luna (high, family openai), then Claude opus',
-    'on watch: mimo-flash = opencode-go/mimo-v2.6-flash, sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, mimo-pro = opencode-go/mimo-v2.6-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash, mm-m3 = minimax/MiniMax-M3, mm-m2.7 = minimax/MiniMax-M2.7',
+    'on watch: mimo-flash = opencode-go/mimo-v2.6-flash, sol = openai/gpt-6-sol, sol-6.1 = openai/gpt-6.1-sol, mimo-pro = opencode-go/mimo-v2.6-pro, glm = zai-coding-plan/glm-5.3, glm-flash = zai-coding-plan/glm-5.3-flash, ali-glm = alibaba-token-plan/glm-5.3, ali-qwen-max = alibaba-token-plan/qwen3.8-max, ali-qwen-flash = alibaba-token-plan/qwen3.8-flash, mm-m3 = minimax/MiniMax-M3, mm-m2.7 = minimax/MiniMax-M2.7, kimi = kimi-code-plan-global/k3',
   ].join('\n'));
 });
 
